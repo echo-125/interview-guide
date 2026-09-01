@@ -39,7 +39,9 @@ spring:
 
   # PostgreSQL数据库配置
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}
+    #url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}?sslmode=${POSTG
+      RES_SSLMODE:disable}
     username: ${POSTGRES_USER:postgres}
     # 与 docker-compose.dev.yml 中 postgres 服务默认一致（本地只起依赖容器 + bootRun 时无需改）
     password: ${POSTGRES_PASSWORD:123456}
@@ -72,11 +74,22 @@ spring:
       config: |
         singleServerConfig:
           address: "redis://${REDIS_HOST:localhost}:${REDIS_PORT:6379}"
+          password: "${REDIS_PASSWORD:}"
           database: 0
-          connectionMinimumIdleSize: 10
-          connectionPoolSize: 64
+          connectionMinimumIdleSize: 5
+          connectionPoolSize: 32
           subscriptionConnectionMinimumIdleSize: 1
-          subscriptionConnectionPoolSize: 50
+          subscriptionConnectionPoolSize: 16
+#  redis:
+#    redisson:
+#      config: |
+#        singleServerConfig:
+#          address: "redis://${REDIS_HOST:localhost}:${REDIS_PORT:6379}"
+#          database: 0
+#          connectionMinimumIdleSize: 10
+#          connectionPoolSize: 64
+#          subscriptionConnectionMinimumIdleSize: 1
+#          subscriptionConnectionPoolSize: 50
   
   # Spring AI 配置（chat + embedding 统一由 app.ai.providers 驱动，不使用自动配置）
   ai:
