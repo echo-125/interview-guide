@@ -66,10 +66,10 @@ public class ResumePersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ResumeEntity saveResume(MultipartFile file, String resumeText,
-                                   String storageKey, String storageUrl) {
+                                   String storageKey, String storageUrl, String llmProvider) {
         try {
             String fileHash = fileHashService.calculateHash(file);
-            
+
             ResumeEntity resume = new ResumeEntity();
             resume.setFileHash(fileHash);
             resume.setOriginalFilename(file.getOriginalFilename());
@@ -78,10 +78,11 @@ public class ResumePersistenceService {
             resume.setStorageKey(storageKey);
             resume.setStorageUrl(storageUrl);
             resume.setResumeText(resumeText);
-            
+            resume.setLlmProvider(trimOrNull(llmProvider));
+
             ResumeEntity saved = resumeRepository.save(resume);
-            log.info("简历已保存: id={}, hash={}", saved.getId(), fileHash);
-            
+            log.info("简历已保存: id={}, hash={}, provider={}", saved.getId(), fileHash, llmProvider);
+
             return saved;
         } catch (Exception e) {
             log.error("保存简历失败: {}", e.getMessage(), e);
@@ -203,5 +204,13 @@ public class ResumePersistenceService {
         // 2. 删除简历实体（面试会话会在服务层删除）
         resumeRepository.delete(resume);
         log.info("简历已删除: id={}, filename={}", id, resume.getOriginalFilename());
+    }
+
+    private String trimOrNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

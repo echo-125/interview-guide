@@ -5,6 +5,8 @@ import {
   FileStack, ChevronDown, ChevronUp, Loader2
 } from 'lucide-react';
 import { useInterviewConfig, CUSTOM_SKILL_ID, DIFFICULTY_OPTIONS, type InterviewMode, type Difficulty } from '../hooks/useInterviewConfig';
+import { useChatProviders } from '../hooks/useChatProviders';
+import LlmProviderSelect from './LlmProviderSelect';
 import { getSkillIcon } from '../utils/skillIcons';
 
 // Re-export for backward compatibility
@@ -52,6 +54,7 @@ export default function UnifiedInterviewModal({
   startButtonText = '开始面试',
 }: UnifiedInterviewModalProps) {
   const config = useInterviewConfig({ defaultMode, defaultResumeId, autoLoad: false });
+  const chatProviders = useChatProviders();
 
   useEffect(() => {
     if (isOpen) {
@@ -384,6 +387,21 @@ export default function UnifiedInterviewModal({
                             <option key={r.id} value={r.id}>{r.filename}</option>
                           ))}
                         </select>
+                      </div>
+
+                      {/* 面试模型选择 */}
+                      <div>
+                        <label className="flex items-center gap-2 mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          面试模型
+                        </label>
+                        <LlmProviderSelect
+                          providers={chatProviders}
+                          value={config.llmProvider}
+                          onChange={config.setLlmProvider}
+                        />
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                          本次面试的出题与评估将使用所选模型，可在"设置 → 模型服务"中管理
+                        </p>
                       </div>
 
                       {/* 文字面试 - 题目数 */}

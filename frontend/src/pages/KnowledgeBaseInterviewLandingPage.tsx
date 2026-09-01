@@ -138,6 +138,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         difficulty: config.difficulty,
         mainQuestionCount: config.mainQuestionCount,
         followUpCount: config.followUpCount,
+        llmProvider: config.llmProvider,
       });
       const kbId = startTarget.id;
       setStartTarget(null);
@@ -161,6 +162,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         questionCount: config.questionCount,
         followUpCount: config.followUpCount,
         categoryLimit: config.categoryLimit,
+        llmProvider: config.llmProvider,
       });
       setGenerateTarget(null);
       navigate(`/knowledgebase-interview/${generateTarget.id}/questions`, {

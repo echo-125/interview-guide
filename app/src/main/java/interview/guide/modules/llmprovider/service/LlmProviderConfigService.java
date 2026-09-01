@@ -77,6 +77,13 @@ public class LlmProviderConfigService {
       "minimax", "embo-01"
   );
 
+  private static final String API_FORMAT_OPENAI = "openai";
+  private static final String API_FORMAT_ANTHROPIC = "anthropic";
+  private static final String RERANK_API_FORMAT_COHERE = "cohere";
+  private static final String RERANK_API_FORMAT_DASHSCOPE = "dashscope";
+  private static final String ANTHROPIC_API_VERSION = "2023-06-01";
+  private static final String DASHSCOPE_RERANK_PATH = "/api/v1/services/rerank/text-rerank/text-rerank";
+
   @Autowired
   public LlmProviderConfigService(
       LlmProviderProperties properties,
@@ -150,13 +157,19 @@ public class LlmProviderConfigService {
                 .baseUrl(e.getValue().getBaseUrl())
                 .maskedApiKey(maskApiKey(e.getValue().getApiKey()))
                 .model(e.getValue().getModel())
+                .apiFormat(apiFormatOrDefault(e.getValue().getApiFormat()))
                 .embeddingModel(e.getValue().getEmbeddingModel())
+                .rerankModel(e.getValue().getRerankModel())
+                .rerankApiFormat(rerankApiFormatOrDefault(e.getValue().getRerankApiFormat()))
+                .maxTokens(e.getValue().getMaxTokens())
+                .topP(e.getValue().getTopP())
                 .embeddingDimensions(resolveEmbeddingDimensions(e.getValue().getEmbeddingDimensions()))
                 .supportsEmbedding(Boolean.TRUE.equals(e.getValue().getSupportsEmbedding())
                     || trimOrNull(e.getValue().getEmbeddingModel()) != null)
                 .temperature(e.getValue().getTemperature())
                 .defaultChatProvider(e.getKey().equals(properties.getDefaultProvider()))
                 .defaultEmbeddingProvider(e.getKey().equals(properties.getDefaultEmbeddingProvider()))
+                .defaultRerankProvider(e.getKey().equals(properties.getDefaultRerankProvider()))
                 .build())
             .toList();
       }
@@ -167,12 +180,18 @@ public class LlmProviderConfigService {
               .baseUrl(provider.getBaseUrl())
               .maskedApiKey(maskApiKey(decryptApiKey(provider)))
               .model(provider.getModel())
+              .apiFormat(apiFormatOrDefault(provider.getApiFormat()))
               .embeddingModel(provider.getEmbeddingModel())
+              .rerankModel(provider.getRerankModel())
+              .rerankApiFormat(rerankApiFormatOrDefault(provider.getRerankApiFormat()))
+              .maxTokens(provider.getMaxTokens())
+              .topP(provider.getTopP())
               .embeddingDimensions(resolveEmbeddingDimensions(provider.getEmbeddingDimensions()))
               .supportsEmbedding(provider.isSupportsEmbedding())
               .temperature(provider.getTemperature())
               .defaultChatProvider(provider.getId().equals(setting.getDefaultChatProviderId()))
               .defaultEmbeddingProvider(provider.getId().equals(setting.getDefaultEmbeddingProviderId()))
+              .defaultRerankProvider(provider.getId().equals(setting.getDefaultRerankProviderId()))
               .build())
           .toList();
     } finally {
@@ -190,13 +209,19 @@ public class LlmProviderConfigService {
             .baseUrl(config.getBaseUrl())
             .maskedApiKey(maskApiKey(config.getApiKey()))
             .model(config.getModel())
+            .apiFormat(apiFormatOrDefault(config.getApiFormat()))
             .embeddingModel(config.getEmbeddingModel())
+            .rerankModel(config.getRerankModel())
+            .rerankApiFormat(rerankApiFormatOrDefault(config.getRerankApiFormat()))
+            .maxTokens(config.getMaxTokens())
+            .topP(config.getTopP())
             .embeddingDimensions(resolveEmbeddingDimensions(config.getEmbeddingDimensions()))
             .supportsEmbedding(Boolean.TRUE.equals(config.getSupportsEmbedding())
                 || trimOrNull(config.getEmbeddingModel()) != null)
             .temperature(config.getTemperature())
             .defaultChatProvider(id.equals(properties.getDefaultProvider()))
             .defaultEmbeddingProvider(id.equals(properties.getDefaultEmbeddingProvider()))
+            .defaultRerankProvider(id.equals(properties.getDefaultRerankProvider()))
             .build();
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
@@ -206,12 +231,18 @@ public class LlmProviderConfigService {
           .baseUrl(provider.getBaseUrl())
           .maskedApiKey(maskApiKey(decryptApiKey(provider)))
           .model(provider.getModel())
+          .apiFormat(apiFormatOrDefault(provider.getApiFormat()))
           .embeddingModel(provider.getEmbeddingModel())
+          .rerankModel(provider.getRerankModel())
+          .rerankApiFormat(rerankApiFormatOrDefault(provider.getRerankApiFormat()))
+          .maxTokens(provider.getMaxTokens())
+          .topP(provider.getTopP())
           .embeddingDimensions(resolveEmbeddingDimensions(provider.getEmbeddingDimensions()))
           .supportsEmbedding(provider.isSupportsEmbedding())
           .temperature(provider.getTemperature())
           .defaultChatProvider(id.equals(setting.getDefaultChatProviderId()))
           .defaultEmbeddingProvider(id.equals(setting.getDefaultEmbeddingProviderId()))
+          .defaultRerankProvider(id.equals(setting.getDefaultRerankProviderId()))
           .build();
     } finally {
       rwLock.readLock().unlock();
@@ -222,12 +253,16 @@ public class LlmProviderConfigService {
     rwLock.readLock().lock();
     try {
       if (!isDatabaseBacked()) {
-        return new DefaultProviderDTO(properties.getDefaultProvider(), properties.getDefaultEmbeddingProvider());
+        return new DefaultProviderDTO(
+            properties.getDefaultProvider(),
+            properties.getDefaultEmbeddingProvider(),
+            properties.getDefaultRerankProvider());
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       return new DefaultProviderDTO(
           setting.getDefaultChatProviderId(),
-          setting.getDefaultEmbeddingProviderId());
+          setting.getDefaultEmbeddingProviderId(),
+          setting.getDefaultRerankProviderId());
     } finally {
       rwLock.readLock().unlock();
     }
@@ -331,14 +366,18 @@ public class LlmProviderConfigService {
             "Provider '" + request.id() + "' 已存在");
       }
       String baseUrl = requireNonBlank(request.baseUrl(), "baseUrl");
-      String model = requireNonBlank(request.model(), "model");
+      String model = trimOrNull(request.model());
       String apiKey = requireNonBlank(request.apiKey(), "apiKey");
       String embeddingModel = trimOrNull(request.embeddingModel());
       Integer embeddingDimensions = resolveEmbeddingDimensions(request.embeddingDimensions());
       boolean supportsEmbedding = request.supportsEmbedding() != null
           ? request.supportsEmbedding()
           : embeddingModel != null;
+      String rerankModel = trimOrNull(request.rerankModel());
+      validateAtLeastOneCapability(providerId, model, supportsEmbedding && embeddingModel != null, rerankModel);
       validateEmbeddingConfig(providerId, supportsEmbedding, embeddingModel, embeddingDimensions);
+      String apiFormat = requireValidApiFormat(request.apiFormat());
+      String rerankApiFormat = requireValidRerankApiFormat(request.rerankApiFormat());
 
       ApiKeyEncryptionService.EncryptedValue encrypted = encryptionService.encrypt(apiKey);
       providerRepository.save(LlmProviderEntity.builder()
@@ -347,7 +386,12 @@ public class LlmProviderConfigService {
           .apiKeyNonce(encrypted.nonce())
           .apiKeyCiphertext(encrypted.ciphertext())
           .model(model)
+          .apiFormat(apiFormat)
           .embeddingModel(embeddingModel)
+          .rerankModel(rerankModel)
+          .rerankApiFormat(rerankApiFormat)
+          .maxTokens(request.maxTokens())
+          .topP(request.topP())
           .embeddingDimensions(embeddingDimensions)
           .supportsEmbedding(supportsEmbedding)
           .temperature(request.temperature())
@@ -355,7 +399,8 @@ public class LlmProviderConfigService {
           .builtin(false)
           .build());
       registry.reload();
-      log.info("Created provider: id={}, baseUrl={}, model={}", providerId, baseUrl, model);
+      log.info("Created provider: id={}, baseUrl={}, model={}, apiFormat={}, rerankModel={}",
+          providerId, baseUrl, model, apiFormat, rerankModel);
     } finally {
       rwLock.writeLock().unlock();
     }
@@ -376,16 +421,16 @@ public class LlmProviderConfigService {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "baseUrl 不能为空字符串");
       }
       String trimmedModel = trimOrNull(request.model());
-      if (request.model() != null && trimmedModel == null) {
-        throw new BusinessException(ErrorCode.BAD_REQUEST, "model 不能为空字符串");
-      }
       String trimmedApiKey = trimOrNull(request.apiKey());
       if (request.apiKey() != null && trimmedApiKey == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "apiKey 不能为空字符串");
       }
 
       if (trimmedBaseUrl != null) provider.setBaseUrl(trimmedBaseUrl);
-      if (trimmedModel != null) provider.setModel(trimmedModel);
+      if (request.model() != null) provider.setModel(trimmedModel);
+      if (request.apiFormat() != null) {
+        provider.setApiFormat(requireValidApiFormat(request.apiFormat()));
+      }
       if (request.embeddingModel() != null) {
         provider.setEmbeddingModel(trimOrNull(request.embeddingModel()));
       }
@@ -395,11 +440,26 @@ public class LlmProviderConfigService {
       if (request.supportsEmbedding() != null) {
         provider.setSupportsEmbedding(request.supportsEmbedding());
       }
+      if (request.rerankModel() != null) {
+        provider.setRerankModel(trimOrNull(request.rerankModel()));
+      }
+      if (request.rerankApiFormat() != null) {
+        provider.setRerankApiFormat(requireValidRerankApiFormat(request.rerankApiFormat()));
+      }
+      validateAtLeastOneCapability(id, provider.getModel(),
+          provider.isSupportsEmbedding() && trimOrNull(provider.getEmbeddingModel()) != null,
+          trimOrNull(provider.getRerankModel()));
       validateEmbeddingConfig(
           id,
           provider.isSupportsEmbedding(),
           provider.getEmbeddingModel(),
           resolveEmbeddingDimensions(provider.getEmbeddingDimensions()));
+      if (request.maxTokens() != null) {
+        provider.setMaxTokens(request.maxTokens());
+      }
+      if (request.topP() != null) {
+        provider.setTopP(request.topP());
+      }
       if (request.temperature() != null) {
         provider.setTemperature(request.temperature());
       }
@@ -452,7 +512,11 @@ public class LlmProviderConfigService {
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultProvider 不能为空");
       }
-      getProviderEntityOrThrow(providerId);
+      LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
+      if (trimOrNull(provider.getModel()) == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "Provider '" + providerId + "' 未配置聊天模型，不能设为默认聊天服务");
+      }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       setting.setDefaultChatProviderId(providerId);
       globalSettingRepository.save(setting);
@@ -487,6 +551,33 @@ public class LlmProviderConfigService {
       globalSettingRepository.save(setting);
       registry.reload();
       log.info("Updated default embedding provider: {}", providerId);
+    } finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+
+  @Transactional
+  public void updateDefaultRerankProvider(DefaultProviderDTO request) {
+    rwLock.writeLock().lock();
+    try {
+      if (!isDatabaseBacked()) {
+        updateDefaultRerankProviderLegacy(request);
+        return;
+      }
+      String providerId = trimOrNull(request.defaultRerankProvider());
+      if (providerId == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
+      }
+      LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
+      if (trimOrNull(provider.getRerankModel()) == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "Provider '" + providerId + "' 未配置 Rerank 模型，不能设为默认重排服务");
+      }
+      LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
+      setting.setDefaultRerankProviderId(providerId);
+      globalSettingRepository.save(setting);
+      registry.reload();
+      log.info("Updated default rerank provider: {}", providerId);
     } finally {
       rwLock.writeLock().unlock();
     }
@@ -592,10 +683,24 @@ public class LlmProviderConfigService {
     ProviderConfig config = new ProviderConfig();
     config.setBaseUrl(request.baseUrl());
     config.setApiKey(request.apiKey());
-    config.setModel(request.model());
-    config.setEmbeddingModel(request.embeddingModel());
+    String model = trimOrNull(request.model());
+    String embeddingModel = trimOrNull(request.embeddingModel());
+    String rerankModel = trimOrNull(request.rerankModel());
+    validateAtLeastOneCapability(request.id(), model, embeddingModel != null, rerankModel);
+    validateEmbeddingConfig(
+        request.id(),
+        Boolean.TRUE.equals(request.supportsEmbedding()) || embeddingModel != null,
+        embeddingModel,
+        resolveEmbeddingDimensions(request.embeddingDimensions()));
+    config.setModel(model);
+    config.setApiFormat(requireValidApiFormat(request.apiFormat()));
+    config.setEmbeddingModel(embeddingModel);
     config.setEmbeddingDimensions(request.embeddingDimensions());
     config.setSupportsEmbedding(request.supportsEmbedding());
+    config.setRerankModel(rerankModel);
+    config.setRerankApiFormat(requireValidRerankApiFormat(request.rerankApiFormat()));
+    config.setMaxTokens(request.maxTokens());
+    config.setTopP(request.topP());
     config.setTemperature(request.temperature());
     providers.put(request.id(), config);
 
@@ -611,17 +716,16 @@ public class LlmProviderConfigService {
     if (request.baseUrl() != null && trimmedBaseUrl == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "baseUrl 不能为空字符串");
     }
-    String trimmedModel = trimOrNull(request.model());
-    if (request.model() != null && trimmedModel == null) {
-      throw new BusinessException(ErrorCode.BAD_REQUEST, "model 不能为空字符串");
-    }
     String trimmedApiKey = trimOrNull(request.apiKey());
     if (request.apiKey() != null && trimmedApiKey == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "apiKey 不能为空字符串");
     }
 
     if (trimmedBaseUrl != null) config.setBaseUrl(trimmedBaseUrl);
-    if (trimmedModel != null) config.setModel(trimmedModel);
+    if (request.model() != null) config.setModel(trimOrNull(request.model()));
+    if (request.apiFormat() != null) {
+      config.setApiFormat(requireValidApiFormat(request.apiFormat()));
+    }
     if (request.embeddingModel() != null) {
       config.setEmbeddingModel(trimOrNull(request.embeddingModel()));
     }
@@ -631,9 +735,23 @@ public class LlmProviderConfigService {
     if (request.supportsEmbedding() != null) {
       config.setSupportsEmbedding(request.supportsEmbedding());
     }
+    if (request.rerankModel() != null) {
+      config.setRerankModel(trimOrNull(request.rerankModel()));
+    }
+    if (request.rerankApiFormat() != null) {
+      config.setRerankApiFormat(requireValidRerankApiFormat(request.rerankApiFormat()));
+    }
+    if (request.maxTokens() != null) {
+      config.setMaxTokens(request.maxTokens());
+    }
+    if (request.topP() != null) {
+      config.setTopP(request.topP());
+    }
     if (request.temperature() != null) {
       config.setTemperature(request.temperature());
     }
+    validateAtLeastOneCapability(id, trimOrNull(config.getModel()),
+        trimOrNull(config.getEmbeddingModel()) != null, trimOrNull(config.getRerankModel()));
     if (trimmedApiKey != null) {
       config.setApiKey(trimmedApiKey);
       updateEnvValue(toEnvKey(id), trimmedApiKey);
@@ -667,12 +785,30 @@ public class LlmProviderConfigService {
     registry.reload();
   }
 
+  private void updateDefaultRerankProviderLegacy(DefaultProviderDTO request) {
+    String providerId = trimOrNull(request.defaultRerankProvider());
+    if (providerId == null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
+    }
+    ProviderConfig provider = getLegacyProviderConfigOrThrow(providerId);
+    if (trimOrNull(provider.getRerankModel()) == null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST,
+          "Provider '" + providerId + "' 未配置 Rerank 模型，不能设为默认重排服务");
+    }
+    properties.setDefaultRerankProvider(providerId);
+    writeDefaultProviderToYaml(properties.getDefaultProvider());
+    registry.reload();
+  }
+
   private ProviderRuntimeConfig toRuntimeConfig(ProviderConfig config) {
     return new ProviderRuntimeConfig(
         config.getBaseUrl(),
         config.getApiKey(),
         config.getModel(),
+        apiFormatOrDefault(config.getApiFormat()),
         config.getEmbeddingModel(),
+        config.getRerankModel(),
+        rerankApiFormatOrDefault(config.getRerankApiFormat()),
         resolveEmbeddingDimensions(config.getEmbeddingDimensions()),
         Boolean.TRUE.equals(config.getSupportsEmbedding()) || trimOrNull(config.getEmbeddingModel()) != null,
         config.getTemperature()
@@ -697,7 +833,10 @@ public class LlmProviderConfigService {
         provider.getBaseUrl(),
         decryptApiKey(provider),
         provider.getModel(),
+        apiFormatOrDefault(provider.getApiFormat()),
         provider.getEmbeddingModel(),
+        provider.getRerankModel(),
+        rerankApiFormatOrDefault(provider.getRerankApiFormat()),
         resolveEmbeddingDimensions(provider.getEmbeddingDimensions()),
         provider.isSupportsEmbedding(),
         provider.getTemperature()
@@ -727,14 +866,33 @@ public class LlmProviderConfigService {
   }
 
   private List<String> buildConnectivityTestUrls(String baseUrl) {
+    return buildCandidateUrls(baseUrl, "chat/completions");
+  }
+
+  private List<String> buildCandidateUrls(String baseUrl, String path) {
     String normalizedBaseUrl = ApiPathResolver.stripTrailingSlashes(baseUrl);
     LinkedHashSet<String> candidateUrls = new LinkedHashSet<>();
 
-    candidateUrls.add(normalizedBaseUrl + "/chat/completions");
+    candidateUrls.add(normalizedBaseUrl + "/" + path);
     if (!ApiPathResolver.baseUrlContainsVersion(normalizedBaseUrl)) {
-      candidateUrls.add(normalizedBaseUrl + "/v1/chat/completions");
+      candidateUrls.add(normalizedBaseUrl + "/v1/" + path);
     }
 
+    return List.copyOf(candidateUrls);
+  }
+
+  private List<String> buildDashscopeRerankUrls(String baseUrl) {
+    LinkedHashSet<String> candidateUrls = new LinkedHashSet<>();
+    try {
+      URI base = URI.create(ApiPathResolver.stripTrailingSlashes(baseUrl));
+      if (base.getHost() != null && base.getHost().contains("dashscope")) {
+        candidateUrls.add(new URI(base.getScheme(), base.getAuthority(),
+            DASHSCOPE_RERANK_PATH, null, null).toString());
+      }
+    } catch (Exception e) {
+      log.debug("Failed to derive dashscope rerank url from baseUrl {}: {}", baseUrl, e.getMessage());
+    }
+    candidateUrls.add("https://dashscope.aliyuncs.com" + DASHSCOPE_RERANK_PATH);
     return List.copyOf(candidateUrls);
   }
 
@@ -746,6 +904,45 @@ public class LlmProviderConfigService {
         "content", "Reply with OK only."
     )));
     requestBody.put("max_tokens", 1);
+    return requestBody;
+  }
+
+  private Map<String, Object> buildAnthropicTestRequestBody(String model) {
+    Map<String, Object> requestBody = new LinkedHashMap<>();
+    requestBody.put("model", model);
+    requestBody.put("max_tokens", 1);
+    requestBody.put("messages", List.of(Map.of(
+        "role", "user",
+        "content", "Reply with OK only."
+    )));
+    return requestBody;
+  }
+
+  private Map<String, Object> buildEmbeddingTestRequestBody(String model) {
+    Map<String, Object> requestBody = new LinkedHashMap<>();
+    requestBody.put("model", model);
+    requestBody.put("input", List.of("ping"));
+    return requestBody;
+  }
+
+  private Map<String, Object> buildCohereRerankTestRequestBody(String model) {
+    Map<String, Object> requestBody = new LinkedHashMap<>();
+    requestBody.put("model", model);
+    requestBody.put("query", "ping");
+    requestBody.put("documents", List.of("interview platform"));
+    requestBody.put("top_n", 1);
+    return requestBody;
+  }
+
+  private Map<String, Object> buildDashscopeRerankTestRequestBody(String model) {
+    Map<String, Object> requestBody = new LinkedHashMap<>();
+    requestBody.put("model", model);
+    requestBody.put("input", Map.of(
+        "query", "ping",
+        "documents", List.of("interview platform")));
+    requestBody.put("parameters", Map.of(
+        "return_documents", false,
+        "top_n", 1));
     return requestBody;
   }
 
@@ -763,6 +960,51 @@ public class LlmProviderConfigService {
       throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 不能为空");
     }
     return normalized;
+  }
+
+  private void validateAtLeastOneCapability(
+      String providerId,
+      String model,
+      boolean hasEmbedding,
+      String rerankModel) {
+    if (trimOrNull(model) == null && !hasEmbedding && trimOrNull(rerankModel) == null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST,
+          "Provider '" + providerId + "' 至少需要配置 聊天模型 / 向量模型 / Rerank 模型 中的一项");
+    }
+  }
+
+  private String requireValidApiFormat(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return API_FORMAT_OPENAI;
+    }
+    String normalized = raw.trim().toLowerCase();
+    if (!API_FORMAT_OPENAI.equals(normalized) && !API_FORMAT_ANTHROPIC.equals(normalized)) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST,
+          "apiFormat 仅支持 openai 或 anthropic，当前值: " + raw);
+    }
+    return normalized;
+  }
+
+  private String requireValidRerankApiFormat(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return RERANK_API_FORMAT_COHERE;
+    }
+    String normalized = raw.trim().toLowerCase();
+    if (!RERANK_API_FORMAT_COHERE.equals(normalized) && !RERANK_API_FORMAT_DASHSCOPE.equals(normalized)) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST,
+          "rerankApiFormat 仅支持 cohere 或 dashscope，当前值: " + raw);
+    }
+    return normalized;
+  }
+
+  private String apiFormatOrDefault(String raw) {
+    return API_FORMAT_ANTHROPIC.equalsIgnoreCase(raw) ? API_FORMAT_ANTHROPIC : API_FORMAT_OPENAI;
+  }
+
+  private String rerankApiFormatOrDefault(String raw) {
+    return RERANK_API_FORMAT_DASHSCOPE.equalsIgnoreCase(raw)
+        ? RERANK_API_FORMAT_DASHSCOPE
+        : RERANK_API_FORMAT_COHERE;
   }
 
   private void validateEmbeddingConfig(
@@ -800,6 +1042,9 @@ public class LlmProviderConfigService {
 
   private boolean looksLikeChatModel(String model) {
     String lower = model.toLowerCase();
+    if (lower.contains("embed") || lower.contains("rerank")) {
+      return false;
+    }
     return lower.startsWith("glm-")
         || lower.startsWith("deepseek")
         || lower.startsWith("kimi")
@@ -829,65 +1074,48 @@ public class LlmProviderConfigService {
           .requestFactory(ClientHttpRequestFactoryBuilder.jdk().build(settings))
           .build();
 
-      Map<String, Object> requestBody = buildConnectivityTestRequestBody(config.model());
+      List<String> outcomes = new ArrayList<>();
+      boolean allSuccess = true;
 
-      List<String> candidateUrls = buildConnectivityTestUrls(config.baseUrl());
-      String lastFailureMessage = "Unknown error";
+      if (trimOrNull(config.model()) != null) {
+        ConnectivityOutcome outcome = "anthropic".equals(config.apiFormat())
+            ? tryPost(restClient, id, config, buildCandidateUrls(config.baseUrl(), "messages"),
+                buildAnthropicTestRequestBody(config.model()),
+                Map.of("x-api-key", config.apiKey(), "anthropic-version", ANTHROPIC_API_VERSION),
+                "聊天(anthropic)")
+            : tryPost(restClient, id, config, buildConnectivityTestUrls(config.baseUrl()),
+                buildConnectivityTestRequestBody(config.model()), Map.of(), "聊天");
+        allSuccess &= outcome.success();
+        outcomes.add(capabilityOutcome("聊天", outcome));
+      }
+      if (config.supportsEmbedding() && trimOrNull(config.embeddingModel()) != null) {
+        ConnectivityOutcome outcome = tryPost(restClient, id, config,
+            buildCandidateUrls(config.baseUrl(), "embeddings"),
+            buildEmbeddingTestRequestBody(config.embeddingModel()), Map.of(), "向量");
+        allSuccess &= outcome.success();
+        outcomes.add(capabilityOutcome("向量", outcome));
+      }
+      if (trimOrNull(config.rerankModel()) != null) {
+        ConnectivityOutcome outcome = "dashscope".equals(config.rerankApiFormat())
+            ? tryPost(restClient, id, config, buildDashscopeRerankUrls(config.baseUrl()),
+                buildDashscopeRerankTestRequestBody(config.rerankModel()), Map.of(), "Rerank(dashscope)")
+            : tryPost(restClient, id, config, buildCandidateUrls(config.baseUrl(), "rerank"),
+                buildCohereRerankTestRequestBody(config.rerankModel()), Map.of(), "Rerank");
+        allSuccess &= outcome.success();
+        outcomes.add(capabilityOutcome("Rerank", outcome));
+      }
 
-      for (String targetUrl : candidateUrls) {
-        try {
-          restClient.post()
-              .uri(URI.create(targetUrl))
-              .body(requestBody)
-              .retrieve()
-              .toEntity(String.class);
-          log.info("Provider connectivity test succeeded: providerId={}, baseUrl={}, targetUrl={}, model={}",
-              id, config.baseUrl(), targetUrl, config.model());
-          return ProviderTestResult.builder()
-              .success(true)
-              .message("连接成功")
-              .model(config.model())
-              .build();
-        } catch (RestClientResponseException e) {
-          String responseBody = abbreviate(e.getResponseBodyAsString());
-          lastFailureMessage = String.format(
-              "HTTP %s on %s, body=%s",
-              e.getStatusCode().value(),
-              targetUrl,
-              responseBody
-          );
-          log.warn(
-              "Provider connectivity test failed with response: providerId={}, baseUrl={}, targetUrl={}, model={}, status={}, body={}",
-              id,
-              config.baseUrl(),
-              targetUrl,
-              config.model(),
-              e.getStatusCode().value(),
-              responseBody,
-              e
-          );
-        } catch (Exception e) {
-          lastFailureMessage = String.format(
-              "%s on %s: %s",
-              e.getClass().getSimpleName(),
-              targetUrl,
-              e.getMessage()
-          );
-          log.warn(
-              "Provider connectivity test failed: providerId={}, baseUrl={}, targetUrl={}, model={}, error={}",
-              id,
-              config.baseUrl(),
-              targetUrl,
-              config.model(),
-              e.getMessage(),
-              e
-          );
-        }
+      if (outcomes.isEmpty()) {
+        return ProviderTestResult.builder()
+            .success(false)
+            .message("未配置任何可测试的能力（聊天/向量/Rerank）")
+            .model(config.model())
+            .build();
       }
       return ProviderTestResult.builder()
-          .success(false)
-          .message("连接失败: " + lastFailureMessage)
-          .model(config.model())
+          .success(allSuccess)
+          .message(String.join("；", outcomes))
+          .model(resolveTestResultModel(config))
           .build();
     } catch (Exception e) {
       log.warn("Provider connectivity test setup failed: providerId={}, baseUrl={}, model={}, error={}",
@@ -900,6 +1128,85 @@ public class LlmProviderConfigService {
     }
   }
 
+  private ConnectivityOutcome tryPost(
+      RestClient restClient,
+      String id,
+      ProviderRuntimeConfig config,
+      List<String> candidateUrls,
+      Map<String, Object> requestBody,
+      Map<String, String> extraHeaders,
+      String capabilityLabel) {
+    String lastFailureMessage = "Unknown error";
+
+    for (String targetUrl : candidateUrls) {
+      try {
+        restClient.post()
+            .uri(URI.create(targetUrl))
+            .headers(headers -> extraHeaders.forEach(headers::set))
+            .body(requestBody)
+            .retrieve()
+            .toEntity(String.class);
+        log.info("Provider connectivity test succeeded: providerId={}, baseUrl={}, targetUrl={}, capability={}, model={}",
+            id, config.baseUrl(), targetUrl, capabilityLabel, requestBody.get("model"));
+        return new ConnectivityOutcome(true, null);
+      } catch (RestClientResponseException e) {
+        String responseBody = abbreviate(e.getResponseBodyAsString());
+        lastFailureMessage = String.format(
+            "HTTP %s on %s, body=%s",
+            e.getStatusCode().value(),
+            targetUrl,
+            responseBody
+        );
+        log.warn(
+            "Provider connectivity test failed with response: providerId={}, baseUrl={}, targetUrl={}, capability={}, model={}, status={}, body={}",
+            id,
+            config.baseUrl(),
+            targetUrl,
+            capabilityLabel,
+            requestBody.get("model"),
+            e.getStatusCode().value(),
+            responseBody,
+            e
+        );
+      } catch (Exception e) {
+        lastFailureMessage = String.format(
+            "%s on %s: %s",
+            e.getClass().getSimpleName(),
+            targetUrl,
+            e.getMessage()
+        );
+        log.warn(
+            "Provider connectivity test failed: providerId={}, baseUrl={}, targetUrl={}, capability={}, model={}, error={}",
+            id,
+            config.baseUrl(),
+            targetUrl,
+            capabilityLabel,
+            requestBody.get("model"),
+            e.getMessage(),
+            e
+        );
+      }
+    }
+    return new ConnectivityOutcome(false, lastFailureMessage);
+  }
+
+  private String capabilityOutcome(String capabilityLabel, ConnectivityOutcome outcome) {
+    return capabilityLabel + ": " + (outcome.success() ? "连接成功" : "连接失败: " + outcome.detail());
+  }
+
+  private String resolveTestResultModel(ProviderRuntimeConfig config) {
+    if (trimOrNull(config.model()) != null) {
+      return config.model();
+    }
+    if (trimOrNull(config.embeddingModel()) != null) {
+      return config.embeddingModel();
+    }
+    return config.rerankModel();
+  }
+
+  private record ConnectivityOutcome(boolean success, String detail) {
+  }
+
   // ===== YAML text editing (preserves comments & formatting) =====
 
   private void writeProviderToYaml(String id, ProviderConfig config, String envKey) {
@@ -907,12 +1214,31 @@ public class LlmProviderConfigService {
       LinkedHashMap<String, Object> values = new LinkedHashMap<>();
       values.put("base-url", config.getBaseUrl());
       values.put("api-key", "${" + envKey + "}");
-      values.put("model", config.getModel());
+      if (config.getModel() != null) {
+        values.put("model", config.getModel());
+      } else {
+        editor.removeKey(new String[]{"app", "ai", "providers"}, id, "model");
+      }
+      if (config.getApiFormat() != null) {
+        values.put("api-format", config.getApiFormat());
+      }
       if (config.getEmbeddingModel() != null) {
         values.put("embedding-model", config.getEmbeddingModel());
       }
+      if (config.getRerankModel() != null) {
+        values.put("rerank-model", config.getRerankModel());
+      }
+      if (config.getRerankApiFormat() != null) {
+        values.put("rerank-api-format", config.getRerankApiFormat());
+      }
       if (config.getEmbeddingDimensions() != null) {
         values.put("embedding-dimensions", config.getEmbeddingDimensions());
+      }
+      if (config.getMaxTokens() != null) {
+        values.put("max-tokens", config.getMaxTokens());
+      }
+      if (config.getTopP() != null) {
+        values.put("top-p", config.getTopP());
       }
       if (config.getTemperature() != null) {
         values.put("temperature", config.getTemperature());
@@ -930,6 +1256,9 @@ public class LlmProviderConfigService {
   private void writeDefaultProviderToYaml(String defaultProvider) {
     mutateYamlText(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED, "写入默认 Provider 配置失败", editor -> {
       editor.setScalar(new String[]{"app", "ai", "default-provider"}, defaultProvider);
+      if (properties.getDefaultRerankProvider() != null) {
+        editor.setScalar(new String[]{"app", "ai", "default-rerank-provider"}, properties.getDefaultRerankProvider());
+      }
       editor.removeSection(new String[]{"app", "ai"}, "module-defaults");
     });
   }
@@ -1096,6 +1425,22 @@ public class LlmProviderConfigService {
       }
     }
 
+    void removeKey(String[] parentPath, String blockKey, String key) {
+      int parentSearchFrom = navigateTo(parentPath);
+      if (parentSearchFrom < 0) return;
+
+      int blockIndent = parentPath.length * 2;
+      int blockLine = findKey(blockKey, blockIndent, parentSearchFrom);
+      if (blockLine < 0) return;
+
+      int blockEnd = findSectionEnd(blockLine + 1, blockIndent);
+      int valueIndent = blockIndent + 2;
+      int existing = findKeyInRange(key, valueIndent, blockLine + 1, blockEnd);
+      if (existing >= 0) {
+        lines.remove(existing);
+      }
+    }
+
     void removeSection(String[] parentPath, String sectionKey) {
       int parentSearchFrom = navigateTo(parentPath);
       if (parentSearchFrom < 0) return;
@@ -1193,7 +1538,10 @@ public class LlmProviderConfigService {
       String baseUrl,
       String apiKey,
       String model,
+      String apiFormat,
       String embeddingModel,
+      String rerankModel,
+      String rerankApiFormat,
       Integer embeddingDimensions,
       boolean supportsEmbedding,
       Double temperature

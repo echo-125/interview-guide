@@ -63,6 +63,10 @@ public class ResumeEntity {
     // 分析错误信息（失败时记录）
     @Column(length = 500)
     private String analyzeError;
+
+    // 分析该简历使用的 LLM Provider（空 = 跟随系统默认）
+    @Column(name = "llm_provider", length = 50)
+    private String llmProvider;
     
     @PrePersist
     protected void onCreate() {
@@ -179,5 +183,13 @@ public class ResumeEntity {
 
     public void setAnalyzeError(String analyzeError) {
         this.analyzeError = analyzeError;
+    }
+
+    public String getLlmProvider() {
+        return llmProvider;
+    }
+
+    public void setLlmProvider(String llmProvider) {
+        this.llmProvider = llmProvider;
     }
 }

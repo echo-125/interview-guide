@@ -39,7 +39,7 @@ public class AnalyzeStreamConsumer extends AbstractStreamConsumer<AnalyzeStreamC
         this.resumeRepository = resumeRepository;
     }
 
-    record AnalyzePayload(Long resumeId, String content) {}
+    record AnalyzePayload(Long resumeId, String content, String llmProvider) {}
 
     @Override
     protected String taskDisplayName() {
@@ -74,7 +74,8 @@ public class AnalyzeStreamConsumer extends AbstractStreamConsumer<AnalyzeStreamC
             log.warn("消息格式错误，跳过: messageId={}", messageId);
             return null;
         }
-        return new AnalyzePayload(Long.parseLong(resumeIdStr), content);
+        return new AnalyzePayload(Long.parseLong(resumeIdStr), content,
+            data.get(AsyncTaskStreamConstants.FIELD_LLM_PROVIDER));
     }
 
     @Override
@@ -102,7 +103,7 @@ public class AnalyzeStreamConsumer extends AbstractStreamConsumer<AnalyzeStreamC
             return;
         }
 
-        ResumeAnalysisResponse analysis = gradingService.analyzeResume(payload.content());
+        ResumeAnalysisResponse analysis = gradingService.analyzeResume(payload.content(), payload.llmProvider());
         ResumeEntity resume = resumeRepository.findById(resumeId).orElse(null);
         if (resume == null) {
             log.warn("简历在分析期间被删除，跳过保存结果: resumeId={}", resumeId);
@@ -126,11 +127,13 @@ public class AnalyzeStreamConsumer extends AbstractStreamConsumer<AnalyzeStreamC
         Long resumeId = payload.resumeId();
         String content = payload.content();
         try {
-            Map<String, String> message = Map.of(
-                AsyncTaskStreamConstants.FIELD_RESUME_ID, resumeId.toString(),
-                AsyncTaskStreamConstants.FIELD_CONTENT, content,
-                AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount)
-            );
+            Map<String, String> message = new java.util.LinkedHashMap<>();
+            message.put(AsyncTaskStreamConstants.FIELD_RESUME_ID, resumeId.toString());
+            message.put(AsyncTaskStreamConstants.FIELD_CONTENT, content);
+            if (payload.llmProvider() != null && !payload.llmProvider().isBlank()) {
+                message.put(AsyncTaskStreamConstants.FIELD_LLM_PROVIDER, payload.llmProvider());
+            }
+            message.put(AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount));
 
             redisService().streamAdd(
                 AsyncTaskStreamConstants.RESUME_ANALYZE_STREAM_KEY,

@@ -7,11 +7,11 @@
 ### 阿里云百炼 AI (DashScope)
 
 **用途**:
-- **LLM 对话**: 生成面试问题、评估回答
 - **ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）
 - **TTS 语音合成**: 将 AI 回答实时转换为语音（qwen3-tts-flash-realtime）
+- **聊天/向量/重排模型**（可选）: 也可在应用「设置 → 模型服务」页用同一个百炼 Key 配置模型服务
 
-**统一 API Key**: 一个密钥即可使用所有功能，无需分别申请！
+**统一 API Key**: 语音功能一个密钥即可，无需分别申请！
 
 **获取步骤**:
 1. 访问 [阿里云百炼平台](https://bailian.console.aliyun.com/)
@@ -46,9 +46,6 @@ cp .env.example .env
 ```bash
 # 使用您自己的密钥替换以下占位符
 AI_BAILIAN_API_KEY=sk-your-actual-key-here
-
-# 可选：选择不同的 LLM 模型
-AI_MODEL=qwen3.5-flash  # 默认值，也可改为 qwen3.5-plus、qwen-max 等
 ```
 
 3. 启动应用时会自动读取 `.env` 文件
@@ -58,11 +55,9 @@ AI_MODEL=qwen3.5-flash  # 默认值，也可改为 qwen3.5-plus、qwen-max 等
 ```bash
 # Linux/Mac
 export AI_BAILIAN_API_KEY=sk-your-key
-export AI_MODEL=qwen3.5-flash  # 可选
 
 # Windows PowerShell
 $env:AI_BAILIAN_API_KEY="sk-your-key"
-$env:AI_MODEL="qwen3.5-flash"  # 可选
 ```
 
 ### 方式 3: 在 IDE 中配置
@@ -86,7 +81,6 @@ $env:AI_MODEL="qwen3.5-flash"  # 可选
 ✅ 成功日志示例:
 QwenAsrService initialized with model: qwen3-asr-flash-realtime
 QwenTtsService initialized with model: qwen3-tts-flash-realtime, voice: Cherry
-DashScope LLM service initialized
 
 ❌ 失败日志示例:
 WebSocket failed: Expected HTTP 101 response but was '401 Unauthorized'
@@ -99,9 +93,7 @@ WebSocket failed: Expected HTTP 101 response but was '401 Unauthorized'
 
 1. **使用免费额度**: 新用户都有免费试用额度
 2. **限制并发**: 配置 `rate-limit` 参数控制并发数
-3. **选择合适模型**:
-   - 开发测试用 `qwen-turbo`（更便宜）
-- 生产环境优先按场景选择；当前默认使用 `qwen3.5-flash`
+3. **选择合适模型**: 开发测试可选更便宜的模型，生产环境按场景在「设置 → 模型服务」中选择
 4. **控制面试时长**: 通过 `plannedDuration` 参数限制面试时长
 
 ---
@@ -110,11 +102,11 @@ WebSocket failed: Expected HTTP 101 response but was '401 Unauthorized'
 
 **Q: 必须使用阿里云吗？**
 
-A: 目前 LLM 支持多家提供商（DashScope/MiniMax/OpenAI/DeepSeek），但语音服务使用的是 Qwen3 实时语音模型，需要阿里云 DashScope API Key。
+A: 语音服务使用的是 Qwen3 实时语音模型，需要阿里云 DashScope API Key。聊天/向量/重排模型支持任意 OpenAI 兼容或 Anthropic 协议的服务，在「设置 → 模型服务」页配置。
 
 **Q: 如何降低成本？**
 
-A: 1) 使用 `qwen-turbo` 模型；2) 限制面试时长；3) 添加用户配额限制
+A: 1) 在「设置 → 模型服务」中选择更便宜的模型；2) 限制面试时长；3) 添加用户配额限制
 
 **Q: API 密钥会泄露吗？**
 
@@ -126,7 +118,7 @@ A: 阿里云新用户有免费额度，足够测试使用。正式上线后再�
 
 **Q: 一个 API Key 真的够用吗？**
 
-A: 是的！项目已升级到 Qwen3 实时语音模型，LLM、ASR、TTS 共用一个 DashScope API Key，无需分别申请。
+A: 是的！语音功能（ASR + TTS）共用一个 DashScope API Key。聊天/向量/重排模型在「设置 → 模型服务」页配置，可以用同一个 Key，也可以用其他厂商的 Key。
 
 ---
 

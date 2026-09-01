@@ -19,6 +19,7 @@ import org.springframework.ai.chat.client.advisor.SafeGuardAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
@@ -48,7 +49,7 @@ public class LlmProviderRegistry {
 
     private final LlmProviderProperties properties;
     private final Map<String, ChatClient> clientCache = new ConcurrentHashMap<>();
-    private final Map<String, OpenAiChatModel> chatModelCache = new ConcurrentHashMap<>();
+    private final Map<String, ChatModel> chatModelCache = new ConcurrentHashMap<>();
     private final Map<String, EmbeddingModel> embeddingModelCache = new ConcurrentHashMap<>();
     private final LlmProviderRepository providerRepository;
     private final LlmGlobalSettingRepository globalSettingRepository;
@@ -64,6 +65,9 @@ public class LlmProviderRegistry {
         "baidu", "Embedding-V1",
         "minimax", "embo-01"
     );
+
+    private static final String API_FORMAT_ANTHROPIC = "anthropic";
+    private static final int DEFAULT_ANTHROPIC_MAX_TOKENS = 4096;
 
     @Autowired
     public LlmProviderRegistry(
@@ -150,6 +154,22 @@ public class LlmProviderRegistry {
     }
 
     /**
+     * 判断 Provider 是否存在（含 enabled 检查；用于业务入口入参校验）。
+     */
+    public boolean hasProvider(String providerId) {
+        if (isBlank(providerId) || "default".equalsIgnoreCase(providerId.trim())) {
+            return true;
+        }
+        if (providerRepository == null) {
+            return properties.getProviders() != null
+                && properties.getProviders().containsKey(providerId);
+        }
+        return providerRepository.findById(providerId)
+            .filter(LlmProviderEntity::isEnabled)
+            .isPresent();
+    }
+
+    /**
      * 清空缓存，重新加载所有 provider。
      */
     public void reload() {
@@ -172,7 +192,7 @@ public class LlmProviderRegistry {
     }
 
     private ChatClient createChatClient(String providerId) {
-        OpenAiChatModel chatModel = getChatModel(providerId);
+        ChatModel chatModel = getChatModel(providerId);
 
         ChatClient.Builder builder = ChatClient.builder(chatModel);
         if (interviewSkillsToolCallback != null) {
@@ -188,7 +208,7 @@ public class LlmProviderRegistry {
     }
 
     private ChatClient createPlainChatClient(String providerId) {
-        OpenAiChatModel chatModel = getChatModel(providerId);
+        ChatModel chatModel = getChatModel(providerId);
         ChatClient.Builder builder = ChatClient.builder(chatModel);
         buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(List.of(advisor)));
         log.info("[LlmProviderRegistry] Created plain ChatClient (no tools) for {}", providerId);
@@ -196,7 +216,7 @@ public class LlmProviderRegistry {
     }
 
     private ChatClient createVoiceChatClient(String providerId) {
-        OpenAiChatModel chatModel = getChatModel(providerId);
+        ChatModel chatModel = getChatModel(providerId);
 
         ChatClient.Builder builder = ChatClient.builder(chatModel);
         if (interviewSkillsToolCallback != null) {
@@ -214,29 +234,70 @@ public class LlmProviderRegistry {
         return builder.build();
     }
 
-    private OpenAiChatModel getChatModel(String providerId) {
+    private ChatModel getChatModel(String providerId) {
         return chatModelCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new ChatModel for provider: {}", id);
             return buildChatModel(id);
         });
     }
 
-    private OpenAiChatModel buildChatModel(String providerId) {
+    private ChatModel buildChatModel(String providerId) {
         ProviderSnapshot config = loadProviderOrThrow(providerId);
-        log.info("[LlmProviderRegistry] Building ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
+        if (isBlank(config.model())) {
+            throw new BusinessException(ErrorCode.PROVIDER_CONFIG_READ_FAILED,
+                "Provider '" + providerId + "' 未配置聊天模型，无法创建 ChatClient");
+        }
+        if (API_FORMAT_ANTHROPIC.equalsIgnoreCase(config.apiFormat())) {
+            return buildAnthropicChatModel(providerId, config);
+        }
+        return buildOpenAiChatModel(providerId, config);
+    }
+
+    private ChatModel buildOpenAiChatModel(String providerId, ProviderSnapshot config) {
+        log.info("[LlmProviderRegistry] Building OpenAI ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
                  providerId, config.baseUrl(), config.model());
 
         OpenAIClient openAiClient = ApiPathResolver.buildOpenAiClient(config.baseUrl(), config.apiKey());
 
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(config.model())
-                .temperature(config.temperature() != null ? config.temperature() : 0.2)
-                .build();
+                .temperature(config.temperature() != null ? config.temperature() : 0.2);
+        if (config.maxTokens() != null) {
+            optionsBuilder.maxTokens(config.maxTokens());
+        }
+        if (config.topP() != null) {
+            optionsBuilder.topP(config.topP());
+        }
 
         return OpenAiChatModel.builder()
             .openAiClient(openAiClient)
             .openAiClientAsync(openAiClient.async())
-            .options(options)
+            .options(optionsBuilder.build())
+            .observationRegistry(observationRegistry != null ? observationRegistry : ObservationRegistry.NOOP)
+            .build();
+    }
+
+    private ChatModel buildAnthropicChatModel(String providerId, ProviderSnapshot config) {
+        // Anthropic SDK 的 baseUrl 约定为根地址（SDK 自动补 /v1），兼容用户填入 OpenAI 风格带 /v1 的写法
+        String baseUrl = ApiPathResolver.stripTrailingSlashes(config.baseUrl())
+            .replaceAll("/v\\d+[a-zA-Z0-9]*$", "");
+        log.info("[LlmProviderRegistry] Building Anthropic ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
+                 providerId, baseUrl, config.model());
+
+        org.springframework.ai.anthropic.AnthropicChatOptions.Builder optionsBuilder =
+            org.springframework.ai.anthropic.AnthropicChatOptions.builder()
+                .model(config.model())
+                .apiKey(config.apiKey())
+                .baseUrl(baseUrl)
+                // Anthropic Messages API 强制要求 max_tokens
+                .maxTokens(config.maxTokens() != null ? config.maxTokens() : DEFAULT_ANTHROPIC_MAX_TOKENS)
+                .temperature(config.temperature() != null ? config.temperature() : 0.2);
+        if (config.topP() != null) {
+            optionsBuilder.topP(config.topP());
+        }
+
+        return org.springframework.ai.anthropic.AnthropicChatModel.builder()
+            .options(optionsBuilder.build())
             .observationRegistry(observationRegistry != null ? observationRegistry : ObservationRegistry.NOOP)
             .build();
     }
@@ -339,10 +400,25 @@ public class LlmProviderRegistry {
         if (globalSettingRepository == null) {
             return properties.getDefaultProvider();
         }
-        return globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
+        String configured = globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
             .map(LlmGlobalSettingEntity::getDefaultChatProviderId)
             .filter(id -> !isBlank(id))
-            .orElse(properties.getDefaultProvider());
+            .orElseGet(() -> {
+                String fromProperties = properties.getDefaultProvider();
+                return isBlank(fromProperties) ? null : fromProperties;
+            });
+        if (!isBlank(configured)) {
+            return configured;
+        }
+        // 未显式配置默认时，回退到第一个启用的聊天 Provider，避免"跟随系统默认"直接失败
+        String fallback = providerRepository == null ? "" : providerRepository.findAll().stream()
+            .filter(p -> p.isEnabled() && !isBlank(p.getModel()))
+            .map(LlmProviderEntity::getId)
+            .sorted()
+            .findFirst()
+            .orElse("");
+        log.debug("[LlmProviderRegistry] 未配置默认聊天 Provider，回退到第一个可用 Provider: {}", fallback);
+        return fallback;
     }
 
     private String resolveDefaultEmbeddingProviderId() {
@@ -351,50 +427,82 @@ public class LlmProviderRegistry {
                 ? properties.getDefaultEmbeddingProvider()
                 : properties.getDefaultProvider();
         }
-        return globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
+        String configured = globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
             .map(LlmGlobalSettingEntity::getDefaultEmbeddingProviderId)
             .filter(id -> !isBlank(id))
             .orElseGet(() -> !isBlank(properties.getDefaultEmbeddingProvider())
                 ? properties.getDefaultEmbeddingProvider()
-                : properties.getDefaultProvider());
+                : null);
+        if (!isBlank(configured)) {
+            return configured;
+        }
+        // 向量默认未配置时，回退到第一个启用的向量 Provider（不回落到聊天默认，两者能力可能不同）
+        String fallback = providerRepository == null ? "" : providerRepository.findAll().stream()
+            .filter(p -> p.isEnabled() && p.isSupportsEmbedding() && !isBlank(p.getEmbeddingModel()))
+            .map(LlmProviderEntity::getId)
+            .sorted()
+            .findFirst()
+            .orElse("");
+        log.debug("[LlmProviderRegistry] 未配置默认向量 Provider，回退到第一个可用 Provider: {}", fallback);
+        return fallback;
     }
 
     private ProviderSnapshot loadProviderOrThrow(String providerId) {
+        ProviderSnapshot snapshot = loadProviderOrNull(providerId);
+        if (snapshot == null) {
+            throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND,
+                isBlank(providerId)
+                    ? "尚未配置模型服务，请到「设置 → 模型服务」新增模型并设为默认"
+                    : "模型 '" + providerId + "' 不存在或未启用，请到「设置 → 模型服务」检查配置");
+        }
+        return snapshot;
+    }
+
+    private ProviderSnapshot loadProviderOrNull(String providerId) {
         if (providerRepository == null) {
-            return loadProviderFromPropertiesOrThrow(providerId);
+            Map<String, ProviderConfig> providers = properties.getProviders();
+            ProviderConfig config = providers == null ? null : providers.get(providerId);
+            if (config == null) {
+                return null;
+            }
+            boolean supportsEmbedding = Boolean.TRUE.equals(config.getSupportsEmbedding())
+                || !isBlank(config.getEmbeddingModel());
+            return new ProviderSnapshot(
+                providerId,
+                config.getBaseUrl(),
+                config.getApiKey(),
+                config.getModel(),
+                config.getApiFormat(),
+                config.getEmbeddingModel(),
+                config.getRerankModel(),
+                config.getRerankApiFormat(),
+                config.getEmbeddingDimensions(),
+                supportsEmbedding,
+                config.getMaxTokens(),
+                config.getTopP(),
+                config.getTemperature()
+            );
         }
         LlmProviderEntity entity = providerRepository.findById(providerId)
             .filter(LlmProviderEntity::isEnabled)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown LLM provider: " + providerId));
+            .orElse(null);
+        if (entity == null) {
+            return null;
+        }
         return new ProviderSnapshot(
             entity.getId(),
             entity.getBaseUrl(),
             encryptionService.decrypt(entity.getApiKeyNonce(), entity.getApiKeyCiphertext()),
             entity.getModel(),
+            entity.getApiFormat(),
             entity.getEmbeddingModel(),
+            entity.getRerankModel(),
+            entity.getRerankApiFormat(),
             entity.getEmbeddingDimensions(),
             entity.isSupportsEmbedding(),
+            entity.getMaxTokens(),
+            entity.getTopP(),
             entity.getTemperature()
-        );
-    }
-
-    private ProviderSnapshot loadProviderFromPropertiesOrThrow(String providerId) {
-        ProviderConfig config = properties.getProviders().get(providerId);
-        if (config == null) {
-            log.error("[LlmProviderRegistry] Provider config not found: {}", providerId);
-            throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
-        }
-        boolean supportsEmbedding = Boolean.TRUE.equals(config.getSupportsEmbedding())
-            || !isBlank(config.getEmbeddingModel());
-        return new ProviderSnapshot(
-            providerId,
-            config.getBaseUrl(),
-            config.getApiKey(),
-            config.getModel(),
-            config.getEmbeddingModel(),
-            config.getEmbeddingDimensions(),
-            supportsEmbedding,
-            config.getTemperature()
         );
     }
 
@@ -411,6 +519,9 @@ public class LlmProviderRegistry {
 
     private boolean looksLikeChatModel(String model) {
         String lower = model.toLowerCase();
+        if (lower.contains("embed") || lower.contains("rerank")) {
+            return false;
+        }
         return lower.startsWith("glm-")
             || lower.startsWith("deepseek")
             || lower.startsWith("kimi")
@@ -424,10 +535,59 @@ public class LlmProviderRegistry {
         String baseUrl,
         String apiKey,
         String model,
+        String apiFormat,
         String embeddingModel,
+        String rerankModel,
+        String rerankApiFormat,
         Integer embeddingDimensions,
         boolean supportsEmbedding,
+        Integer maxTokens,
+        Double topP,
         Double temperature
     ) {
+    }
+
+    /**
+     * 默认 Rerank 服务的运行时快照。
+     */
+    public record RerankProviderSnapshot(
+        String providerId,
+        String baseUrl,
+        String apiKey,
+        String rerankModel,
+        String rerankApiFormat
+    ) {
+    }
+
+    /**
+     * 解析默认 Rerank Provider；未配置时返回 empty（表示 Rerank 能力关闭）。
+     */
+    public Optional<RerankProviderSnapshot> getDefaultRerankProvider() {
+        String providerId = resolveDefaultRerankProviderId();
+        if (isBlank(providerId)) {
+            return Optional.empty();
+        }
+        ProviderSnapshot config = loadProviderOrNull(providerId);
+        if (config == null || isBlank(config.rerankModel())) {
+            log.warn("[LlmProviderRegistry] Default rerank provider '{}' missing or has no rerank model", providerId);
+            return Optional.empty();
+        }
+        return Optional.of(new RerankProviderSnapshot(
+            providerId, config.baseUrl(), config.apiKey(), config.rerankModel(), config.rerankApiFormat()));
+    }
+
+    private String resolveDefaultRerankProviderId() {
+        if (globalSettingRepository != null) {
+            String fromSetting = globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
+                .map(LlmGlobalSettingEntity::getDefaultRerankProviderId)
+                .filter(id -> !isBlank(id))
+                .orElse(null);
+            if (!isBlank(fromSetting)) {
+                return fromSetting;
+            }
+        }
+        return !isBlank(properties.getDefaultRerankProvider())
+            ? properties.getDefaultRerankProvider()
+            : null;
     }
 }

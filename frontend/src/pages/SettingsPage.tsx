@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings, Plus, Trash2, Plug, CheckCircle, XCircle,
   Loader2, Eye, EyeOff, RefreshCw, Server, Edit2, Mic, Volume2, ChevronDown, Database,
+  ArrowDownWideNarrow, ListPlus,
 } from 'lucide-react';
 import { llmProviderApi } from '../api/llmProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -11,73 +12,6 @@ import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
   ProviderTestResult, AsrConfig, TtsConfig, AsrConfigRequest, TtsConfigRequest,
 } from '../types/llmProvider';
-
-// Provider 预设：已知 Provider 的 Base URL、推荐模型和向量模型
-const PROVIDER_PRESETS: Record<string, {
-  baseUrl: string;
-  models: { value: string; label: string }[];
-  embeddingModels?: { value: string; label: string }[];
-  embeddingDimensions?: number;
-  supportsEmbedding: boolean;
-}> = {
-  dashscope: {
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: [
-      { value: 'qwen3.6-flash', label: 'Qwen3.6 Flash — 最新旗舰' },
-      { value: 'qwen3.5-plus', label: 'Qwen3.5 Plus — 高性能' },
-      { value: 'qwen3.5-flash', label: 'Qwen3.5 Flash — 性价比' },
-      { value: 'qwen3-max', label: 'Qwen3 Max — 旗舰' },
-      { value: 'qwen-max', label: 'Qwen Max — 稳定版' },
-      { value: 'qwen-plus', label: 'Qwen Plus — 均衡' },
-      { value: 'qwen-flash', label: 'Qwen Flash — 经济' },
-      { value: 'qwq-32b', label: 'QwQ-32B — 推理专用' },
-    ],
-    embeddingModels: [
-      { value: 'text-embedding-v3', label: 'text-embedding-v3 — 推荐' },
-    ],
-    embeddingDimensions: 1024,
-    supportsEmbedding: true,
-  },
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com',
-    models: [
-      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash — 最新·快速' },
-      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro — 最强推理' },
-      { value: 'deepseek-chat', label: 'DeepSeek V3.2 — 旧版对话（即将弃用）' },
-      { value: 'deepseek-reasoner', label: 'DeepSeek R1 — 旧版推理（即将弃用）' },
-    ],
-    supportsEmbedding: false,
-  },
-  glm: {
-    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-    models: [
-      { value: 'glm-5.1', label: 'GLM-5.1 — 最新旗舰' },
-      { value: 'glm-5', label: 'GLM-5 — 旗舰' },
-      { value: 'glm-4.7', label: 'GLM-4.7 — Coding 强' },
-      { value: 'glm-4.7-flash', label: 'GLM-4.7 Flash — 免费' },
-      { value: 'glm-4.6', label: 'GLM-4.6 — 200K 上下文' },
-      { value: 'glm-4-plus', label: 'GLM-4 Plus — 高性能' },
-      { value: 'glm-4-air-250414', label: 'GLM-4 Air — 高性价比' },
-      { value: 'glm-4-flash-250414', label: 'GLM-4 Flash — 免费' },
-    ],
-    embeddingModels: [
-      { value: 'embedding-3', label: 'embedding-3 — 推荐' },
-    ],
-    embeddingDimensions: 1024,
-    supportsEmbedding: true,
-  },
-  kimi: {
-    baseUrl: 'https://api.moonshot.cn/v1',
-    models: [
-      { value: 'kimi-k2.6', label: 'Kimi K2.6 — 最新最智能' },
-      { value: 'kimi-k2.5', label: 'Kimi K2.5 — 多模态' },
-      { value: 'kimi-k2', label: 'Kimi K2 — MoE 基座' },
-      { value: 'kimi-k2-thinking', label: 'Kimi K2 Thinking — 深度推理' },
-      { value: 'kimi-latest', label: 'kimi-latest — 自动最新' },
-    ],
-    supportsEmbedding: false,
-  },
-};
 
 type ConfigRowProps = {
   label: string;
@@ -107,6 +41,13 @@ const ACTION_BAR_CLASS = `mt-auto flex min-h-12 flex-wrap items-center gap-2 bor
 
 const ACTION_BUTTON_CLASS = `inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs
   font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50`;
+
+// 模型类型 → 中文名（Tab 与模态框标题共用）
+const MODEL_TYPE_LABEL: Record<'chat' | 'embedding' | 'rerank', string> = {
+  chat: '聊天模型',
+  embedding: '向量模型',
+  rerank: '重排模型',
+};
 
 function StatusBadge({ icon, children }: StatusBadgeProps) {
   return (
@@ -141,7 +82,14 @@ export default function SettingsPage() {
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [defaultProviderId, setDefaultProviderId] = useState('');
   const [defaultEmbeddingProviderId, setDefaultEmbeddingProviderId] = useState('');
+  const [defaultRerankProviderId, setDefaultRerankProviderId] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // 模型服务 Tab：聊天 / 向量 / 重排 / 语音
+  const [activeTab, setActiveTab] = useState<'chat' | 'embedding' | 'rerank' | 'voice'>('chat');
+
+  // 当前模态框对应的模型类型：从哪个 Tab 打开就只编辑该类型的字段
+  const [modalType, setModalType] = useState<'chat' | 'embedding' | 'rerank'>('chat');
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -153,18 +101,26 @@ export default function SettingsPage() {
   const [formBaseUrl, setFormBaseUrl] = useState('');
   const [formApiKey, setFormApiKey] = useState('');
   const [formModel, setFormModel] = useState('');
+  const [formApiFormat, setFormApiFormat] = useState('openai');
   const [formEmbeddingModel, setFormEmbeddingModel] = useState('');
   const [formEmbeddingDimensions, setFormEmbeddingDimensions] = useState('1024');
   const [formSupportsEmbedding, setFormSupportsEmbedding] = useState(false);
+  const [formRerankModel, setFormRerankModel] = useState('');
+  const [formRerankApiFormat, setFormRerankApiFormat] = useState('cohere');
+  const [formMaxTokens, setFormMaxTokens] = useState('');
+  const [formTopP, setFormTopP] = useState('');
   const [formTemperature, setFormTemperature] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showEmbeddingDropdown, setShowEmbeddingDropdown] = useState(false);
+  // 在线拉取的模型列表（预设 ∪ 拉取结果 共同构成下拉选项）
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
-  // 当前表单 Provider ID 匹配的预设
-  const currentPreset = useMemo(
-    () => PROVIDER_PRESETS[formId.toLowerCase()],
-    [formId],
+  // 模型下拉选项 = 在线拉取的模型列表（不再内置预设模型名，选项以端点实际返回为准）
+  const modelOptions = useMemo(
+    () => fetchedModels.map((m) => ({ value: m, label: '在线获取' })),
+    [fetchedModels],
   );
 
   // Test state
@@ -176,8 +132,10 @@ export default function SettingsPage() {
   const [deleting, setDeleting] = useState(false);
   const [pendingDefaultProviderId, setPendingDefaultProviderId] = useState<string | null>(null);
   const [pendingDefaultEmbeddingProviderId, setPendingDefaultEmbeddingProviderId] = useState<string | null>(null);
+  const [pendingDefaultRerankProviderId, setPendingDefaultRerankProviderId] = useState<string | null>(null);
   const [settingDefault, setSettingDefault] = useState(false);
   const [settingEmbeddingDefault, setSettingEmbeddingDefault] = useState(false);
+  const [settingRerankDefault, setSettingRerankDefault] = useState(false);
 
   const pendingEmbeddingProvider = useMemo(
     () => providers.find(provider => provider.id === pendingDefaultEmbeddingProviderId) ?? null,
@@ -223,6 +181,7 @@ export default function SettingsPage() {
       setProviders(providerList);
       setDefaultProviderId(defaultProvider.defaultProvider);
       setDefaultEmbeddingProviderId(defaultProvider.defaultEmbeddingProvider);
+      setDefaultRerankProviderId(defaultProvider.defaultRerankProvider ?? '');
       setAsrConfig(asr);
       setTtsConfig(tts);
     } catch (err) {
@@ -238,29 +197,44 @@ export default function SettingsPage() {
   }, [loadData]);
 
   // --- Modal helpers ---
-  const openCreateModal = () => {
+  const openCreateModal = (type: 'chat' | 'embedding' | 'rerank') => {
     setEditingProvider(null);
+    setModalType(type);
     setFormId('');
     setFormBaseUrl('');
     setFormApiKey('');
     setFormModel('');
+    setFormApiFormat('openai');
     setFormEmbeddingModel('');
     setFormEmbeddingDimensions('1024');
-    setFormSupportsEmbedding(false);
+    setFormSupportsEmbedding(type === 'embedding');
+    setFormRerankModel('');
+    setFormRerankApiFormat('cohere');
+    setFormMaxTokens('');
+    setFormTopP('');
+    setFormTemperature('');
+    setFetchedModels([]);
     setShowApiKey(false);
     setShowModal(true);
   };
 
-  const openEditModal = (provider: ProviderItem) => {
+  const openEditModal = (provider: ProviderItem, type: 'chat' | 'embedding' | 'rerank') => {
     setEditingProvider(provider);
+    setModalType(type);
     setFormId(provider.id);
     setFormBaseUrl(provider.baseUrl);
     setFormApiKey('');
-    setFormModel(provider.model);
+    setFormModel(provider.model ?? '');
+    setFormApiFormat(provider.apiFormat || 'openai');
     setFormEmbeddingModel(provider.embeddingModel || '');
     setFormEmbeddingDimensions(provider.embeddingDimensions != null ? String(provider.embeddingDimensions) : '1024');
     setFormSupportsEmbedding(provider.supportsEmbedding);
+    setFormRerankModel(provider.rerankModel ?? '');
+    setFormRerankApiFormat(provider.rerankApiFormat || 'cohere');
+    setFormMaxTokens(provider.maxTokens != null ? String(provider.maxTokens) : '');
+    setFormTopP(provider.topP != null ? String(provider.topP) : '');
     setFormTemperature(provider.temperature != null ? String(provider.temperature) : '');
+    setFetchedModels([]);
     setShowApiKey(false);
     setShowModal(true);
   };
@@ -271,18 +245,25 @@ export default function SettingsPage() {
   };
 
   // --- CRUD handlers ---
+  const hasEmbeddingCapability = formSupportsEmbedding && !!formEmbeddingModel.trim();
+  // 当前模态框类型对应的模型是否已填写（各类型模态框只关心自己的模型必填）
+  const activeTypeModelFilled =
+    modalType === 'chat' ? !!formModel.trim()
+      : modalType === 'embedding' ? !!formEmbeddingModel.trim()
+        : !!formRerankModel.trim();
+
   const handleCreate = async () => {
-    if (!formId.trim() || !formBaseUrl.trim() || !formApiKey.trim() || !formModel.trim()) {
+    if (!formId.trim() || !formBaseUrl.trim() || !formApiKey.trim()) {
       showToast('请填写必填字段', 'error');
       return;
     }
-    if (formSupportsEmbedding && !formEmbeddingModel.trim()) {
-      showToast('支持向量化时需要填写向量模型，例如 GLM 填 embedding-3', 'error');
+    if (!activeTypeModelFilled) {
+      showToast(`请填写${MODEL_TYPE_LABEL[modalType]}`, 'error');
       return;
     }
     const embeddingDimensions = parseInt(formEmbeddingDimensions.trim(), 10);
-    if (formSupportsEmbedding && (!Number.isFinite(embeddingDimensions) || embeddingDimensions <= 0)) {
-      showToast('向量维度必须为正整数，当前 pgvector 表为 1024 维', 'error');
+    if (modalType === 'embedding' && (!Number.isFinite(embeddingDimensions) || embeddingDimensions <= 0)) {
+      showToast('向量维度必须为正整数，需与向量库维度一致（默认 1024）', 'error');
       return;
     }
     setSaving(true);
@@ -291,19 +272,34 @@ export default function SettingsPage() {
         id: formId.trim(),
         baseUrl: formBaseUrl.trim(),
         apiKey: formApiKey.trim(),
-        model: formModel.trim(),
         supportsEmbedding: formSupportsEmbedding,
+        apiFormat: formApiFormat,
+        rerankApiFormat: formRerankApiFormat,
       };
-      if (formEmbeddingModel.trim()) {
+      if (formModel.trim()) {
+        data.model = formModel.trim();
+      }
+      if (hasEmbeddingCapability) {
         data.embeddingModel = formEmbeddingModel.trim();
         data.embeddingDimensions = embeddingDimensions;
+      }
+      if (formRerankModel.trim()) {
+        data.rerankModel = formRerankModel.trim();
+      }
+      if (formMaxTokens.trim()) {
+        const maxTokens = parseInt(formMaxTokens.trim(), 10);
+        if (Number.isFinite(maxTokens) && maxTokens > 0) data.maxTokens = maxTokens;
+      }
+      if (formTopP.trim()) {
+        const topP = parseFloat(formTopP.trim());
+        if (Number.isFinite(topP) && topP > 0) data.topP = topP;
       }
       if (formTemperature.trim()) {
         const temp = parseFloat(formTemperature.trim());
         if (!isNaN(temp)) data.temperature = temp;
       }
       await llmProviderApi.create(data);
-      showToast('Provider 创建成功');
+      showToast('模型创建成功');
       closeModal();
       await loadData();
     } catch (err) {
@@ -316,17 +312,17 @@ export default function SettingsPage() {
 
   const handleUpdate = async () => {
     if (!editingProvider) return;
-    if (!formBaseUrl.trim() || !formModel.trim()) {
+    if (!formBaseUrl.trim()) {
       showToast('请填写必填字段', 'error');
       return;
     }
-    if (formSupportsEmbedding && !formEmbeddingModel.trim()) {
-      showToast('支持向量化时需要填写向量模型，例如 GLM 填 embedding-3', 'error');
+    if (!activeTypeModelFilled) {
+      showToast(`请填写${MODEL_TYPE_LABEL[modalType]}`, 'error');
       return;
     }
     const embeddingDimensions = parseInt(formEmbeddingDimensions.trim(), 10);
-    if (formSupportsEmbedding && (!Number.isFinite(embeddingDimensions) || embeddingDimensions <= 0)) {
-      showToast('向量维度必须为正整数，当前 pgvector 表为 1024 维', 'error');
+    if (modalType === 'embedding' && (!Number.isFinite(embeddingDimensions) || embeddingDimensions <= 0)) {
+      showToast('向量维度必须为正整数，需与向量库维度一致（默认 1024）', 'error');
       return;
     }
     setSaving(true);
@@ -334,11 +330,22 @@ export default function SettingsPage() {
       const data: UpdateProviderRequest = {
         baseUrl: formBaseUrl.trim(),
         model: formModel.trim(),
+        apiFormat: formApiFormat,
         embeddingModel: formEmbeddingModel.trim(),
         supportsEmbedding: formSupportsEmbedding,
+        rerankModel: formRerankModel.trim(),
+        rerankApiFormat: formRerankApiFormat,
       };
-      if (formSupportsEmbedding) {
+      if (hasEmbeddingCapability) {
         data.embeddingDimensions = embeddingDimensions;
+      }
+      if (formMaxTokens.trim()) {
+        const maxTokens = parseInt(formMaxTokens.trim(), 10);
+        if (Number.isFinite(maxTokens) && maxTokens > 0) data.maxTokens = maxTokens;
+      }
+      if (formTopP.trim()) {
+        const topP = parseFloat(formTopP.trim());
+        if (Number.isFinite(topP) && topP > 0) data.topP = topP;
       }
       if (formApiKey.trim()) {
         data.apiKey = formApiKey.trim();
@@ -348,7 +355,7 @@ export default function SettingsPage() {
         if (!isNaN(temp)) data.temperature = temp;
       }
       await llmProviderApi.update(editingProvider.id, data);
-      showToast('Provider 更新成功');
+      showToast('模型更新成功');
       closeModal();
       await loadData();
     } catch (err) {
@@ -359,12 +366,35 @@ export default function SettingsPage() {
     }
   };
 
+  const handleFetchModels = async () => {
+    if (!formBaseUrl.trim() || (!formApiKey.trim() && !editingProvider)) {
+      showToast('请先填写 Base URL 和 API Key', 'error');
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const models = await llmProviderApi.fetchModels({
+        providerId: editingProvider?.id,
+        baseUrl: formBaseUrl.trim(),
+        apiKey: formApiKey.trim() || undefined,
+        apiFormat: formApiFormat,
+      });
+      setFetchedModels(models ?? []);
+      showToast(models?.length ? `已获取 ${models.length} 个模型` : '该端点未返回模型列表');
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+      showToast(err instanceof Error ? err.message : '获取模型列表失败', 'error');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteConfirmId) return;
     setDeleting(true);
     try {
       await llmProviderApi.delete(deleteConfirmId);
-      showToast('Provider 已删除');
+      showToast('模型已删除');
       setDeleteConfirmId(null);
       await loadData();
     } catch (err) {
@@ -419,7 +449,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to set default:', err);
-      showToast(err instanceof Error ? err.message : '设置默认 Provider 失败', 'error');
+      showToast(err instanceof Error ? err.message : '设置默认模型失败', 'error');
     } finally {
       setSettingDefault(false);
     }
@@ -427,7 +457,7 @@ export default function SettingsPage() {
 
   const handleSetEmbeddingDefault = async (provider: ProviderItem) => {
     if (!provider.supportsEmbedding || !provider.embeddingModel) {
-      showToast('该 Provider 不支持 Embedding，不能作为知识库向量服务', 'error');
+      showToast('该模型不支持向量化，不能作为知识库向量服务', 'error');
       return;
     }
     setPendingDefaultEmbeddingProviderId(provider.id);
@@ -448,9 +478,39 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to set embedding default:', err);
-      showToast(err instanceof Error ? err.message : '设置默认向量 Provider 失败', 'error');
+      showToast(err instanceof Error ? err.message : '设置默认向量模型失败', 'error');
     } finally {
       setSettingEmbeddingDefault(false);
+    }
+  };
+
+  const handleSetRerankDefault = (provider: ProviderItem) => {
+    if (!provider.rerankModel) {
+      showToast('该模型未配置重排模型，不能作为默认重排服务', 'error');
+      return;
+    }
+    setPendingDefaultRerankProviderId(provider.id);
+  };
+
+  const handleConfirmSetRerankDefault = async () => {
+    if (!pendingDefaultRerankProviderId) {
+      return;
+    }
+    setSettingRerankDefault(true);
+    try {
+      await llmProviderApi.updateDefaultRerankProvider({
+        defaultProvider: defaultProviderId,
+        defaultEmbeddingProvider: defaultEmbeddingProviderId,
+        defaultRerankProvider: pendingDefaultRerankProviderId,
+      });
+      showToast(`已将 "${pendingDefaultRerankProviderId}" 设为默认重排服务`);
+      setPendingDefaultRerankProviderId(null);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to set rerank default:', err);
+      showToast(err instanceof Error ? err.message : '设置默认重排模型失败', 'error');
+    } finally {
+      setSettingRerankDefault(false);
     }
   };
 
@@ -574,166 +634,246 @@ export default function SettingsPage() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white">
                   模型服务
                 </h2>
-                <motion.button
-                  onClick={openCreateModal}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
-                    bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg shadow-primary-500/25
-                    hover:from-primary-600 hover:to-primary-700 transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  新增 Provider
-                </motion.button>
+                {activeTab !== 'voice' && (
+                  <motion.button
+                    onClick={() => openCreateModal(activeTab)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
+                      bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg shadow-primary-500/25
+                      hover:from-primary-600 hover:to-primary-700 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    新增模型
+                  </motion.button>
+                )}
               </div>
 
-              {/* Provider grid */}
-              {providers.length === 0 ? (
-                <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <Server className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-500 dark:text-slate-400 text-sm">暂无 Provider，点击上方按钮新增</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
-                  {providers.map((provider, index) => {
-                    const isGlobalDefault = isGlobalDefaultProvider(provider.id);
-                    const isEmbeddingDefault = isDefaultEmbeddingProvider(provider.id);
-                    const canUseEmbedding = provider.supportsEmbedding && !!provider.embeddingModel;
+              {/* Capability tabs */}
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                {([
+                  { key: 'chat', label: '聊天模型' },
+                  { key: 'embedding', label: '向量模型' },
+                  { key: 'rerank', label: '重排模型' },
+                  { key: 'voice', label: '语音服务' },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`h-9 rounded-xl px-4 text-sm font-medium transition-colors ${
+                      activeTab === tab.key
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
+              {/* Provider grid (chat / embedding / rerank tabs) */}
+              {activeTab !== 'voice' && (
+                (() => {
+                  const visibleProviders = providers.filter((provider) => {
+                    if (activeTab === 'chat') return !!provider.model;
+                    if (activeTab === 'embedding') return provider.supportsEmbedding && !!provider.embeddingModel;
+                    return !!provider.rerankModel;
+                  });
+                  if (visibleProviders.length === 0) {
                     return (
-                    <motion.div
-                      key={provider.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={CARD_CLASS}
-                    >
-                      {/* Card header */}
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className={ICON_WRAP_CLASS}>
-                            <Server className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-white">
-                              {provider.id}
-                            </h3>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">聊天/向量 Provider</p>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {isGlobalDefault && (
-                            <StatusBadge icon={<Plug className="h-3 w-3" />}>文字默认</StatusBadge>
-                          )}
-                          {isEmbeddingDefault && (
-                            <StatusBadge icon={<Database className="h-3 w-3" />}>向量默认</StatusBadge>
-                          )}
-                        </div>
+                      <div className="rounded-xl border border-slate-200 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-800">
+                        <Server className="mx-auto mb-3 h-12 w-12 text-slate-300 dark:text-slate-600" />
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          暂无该类型的模型，点击上方按钮新增
+                        </p>
                       </div>
+                    );
+                  }
+                  return (
+                    <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+                      {visibleProviders.map((provider, index) => {
+                        const isGlobalDefault = isGlobalDefaultProvider(provider.id);
+                        const isEmbeddingDefault = isDefaultEmbeddingProvider(provider.id);
+                        const isRerankDefault = defaultRerankProviderId === provider.id;
+                        const canUseEmbedding = provider.supportsEmbedding && !!provider.embeddingModel;
+                        const chatLabel = provider.model
+                          ? (provider.apiFormat === 'anthropic' ? '聊天 · Anthropic' : '聊天 · OpenAI')
+                          : null;
+                        const capabilitySummary = [
+                          chatLabel,
+                          canUseEmbedding ? '向量' : null,
+                          provider.rerankModel ? `重排 · ${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}` : null,
+                        ].filter(Boolean).join(' / ') || '未配置能力';
 
-                      {/* Card details */}
-                      <dl className={DETAILS_CLASS}>
-                        <ConfigRow label="Base URL" value={provider.baseUrl} title={provider.baseUrl} emphasis />
-                        <ConfigRow label="聊天模型" value={provider.model} title={provider.model} emphasis />
-                        <ConfigRow
-                          label="向量模型"
-                          value={canUseEmbedding ? '支持' : '不支持'}
-                          title={canUseEmbedding ? provider.embeddingModel ?? '' : '不能用于知识库向量化'}
-                        />
-                        {provider.embeddingModel && (
-                          <ConfigRow label="实际向量" value={provider.embeddingModel} title={provider.embeddingModel} emphasis={isEmbeddingDefault} />
-                        )}
-                        {canUseEmbedding && (
-                          <ConfigRow label="向量维度" value={`${provider.embeddingDimensions ?? 1024} 维`} emphasis={isEmbeddingDefault} />
-                        )}
-                        {provider.temperature != null && (
-                          <ConfigRow label="温度" value={provider.temperature} />
-                        )}
-                        <ConfigRow
-                          label="API Key"
-                          value={provider.maskedApiKey}
-                          title={provider.maskedApiKey}
-                          monospace
-                          emphasis
-                        />
-                      </dl>
-
-                      {/* Test result */}
-                      {testResults[provider.id] && (
+                        return (
                         <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
-                            testResults[provider.id].success
-                              ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
-                          }`}
+                          key={provider.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          className={CARD_CLASS}
                         >
-                          <div className="flex items-center gap-1.5">
-                            {testResults[provider.id].success
-                              ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                              : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                            }
-                            <span>{testResults[provider.id].message}</span>
+                          {/* Card header */}
+                          <div className="mb-4 flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className={ICON_WRAP_CLASS}>
+                                <Server className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-white">
+                                  {provider.id}
+                                </h3>
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{capabilitySummary}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              {activeTab === 'chat' && isGlobalDefault && (
+                                <StatusBadge icon={<Plug className="h-3 w-3" />}>默认</StatusBadge>
+                              )}
+                              {activeTab === 'embedding' && isEmbeddingDefault && (
+                                <StatusBadge icon={<Database className="h-3 w-3" />}>默认</StatusBadge>
+                              )}
+                              {activeTab === 'rerank' && isRerankDefault && (
+                                <StatusBadge icon={<ArrowDownWideNarrow className="h-3 w-3" />}>默认</StatusBadge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card details */}
+                          <dl className={DETAILS_CLASS}>
+                            <ConfigRow label="Base URL" value={provider.baseUrl} title={provider.baseUrl} emphasis />
+                            <ConfigRow
+                              label="聊天模型"
+                              value={provider.model ?? '未配置'}
+                              title={provider.model ?? '未配置聊天模型'}
+                              emphasis={!!provider.model}
+                            />
+                            <ConfigRow
+                              label="向量模型"
+                              value={canUseEmbedding ? '支持' : '不支持'}
+                              title={canUseEmbedding ? provider.embeddingModel ?? '' : '不能用于知识库向量化'}
+                            />
+                            {provider.embeddingModel && (
+                              <ConfigRow label="实际向量" value={provider.embeddingModel} title={provider.embeddingModel} emphasis={isEmbeddingDefault} />
+                            )}
+                            {canUseEmbedding && (
+                              <ConfigRow label="向量维度" value={`${provider.embeddingDimensions ?? 1024} 维`} emphasis={isEmbeddingDefault} />
+                            )}
+                            {provider.rerankModel && (
+                              <ConfigRow
+                                label="重排模型"
+                                value={`${provider.rerankModel}（${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}）`}
+                                title={provider.rerankModel}
+                                emphasis={isRerankDefault}
+                              />
+                            )}
+                            {provider.temperature != null && (
+                              <ConfigRow label="温度" value={provider.temperature} />
+                            )}
+                            <ConfigRow
+                              label="API Key"
+                              value={provider.maskedApiKey}
+                              title={provider.maskedApiKey}
+                              monospace
+                              emphasis
+                            />
+                          </dl>
+
+                          {/* Test result */}
+                          {testResults[provider.id] && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
+                                testResults[provider.id].success
+                                  ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                {testResults[provider.id].success
+                                  ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                  : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                }
+                                <span>{testResults[provider.id].message}</span>
+                              </div>
+                            </motion.div>
+                          )}
+
+                          {/* Card actions */}
+                          <div className={ACTION_BAR_CLASS}>
+                            <button
+                              onClick={() => openEditModal(provider, activeTab)}
+                              className={`${ACTION_BUTTON_CLASS} text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700`}
+                              title="编辑"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              编辑
+                            </button>
+                            <button
+                              onClick={() => handleTest(provider.id)}
+                              disabled={testingId === provider.id}
+                              className={`${ACTION_BUTTON_CLASS} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20`}
+                              title="测试连接"
+                            >
+                              {testingId === provider.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <RefreshCw className="w-3.5 h-3.5" />
+                              }
+                              测试
+                            </button>
+                            {/* 只展示当前 Tab 能力对应的"设为默认"，当前 Tab 的卡片必然具备该能力 */}
+                            {activeTab === 'chat' && (
+                              <button
+                                onClick={() => handleSetDefault(provider.id)}
+                                disabled={isGlobalDefault || settingDefault}
+                                className={`${ACTION_BUTTON_CLASS} text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent`}
+                                title={isGlobalDefault ? '当前已是默认' : '在多个模型中设为默认'}
+                              >
+                                <Plug className="w-3.5 h-3.5" />
+                                设为默认
+                              </button>
+                            )}
+                            {activeTab === 'embedding' && (
+                              <button
+                                onClick={() => handleSetEmbeddingDefault(provider)}
+                                disabled={isEmbeddingDefault || settingEmbeddingDefault}
+                                className={`${ACTION_BUTTON_CLASS} text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent`}
+                                title={isEmbeddingDefault ? '当前已是默认' : '在多个模型中设为默认'}
+                              >
+                                <Database className="w-3.5 h-3.5" />
+                                设为默认
+                              </button>
+                            )}
+                            {activeTab === 'rerank' && (
+                              <button
+                                onClick={() => handleSetRerankDefault(provider)}
+                                disabled={isRerankDefault || settingRerankDefault}
+                                className={`${ACTION_BUTTON_CLASS} text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent`}
+                                title={isRerankDefault ? '当前已是默认' : '在多个模型中设为默认'}
+                              >
+                                <ArrowDownWideNarrow className="w-3.5 h-3.5" />
+                                设为默认
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setDeleteConfirmId(provider.id)}
+                              className={`${ACTION_BUTTON_CLASS} ml-auto text-slate-400 hover:bg-red-50 hover:text-red-500 dark:text-slate-500 dark:hover:bg-red-900/20 dark:hover:text-red-300`}
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </motion.div>
-                      )}
-
-                      {/* Card actions */}
-                      <div className={ACTION_BAR_CLASS}>
-                        <button
-                          onClick={() => openEditModal(provider)}
-                          className={`${ACTION_BUTTON_CLASS} text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700`}
-                          title="编辑"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          编辑
-                        </button>
-                        <button
-                          onClick={() => handleTest(provider.id)}
-                          disabled={testingId === provider.id}
-                          className={`${ACTION_BUTTON_CLASS} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20`}
-                          title="测试连接"
-                        >
-                          {testingId === provider.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <RefreshCw className="w-3.5 h-3.5" />
-                          }
-                          测试
-                        </button>
-                        <button
-                          onClick={() => handleSetDefault(provider.id)}
-                          disabled={isGlobalDefault || settingDefault}
-                          className={`${ACTION_BUTTON_CLASS} text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent`}
-                          title="设为默认文字服务"
-                        >
-                          <Plug className="w-3.5 h-3.5" />
-                          设为文字
-                        </button>
-                        <button
-                          onClick={() => handleSetEmbeddingDefault(provider)}
-                          disabled={!canUseEmbedding || isEmbeddingDefault || settingEmbeddingDefault}
-                          className={`${ACTION_BUTTON_CLASS} text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent`}
-                          title={canUseEmbedding ? '设为默认向量服务' : '该 Provider 不支持 Embedding'}
-                        >
-                          <Database className="w-3.5 h-3.5" />
-                          设为向量
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(provider.id)}
-                          className={`${ACTION_BUTTON_CLASS} ml-auto text-slate-400 hover:bg-red-50 hover:text-red-500 dark:text-slate-500 dark:hover:bg-red-900/20 dark:hover:text-red-300`}
-                          title="删除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </motion.div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
               )}
 
-              {/* Voice service cards */}
+              {/* Voice service cards (语音服务 Tab) */}
+              {activeTab === 'voice' && (
               <div className="mt-6">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4">
                   语音服务
@@ -864,6 +1004,7 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
+              )}
           </motion.div>
         </AnimatePresence>
       )}
@@ -888,34 +1029,21 @@ export default function SettingsPage() {
                 className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full p-6"
               >
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-5">
-                  {editingProvider ? '编辑 Provider' : '新增 Provider'}
+                  {editingProvider ? '编辑' : '新增'}{MODEL_TYPE_LABEL[modalType]}
                 </h3>
 
                 <div className="space-y-4">
-                  {/* Provider ID */}
+                  {/* 模型 ID */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      Provider ID <span className="text-red-500">*</span>
+                      模型 ID <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formId}
-                      onChange={(e) => {
-                        const newId = e.target.value;
-                        setFormId(newId);
-                        // 新建时自动填充已知 Provider 的 Base URL
-                        if (!editingProvider) {
-                          const preset = PROVIDER_PRESETS[newId.toLowerCase()];
-                          if (preset) {
-                            setFormBaseUrl(preset.baseUrl);
-                            setFormSupportsEmbedding(preset.supportsEmbedding);
-                            setFormEmbeddingModel(preset.embeddingModels?.[0]?.value ?? '');
-                            setFormEmbeddingDimensions(String(preset.embeddingDimensions ?? 1024));
-                          }
-                        }
-                      }}
+                      onChange={(e) => setFormId(e.target.value)}
                       disabled={!!editingProvider}
-                      placeholder="例如: dashscope, deepseek, glm, kimi"
+                      placeholder="自定义唯一 ID，例如: bailian-chat"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
                         bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
                         placeholder:text-slate-400 focus:outline-none focus:ring-2
@@ -972,11 +1100,31 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Chat Model */}
+                  {modalType === 'chat' && (
+                  <>
+                  {/* 聊天模型 */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      聊天模型 <span className="text-red-500">*</span>
-                    </label>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        聊天模型
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={fetchingModels}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs
+                          font-medium text-slate-600 transition-colors hover:bg-slate-200
+                          disabled:cursor-not-allowed disabled:opacity-50
+                          dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        title="从该端点拉取可用模型列表"
+                      >
+                        {fetchingModels
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <ListPlus className="w-3.5 h-3.5" />
+                        }
+                        获取模型列表
+                      </button>
+                    </div>
                     <div className="relative">
                       <input
                         type="text"
@@ -985,15 +1133,15 @@ export default function SettingsPage() {
                           setFormModel(e.target.value);
                           setShowModelDropdown(false);
                         }}
-                        onFocus={() => currentPreset && setShowModelDropdown(true)}
+                        onFocus={() => modelOptions.length > 0 && setShowModelDropdown(true)}
                         onBlur={() => setTimeout(() => setShowModelDropdown(false), 150)}
-                        placeholder={currentPreset ? '从下拉列表选择或输入自定义聊天模型名' : '例如: qwen3.5-flash, deepseek-v4-flash, glm-5'}
+                        placeholder={modelOptions.length > 0 ? '从下拉列表选择或输入自定义聊天模型名' : '例如: qwen3.5-flash, deepseek-v4-flash, glm-5'}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
                           bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
                           placeholder:text-slate-400 focus:outline-none focus:ring-2
                           focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
                       />
-                      {currentPreset && (
+                      {modelOptions.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
@@ -1003,11 +1151,11 @@ export default function SettingsPage() {
                           <ChevronDown className="w-4 h-4" />
                         </button>
                       )}
-                      {showModelDropdown && currentPreset && (
+                      {showModelDropdown && modelOptions.length > 0 && (
                         <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-700
                           border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg
                           max-h-60 overflow-auto">
-                          {currentPreset.models.map((m) => (
+                          {modelOptions.map((m) => (
                             <button
                               key={m.value}
                               type="button"
@@ -1030,27 +1178,64 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Embedding Model */}
+                  {/* Chat API format */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                      聊天协议格式
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { value: 'openai', label: 'OpenAI 兼容', hint: '/chat/completions' },
+                        { value: 'anthropic', label: 'Anthropic', hint: '/v1/messages' },
+                      ].map((fmt) => (
+                        <button
+                          key={fmt.value}
+                          type="button"
+                          onClick={() => setFormApiFormat(fmt.value)}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                            formApiFormat === fmt.value
+                              ? 'border-primary-400 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/30 dark:text-primary-300'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <span className="block font-medium">{fmt.label}</span>
+                          <span className="block text-xs text-slate-400 dark:text-slate-500">{fmt.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {formApiFormat === 'anthropic' && (
+                      <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+                        Anthropic 协议的 Base URL 填根地址（如 https://api.anthropic.com），系统自动补 /v1
+                      </p>
+                    )}
+                  </div>
+                  </>
+                  )}
+
+                  {modalType === 'embedding' && (
+                  <>
+                  {/* 向量模型 */}
                   <div>
                     <div className="mb-1.5 flex items-center justify-between gap-3">
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        向量模型 <span className="text-slate-400 font-normal">(知识库向量化，例如 GLM 填 embedding-3)</span>
+                        向量模型 <span className="text-slate-400 font-normal">(用于知识库向量化)</span>
                       </label>
-                      <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={formSupportsEmbedding}
-                          onChange={(e) => {
-                            setFormSupportsEmbedding(e.target.checked);
-                            if (!e.target.checked) {
-                              setFormEmbeddingModel('');
-                              setFormEmbeddingDimensions('1024');
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                        />
-                        支持 Embedding
-                      </label>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={fetchingModels}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs
+                          font-medium text-slate-600 transition-colors hover:bg-slate-200
+                          disabled:cursor-not-allowed disabled:opacity-50
+                          dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        title="从该端点拉取可用模型列表"
+                      >
+                        {fetchingModels
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <ListPlus className="w-3.5 h-3.5" />
+                        }
+                        获取模型列表
+                      </button>
                     </div>
                     <div className="relative">
                       <input
@@ -1060,19 +1245,15 @@ export default function SettingsPage() {
                           setFormEmbeddingModel(e.target.value);
                           setShowEmbeddingDropdown(false);
                         }}
-                        onFocus={() => formSupportsEmbedding && currentPreset?.embeddingModels && setShowEmbeddingDropdown(true)}
+                        onFocus={() => modelOptions.length > 0 && setShowEmbeddingDropdown(true)}
                         onBlur={() => setTimeout(() => setShowEmbeddingDropdown(false), 150)}
-                        disabled={!formSupportsEmbedding}
-                        placeholder={formSupportsEmbedding
-                          ? (currentPreset?.embeddingModels ? '从下拉列表选择或输入自定义向量模型名' : '例如: text-embedding-v3, embedding-3')
-                          : 'DeepSeek / Kimi 等 Provider 通常不支持 Embedding'}
+                        placeholder={modelOptions.length > 0 ? '从下拉列表选择或输入自定义向量模型名' : '例如: text-embedding-v3, embedding-3'}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
                           bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
                           placeholder:text-slate-400 focus:outline-none focus:ring-2
-                          focus:ring-primary-500/50 focus:border-primary-400 transition-shadow
-                          disabled:cursor-not-allowed disabled:opacity-60"
+                          focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
                       />
-                      {formSupportsEmbedding && currentPreset?.embeddingModels && (
+                      {modelOptions.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setShowEmbeddingDropdown(!showEmbeddingDropdown)}
@@ -1082,11 +1263,11 @@ export default function SettingsPage() {
                           <ChevronDown className="w-4 h-4" />
                         </button>
                       )}
-                      {formSupportsEmbedding && showEmbeddingDropdown && currentPreset?.embeddingModels && (
+                      {showEmbeddingDropdown && modelOptions.length > 0 && (
                         <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-700
                           border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg
                           max-h-60 overflow-auto">
-                          {currentPreset.embeddingModels.map((m) => (
+                          {modelOptions.map((m) => (
                             <button
                               key={m.value}
                               type="button"
@@ -1109,10 +1290,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {formSupportsEmbedding && (
+                  {modalType === 'embedding' && (
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        向量维度 <span className="text-slate-400 font-normal">(必须与 pgvector 表一致，当前为 1024)</span>
+                        向量维度 <span className="text-slate-400 font-normal">(需与向量库维度一致，默认 1024，可用 APP_VECTOR_DIMENSIONS 配置)</span>
                       </label>
                       <input
                         type="number"
@@ -1127,6 +1308,89 @@ export default function SettingsPage() {
                       />
                     </div>
                   )}
+                  </>
+                  )}
+
+                  {modalType === 'rerank' && (
+                  <>
+                  {/* 重排模型 */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                      重排模型 <span className="text-slate-400 font-normal">(用于知识库检索重排)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formRerankModel}
+                      onChange={(e) => setFormRerankModel(e.target.value)}
+                      placeholder="例如: gte-rerank, jina-reranker-v2-base-multilingual, bge-reranker-v2-m3"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
+                        bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
+                        placeholder:text-slate-400 focus:outline-none focus:ring-2
+                        focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
+                    />
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {[
+                        { value: 'cohere', label: 'Cohere 兼容', hint: 'Jina / SiliconFlow / vLLM' },
+                        { value: 'dashscope', label: '百炼原生', hint: 'DashScope gte-rerank' },
+                      ].map((fmt) => (
+                        <button
+                          key={fmt.value}
+                          type="button"
+                          onClick={() => setFormRerankApiFormat(fmt.value)}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                            formRerankApiFormat === fmt.value
+                              ? 'border-primary-400 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/30 dark:text-primary-300'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <span className="block font-medium">{fmt.label}</span>
+                          <span className="block text-xs text-slate-400 dark:text-slate-500">{fmt.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  </>
+                  )}
+
+                  {modalType === 'chat' && (
+                  <>
+                  {/* Max Tokens / Top P */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                        Max Tokens <span className="text-slate-400 font-normal">(选填)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={formMaxTokens}
+                        onChange={(e) => setFormMaxTokens(e.target.value)}
+                        placeholder="如 4096"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
+                          bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
+                          placeholder:text-slate-400 focus:outline-none focus:ring-2
+                          focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                        Top P <span className="text-slate-400 font-normal">(选填)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step="0.05"
+                        value={formTopP}
+                        onChange={(e) => setFormTopP(e.target.value)}
+                        placeholder="如 0.9"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
+                          bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
+                          placeholder:text-slate-400 focus:outline-none focus:ring-2
+                          focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
+                      />
+                    </div>
+                  </div>
 
                   {/* Temperature */}
                   <div>
@@ -1144,6 +1408,8 @@ export default function SettingsPage() {
                         focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
                     />
                   </div>
+                  </>
+                  )}
                 </div>
 
                 {/* Modal actions */}
@@ -1408,6 +1674,21 @@ export default function SettingsPage() {
         }}
       />
 
+      <ConfirmDialog
+        open={pendingDefaultRerankProviderId !== null}
+        title="设为默认重排服务"
+        message={`确定要将 "${pendingDefaultRerankProviderId ?? ''}" 设为知识库检索的默认重排服务吗？向量召回后将使用该模型对候选片段重排，未配置或调用失败时自动回退向量排序。`}
+        confirmText="确认设置"
+        cancelText="取消"
+        loading={settingRerankDefault}
+        onConfirm={handleConfirmSetRerankDefault}
+        onCancel={() => {
+          if (!settingRerankDefault) {
+            setPendingDefaultRerankProviderId(null);
+          }
+        }}
+      />
+
       {/* Delete confirmation dialog */}
       <AnimatePresence>
         {deleteConfirmId && (
@@ -1428,11 +1709,11 @@ export default function SettingsPage() {
                 className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
               >
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-                  删除 Provider
+                  删除模型
                 </h3>
                 <p className="text-slate-600 dark:text-slate-300 mb-6">
-                  确定要删除 Provider &ldquo;{deleteConfirmId}&rdquo; 吗？删除后无法恢复。
-                  如果有模块正在使用此 Provider，请先切换到其他 Provider。
+                  确定要删除模型 &ldquo;{deleteConfirmId}&rdquo; 吗？删除后无法恢复。
+                  如果有模块正在使用此模型，请先切换到其他模型。
                 </p>
                 <div className="flex gap-3 justify-end">
                   <motion.button

@@ -49,8 +49,10 @@ public class ResumeController {
     @PostMapping(value = "/api/resumes/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
     @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
-    public Result<Map<String, Object>> uploadAndAnalyze(@RequestParam("file") MultipartFile file) {
-        Map<String, Object> result = uploadService.uploadAndAnalyze(file);
+    public Result<Map<String, Object>> uploadAndAnalyze(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "llmProvider", required = false) String llmProvider) {
+        Map<String, Object> result = uploadService.uploadAndAnalyze(file, llmProvider);
         boolean isDuplicate = (Boolean) result.get("duplicate");
         if (isDuplicate) {
             return Result.success("检测到相同简历，已返回历史分析结果", result);
@@ -117,8 +119,10 @@ public class ResumeController {
     @PostMapping("/api/resumes/{id}/reanalyze")
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 2)
     @RateLimit(dimension = RateLimit.Dimension.IP, count = 2)
-    public Result<Void> reanalyze(@PathVariable Long id) {
-        uploadService.reanalyze(id);
+    public Result<Void> reanalyze(
+            @PathVariable Long id,
+            @RequestParam(value = "llmProvider", required = false) String llmProvider) {
+        uploadService.reanalyze(id, llmProvider);
         return Result.success(null);
     }
 

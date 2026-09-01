@@ -6,6 +6,8 @@ import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {knowledgeBaseApi, type KnowledgeBaseItem, type SortOption} from '../api/knowledgebase';
 import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {formatDateOnly} from '../utils/date';
+import {useChatProviders} from '../hooks/useChatProviders';
+import LlmProviderSelect from '../components/LlmProviderSelect';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
 import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2,} from 'lucide-react';
@@ -55,6 +57,9 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  // 问答模型（新会话创建时生效；空 = 跟随系统默认）
+  const [llmProvider, setLlmProvider] = useState('');
+  const chatProviders = useChatProviders();
 
   // refs
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -264,7 +269,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     let sessionId = currentSessionId;
     if (!sessionId) {
       try {
-        const session = await ragChatApi.createSession(Array.from(selectedKbIds));
+        const session = await ragChatApi.createSession(Array.from(selectedKbIds), undefined, llmProvider || undefined);
         sessionId = session.id;
         setCurrentSessionId(sessionId);
         setCurrentSessionTitle(session.title);
@@ -584,6 +589,19 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
 
                 {/* 输入区域 */}
                 <div className="p-4 border-t border-slate-200 dark:border-slate-600">
+                  {!currentSessionId && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">问答模型</span>
+                      <div className="max-w-xs flex-1">
+                        <LlmProviderSelect
+                          providers={chatProviders}
+                          value={llmProvider}
+                          onChange={setLlmProvider}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">新会话开始后固定</span>
+                    </div>
+                  )}
                   <div className="flex gap-3">
                     <input
                       type="text"

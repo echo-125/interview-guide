@@ -10,12 +10,15 @@ import {
   GENERATE_COUNT_OPTIONS,
   INPUT_CLASS,
 } from '../../constants/knowledgebaseInterview';
+import { useChatProviders } from '../../hooks/useChatProviders';
+import LlmProviderSelect from '../LlmProviderSelect';
 
 export interface GenerateQuestionsConfig {
   difficulty: string;
   questionCount: number;
   followUpCount: number;
   categoryLimit: number;
+  llmProvider?: string;
 }
 
 interface GenerateKnowledgeBaseQuestionsModalProps {
@@ -45,6 +48,8 @@ export default function GenerateKnowledgeBaseQuestionsModal({
   const [questionCount, setQuestionCount] = useState(5);
   const [followUpCount, setFollowUpCount] = useState(2);
   const [categoryLimit, setCategoryLimit] = useState(defaultCategoryLimit);
+  const [llmProvider, setLlmProvider] = useState('');
+  const chatProviders = useChatProviders();
 
   useEffect(() => {
     if (open) {
@@ -52,6 +57,7 @@ export default function GenerateKnowledgeBaseQuestionsModal({
       setQuestionCount(initialConfig?.questionCount || 5);
       setFollowUpCount(initialConfig?.followUpCount ?? 2);
       setCategoryLimit(initialConfig?.categoryLimit || defaultCategoryLimit);
+      setLlmProvider(initialConfig?.llmProvider ?? '');
     }
   }, [open, defaultDifficulty, defaultCategoryLimit, initialConfig]);
 
@@ -153,6 +159,17 @@ export default function GenerateKnowledgeBaseQuestionsModal({
                   </label>
                 </div>
 
+                <label className="block">
+                  <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                    出题模型 <span className="text-slate-400 font-normal">(选填，默认跟随系统设置)</span>
+                  </span>
+                  <LlmProviderSelect
+                    providers={chatProviders}
+                    value={llmProvider}
+                    onChange={setLlmProvider}
+                  />
+                </label>
+
                 {error && <p className="text-sm text-red-500">{error}</p>}
               </div>
 
@@ -167,7 +184,13 @@ export default function GenerateKnowledgeBaseQuestionsModal({
                 </button>
                 <motion.button
                   type="button"
-                  onClick={() => onSubmit({ difficulty, questionCount, followUpCount, categoryLimit })}
+                  onClick={() => onSubmit({
+                    difficulty,
+                    questionCount,
+                    followUpCount,
+                    categoryLimit,
+                    llmProvider: llmProvider || undefined,
+                  })}
                   disabled={submitting}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}

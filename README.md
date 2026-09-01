@@ -132,10 +132,13 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 
 ### 多模型与系统设置模块
 
-- **多 Provider 管理**：内置 DashScope、LM Studio、Kimi、DeepSeek、GLM 等 OpenAI 兼容 Provider 配置。
-- **默认模型切换**：支持在设置页切换默认聊天模型和默认向量模型，不需要频繁修改源码配置。
+- **按能力管理模型**：模型服务按聊天 / 向量 / 重排三类能力独立管理，一个 Provider 可同时声明多种能力，也支持纯向量、纯重排等单一能力端点；系统不内置任何预设模型，全部由用户在设置页自行添加。
+- **双协议与精细化配置**：聊天模型支持 OpenAI 兼容（`/chat/completions`）与 Anthropic（`/v1/messages`）两种协议，可从端点在线拉取模型列表，支持 temperature / Max Tokens / Top P 参数。
+- **按能力独立设默认**：聊天、向量、重排各自设置默认模型；默认未显式设置时自动回退到第一个可用的对应能力模型。模拟面试、简历分析、知识库出题/面试、RAG 问答等页面均支持临时切换模型。
+- **RAG 检索重排**：配置默认重排模型后，知识库问答在向量召回后自动对候选片段重排（支持 Cohere 兼容与百炼原生两种格式），重排失败自动回退向量排序。
+- **向量维度可配置**：通过 `APP_VECTOR_DIMENSIONS` 配置 pgvector 向量维度（默认 1024），启动时自动对齐表结构；表中已有数据且维度不一致时拒绝启动并给出处理指引。
 - **语音服务配置**：ASR/TTS 配置可视化管理，支持语音服务连通性测试。
-- **配置安全落盘**：运行时配置默认写入用户目录 `~/.interview-guide/`，支持 API Key 加密配置。
+- **配置安全落盘**：模型 API Key 加密存储于数据库，语音等运行时配置写入用户目录 `~/.interview-guide/`，支持 API Key 加密配置。
 
 ### TODO
 
@@ -154,7 +157,7 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - [x] 面试中心页（整合文字/语音入口）
 - [x] 语音面试 LLM 流式输出 + 句子级并发 TTS
 - [x] 语音面试暂停/恢复 + 手动提交 + 回声防护
-- [x] 多 LLM Provider 管理与默认模型切换
+- [x] 模型服务按能力拆分（聊天/向量/重排、双协议、页面级模型切换、RAG 重排）
 - [x] RAG 聊天会话管理 + 虚拟列表优化
 - [x] 可重复注解 API 限流（Global/IP/User 维度）
 - [x] 打通知识库题库与模拟面试（异步出题、严格容量校验、统一评估与记录）
@@ -292,14 +295,17 @@ cd interview-guide
 
 ### 2. 配置环境变量
 
-推荐复制 `.env.example` 为 `.env`，后端 `bootRun` 会自动读取根目录 `.env`。最少需要填写 `AI_BAILIAN_API_KEY`，用于 DashScope 文本模型、ASR 和 TTS：
+推荐复制 `.env.example` 为 `.env`，后端 `bootRun` 会自动读取根目录 `.env`。最少需要填写：
+
+- `AI_BAILIAN_API_KEY`：语音面试的 ASR/TTS 使用；聊天 / 向量 / 重排模型**不再依赖 .env**，启动后在「设置 → 模型服务」页配置
+- `APP_AI_CONFIG_ENCRYPTION_KEY`：模型 API Key 的加密密钥，请改为随机长字符串并保持不变
 
 ```bash
 cp .env.example .env
 
 # 编辑 .env
 # AI_BAILIAN_API_KEY=your_dashscope_api_key
-# AI_MODEL=qwen3.5-flash
+# APP_AI_CONFIG_ENCRYPTION_KEY=your_random_long_secret
 ```
 
 如果你更习惯通过 shell 环境变量注入，也可以这样设置：
@@ -381,6 +387,10 @@ pnpm dev
 
 前端服务启动于 `http://localhost:5173`
 
+**最后一步：配置模型服务**
+
+系统不内置任何预设模型。启动后进入「设置 → 模型服务」，按 Tab 分别添加聊天模型、向量模型（知识库功能需要）和重排模型（可选），并点击「设为默认」。以 Ollama 本地模型为例：Base URL 填 `http://localhost:11434/v1`，API Key 随意填一个非空占位即可。
+
 
 ## Docker 快速部署
 
@@ -391,7 +401,7 @@ Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO�
 ### 1. 前置准备
 
 - 安装 [Docker](https://www.docker.com/products/docker-desktop/) 和 Docker Compose
-- 申请阿里云百炼 API Key（用于 AI 对话功能，申请地址：<https://bailian.console.aliyun.com/>）
+- 申请阿里云百炼 API Key（用于语音面试 ASR/TTS，申请地址：<https://bailian.console.aliyun.com/>）；聊天/向量模型在启动后于设置页配置，可用任意 OpenAI 兼容或 Anthropic 协议服务
 
 ### 2. 快速启动
 
@@ -405,10 +415,9 @@ cp .env.example .env
 
 # 2. 编辑 .env 文件，填入 AI 配置
 # vim .env
-# 必填：AI_BAILIAN_API_KEY=your_key_here
+# 必填：AI_BAILIAN_API_KEY=your_key_here        # 语音面试 ASR/TTS 使用
 # 必填：APP_AI_CONFIG_ENCRYPTION_KEY=your_random_long_secret
-# 可选：AI_MODEL=qwen3.5-flash   # 默认值为 qwen3.5-flash
-# 也可以在设置页维护 DashScope、Kimi、DeepSeek、GLM、LM Studio 等 Provider
+# 聊天/向量/重排模型不内置预设，启动后在「设置 → 模型服务」页添加并设为默认
 #
 # 面试参数配置（可选）：
 # APP_INTERVIEW_FOLLOW_UP_COUNT=1         # 每个主问题生成追问数量（默认 1）
@@ -527,11 +536,11 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
 
 ### Q: 简历分析失败
 
-检查一下阿里云 DashScope API KEY 是否配置正确（申请地址：<https://bailian.console.aliyun.com/>）。
+到「设置 → 模型服务」检查模型配置：点击卡片上的「测试」确认端点连通性，并确认已设置默认模型（或在分析时明确选择了分析模型）。后端日志中的业务异常信息会给出具体原因。
 
 ### Q: 设置页新增/切换模型后不生效？
 
-运行时 Provider 配置默认写到 `~/.interview-guide/llm-providers.yml` 和 `~/.interview-guide/llm-providers.env`。可以在设置页点击测试连接，或调用 `/api/llm-provider/reload` 重新加载配置。Docker 部署时如果希望配置持久化，建议为该目录挂载卷。
+模型的增删改和默认设置保存在数据库（`llm_provider_config` / `llm_global_setting`），保存后立即生效，无需重启。遇到连接问题时点击卡片上的「测试」按钮按能力逐项排查；后端日志中的业务异常信息会给出具体原因。语音 ASR/TTS 等运行时配置写入 `~/.interview-guide/` 目录，Docker 部署时如需持久化语音配置，建议为该目录挂载卷。
 
 ### Q: 语音面试无法识别或没有声音？
 

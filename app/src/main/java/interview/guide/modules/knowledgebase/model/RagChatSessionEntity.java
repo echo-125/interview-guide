@@ -81,6 +81,12 @@ public class RagChatSessionEntity {
     @Column(columnDefinition = "boolean default false")
     private Boolean isPinned = false;
 
+    /**
+     * 本会话使用的 LLM Provider（空 = 跟随系统默认）
+     */
+    @Column(name = "llm_provider", length = 50)
+    private String llmProvider;
+
     public enum SessionStatus {
         ACTIVE,    // 活跃会话
         ARCHIVED   // 已归档

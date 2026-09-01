@@ -11,8 +11,9 @@ import java.util.Map;
 @Component
 @ConfigurationProperties(prefix = "app.ai")
 public class LlmProviderProperties {
-    private String defaultProvider = "dashscope";
+    private String defaultProvider = "";
     private String defaultEmbeddingProvider;
+    private String defaultRerankProvider;
     private Integer embeddingDimensions = 1024;
     private Map<String, ProviderConfig> providers;
     private AdvisorConfig advisors = new AdvisorConfig();
@@ -25,9 +26,14 @@ public class LlmProviderProperties {
         private String baseUrl;
         private String apiKey;
         private String model;
+        private String apiFormat = "openai";
         private String embeddingModel;
         private Integer embeddingDimensions;
         private Boolean supportsEmbedding;
+        private String rerankModel;
+        private String rerankApiFormat = "cohere";
+        private Integer maxTokens;
+        private Double topP;
         private Double temperature;
     }
 

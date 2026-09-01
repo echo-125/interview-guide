@@ -6,12 +6,14 @@ import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
 import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.DefaultProviderDTO;
+import interview.guide.modules.llmprovider.dto.FetchModelsRequest;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
 import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
 import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
 import interview.guide.modules.llmprovider.service.LlmProviderConfigService;
+import interview.guide.modules.llmprovider.service.ModelCatalogService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ import java.util.List;
 public class LlmProviderController {
 
   private final LlmProviderConfigService configService;
+  private final ModelCatalogService modelCatalogService;
 
   @GetMapping("/list")
   @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 30)
@@ -99,6 +102,19 @@ public class LlmProviderController {
   public Result<Void> updateDefaultEmbeddingProvider(@RequestBody DefaultProviderDTO request) {
     configService.updateDefaultEmbeddingProvider(request);
     return Result.success();
+  }
+
+  @PutMapping("/default-rerank-provider")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+  public Result<Void> updateDefaultRerankProvider(@RequestBody DefaultProviderDTO request) {
+    configService.updateDefaultRerankProvider(request);
+    return Result.success();
+  }
+
+  @PostMapping("/models")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
+  public Result<List<String>> fetchModels(@RequestBody @Valid FetchModelsRequest request) {
+    return Result.success(modelCatalogService.fetchModels(request));
   }
 
   // ===== Voice ASR/TTS Config =====

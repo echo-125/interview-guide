@@ -290,6 +290,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
         questionCount: config.questionCount,
         followUpCount: config.followUpCount,
         categoryLimit: config.categoryLimit,
+        llmProvider: config.llmProvider,
       });
       setGenerateOpen(false);
       setGenerationStatus(result);

@@ -41,6 +41,10 @@ dependencies {
 
     // Spring AI 2.0 - OpenAI兼容模式 (阿里云DashScope)
     implementation "org.springframework.ai:spring-ai-starter-model-openai:${libs.versions.springAi.get()}"
+    // Spring AI 2.0 - Anthropic Messages API (官方 anthropic-java SDK 适配)
+    implementation "org.springframework.ai:spring-ai-starter-model-anthropic:${libs.versions.springAi.get()}"
+    // anthropic-java OkHttp 客户端实现（spring-ai-anthropic 只带 core，/v1/models 列表拉取需要完整客户端）
+    implementation 'com.anthropic:anthropic-java-client-okhttp:2.40.1'
     // Spring AI 2.0 - PostgreSQL Vector Store (pgvector)
     implementation "org.springframework.ai:spring-ai-starter-vector-store-pgvector:${libs.versions.springAi.get()}"
     // spring-ai-agent-utils core library

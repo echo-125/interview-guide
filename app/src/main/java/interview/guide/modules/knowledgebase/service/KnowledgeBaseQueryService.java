@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSecurityConstants;
+import interview.guide.common.ai.RerankClient;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
@@ -44,6 +45,7 @@ public class KnowledgeBaseQueryService {
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseListService listService;
     private final KnowledgeBaseCountService countService;
+    private final RerankClient rerankClient;
     private final PromptTemplate systemPromptTemplate;
     private final PromptTemplate userPromptTemplate;
     private final PromptTemplate rewritePromptTemplate;
@@ -54,18 +56,23 @@ public class KnowledgeBaseQueryService {
     private final int topkLong;
     private final double minScoreShort;
     private final double minScoreDefault;
+    private final boolean rerankEnabled;
+    private final int rerankTopN;
+    private final int rerankCandidateMultiplier;
 
     public KnowledgeBaseQueryService(
             LlmProviderRegistry llmProviderRegistry,
             KnowledgeBaseVectorService vectorService,
             KnowledgeBaseListService listService,
             KnowledgeBaseCountService countService,
+            RerankClient rerankClient,
             KnowledgeBaseQueryProperties queryProperties,
             ResourceLoader resourceLoader) throws IOException {
         this.llmProviderRegistry = llmProviderRegistry;
         this.vectorService = vectorService;
         this.listService = listService;
         this.countService = countService;
+        this.rerankClient = rerankClient;
         this.systemPromptTemplate = new PromptTemplate(
             resourceLoader.getResource(queryProperties.getSystemPromptPath())
                 .getContentAsString(StandardCharsets.UTF_8)
@@ -85,10 +92,17 @@ public class KnowledgeBaseQueryService {
         this.topkLong = queryProperties.getSearch().getTopkLong();
         this.minScoreShort = queryProperties.getSearch().getMinScoreShort();
         this.minScoreDefault = queryProperties.getSearch().getMinScoreDefault();
+        this.rerankEnabled = queryProperties.getRerank().isEnabled();
+        this.rerankTopN = queryProperties.getRerank().getTopN();
+        this.rerankCandidateMultiplier = Math.max(queryProperties.getRerank().getCandidateMultiplier(), 1);
     }
 
     private ChatClient getChatClient() {
         return llmProviderRegistry.getDefaultChatClient();
+    }
+
+    private ChatClient getChatClientOrDefault(String llmProvider) {
+        return llmProviderRegistry.getChatClientOrDefault(llmProvider);
     }
 
     /**
@@ -117,7 +131,7 @@ public class KnowledgeBaseQueryService {
 
         countService.updateQuestionCounts(knowledgeBaseIds);
 
-        QueryContext queryContext = buildQueryContext(question, List.of());
+        QueryContext queryContext = buildQueryContext(question, List.of(), null);
         List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
 
         if (!hasEffectiveHit(relevantDocs)) {
@@ -132,7 +146,7 @@ public class KnowledgeBaseQueryService {
         String userPrompt = buildUserPrompt(context, question);
 
         try {
-            String answer = getChatClient().prompt()
+            String answer = getChatClientOrDefault(queryContext.llmProvider()).prompt()
                     .system(systemPrompt)
                     .user(userPrompt)
                     .call()
@@ -202,8 +216,22 @@ public class KnowledgeBaseQueryService {
      * @return 流式响应
      */
     public Flux<String> answerQuestionStream(List<Long> knowledgeBaseIds, String question, List<Message> history) {
-        log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}", knowledgeBaseIds, question,
-                history != null ? history.size() : 0);
+        return answerQuestionStream(knowledgeBaseIds, question, history, null);
+    }
+
+    /**
+     * 流式查询知识库（SSE，支持多轮上下文与指定 Provider）
+     *
+     * @param knowledgeBaseIds 知识库ID列表
+     * @param question 用户问题
+     * @param history 历史对话消息（可选）
+     * @param llmProvider 使用的 Provider（空 = 跟随系统默认）
+     * @return 流式响应
+     */
+    public Flux<String> answerQuestionStream(List<Long> knowledgeBaseIds, String question,
+                                             List<Message> history, String llmProvider) {
+        log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}, provider={}", knowledgeBaseIds, question,
+                history != null ? history.size() : 0, llmProvider);
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
             return Flux.just(NO_RESULT_RESPONSE);
         }
@@ -214,7 +242,7 @@ public class KnowledgeBaseQueryService {
 
             // 2. Query rewrite + 动态参数检索
             List<Message> effectiveHistory = sanitizeHistory(history);
-            QueryContext queryContext = buildQueryContext(question, effectiveHistory);
+            QueryContext queryContext = buildQueryContext(question, effectiveHistory, llmProvider);
             List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
 
             if (!hasEffectiveHit(relevantDocs)) {
@@ -233,7 +261,7 @@ public class KnowledgeBaseQueryService {
             String userPrompt = buildUserPrompt(context, question);
 
             // 5. 流式调用（带历史上下文）+ 探测窗口归一化
-            var promptSpec = getChatClient().prompt().system(systemPrompt);
+            var promptSpec = getChatClientOrDefault(llmProvider).prompt().system(systemPrompt);
             if (!effectiveHistory.isEmpty()) {
                 promptSpec = promptSpec.messages(effectiveHistory);
             }
@@ -256,15 +284,15 @@ public class KnowledgeBaseQueryService {
         }
     }
 
-    private QueryContext buildQueryContext(String originalQuestion, List<Message> history) {
+    private QueryContext buildQueryContext(String originalQuestion, List<Message> history, String llmProvider) {
         String normalizedQuestion = normalizeQuestion(originalQuestion);
-        String rewrittenQuestion = rewriteQuestion(normalizedQuestion, history);
+        String rewrittenQuestion = rewriteQuestion(normalizedQuestion, history, llmProvider);
         Set<String> candidates = new LinkedHashSet<>();
         candidates.add(rewrittenQuestion);
         candidates.add(normalizedQuestion);
 
         SearchParams searchParams = resolveSearchParams(normalizedQuestion);
-        return new QueryContext(normalizedQuestion, new ArrayList<>(candidates), searchParams);
+        return new QueryContext(normalizedQuestion, new ArrayList<>(candidates), searchParams, llmProvider);
     }
 
     private List<Message> sanitizeHistory(List<Message> history) {
@@ -281,6 +309,9 @@ public class KnowledgeBaseQueryService {
 
 //    向量检索
     private List<Document> retrieveRelevantDocs(QueryContext queryContext, List<Long> knowledgeBaseIds) {
+        SearchParams searchParams = queryContext.searchParams();
+        boolean rerankActive = rerankEnabled && rerankClient.isAvailable();
+        int candidateTopK = rerankActive ? searchParams.topK() * rerankCandidateMultiplier : searchParams.topK();
         for (String candidateQuery : queryContext.candidateQueries()) {
             if (candidateQuery.isBlank()) {
                 continue;
@@ -288,15 +319,39 @@ public class KnowledgeBaseQueryService {
             List<Document> docs = vectorService.similaritySearch(
                 candidateQuery,
                 knowledgeBaseIds,
-                queryContext.searchParams().topK(),
-                queryContext.searchParams().minScore()
+                candidateTopK,
+                searchParams.minScore()
             );
             log.info("检索候选 query='{}'，命中 {} 条", candidateQuery, docs.size());
             if (hasEffectiveHit(docs)) {
-                return docs;
+                return rerankActive ? rerankDocs(candidateQuery, docs, searchParams.topK()) : docs;
             }
         }
         return List.of();
+    }
+
+    /**
+     * 用 Rerank 模型对向量召回结果重排；失败时回退原始向量排序，不影响问答可用性。
+     */
+    private List<Document> rerankDocs(String query, List<Document> docs, int topK) {
+        if (docs.size() <= 1) {
+            return docs;
+        }
+        try {
+            List<String> texts = docs.stream().map(Document::getText).toList();
+            int topN = rerankTopN > 0 ? Math.min(rerankTopN, docs.size()) : Math.min(topK, docs.size());
+            List<RerankClient.RerankResult> results = rerankClient.rerank(query, texts, topN);
+            List<Document> reranked = results.stream()
+                .filter(result -> result.index() >= 0 && result.index() < docs.size())
+                .map(result -> docs.get(result.index()))
+                .limit(topN)
+                .toList();
+            log.info("Rerank 完成: 候选 {} 条 -> 保留 {} 条", docs.size(), reranked.size());
+            return reranked.isEmpty() ? docs : reranked;
+        } catch (Exception e) {
+            log.warn("Rerank 失败，回退向量排序: {}", e.getMessage());
+            return docs;
+        }
     }
 
     private SearchParams resolveSearchParams(String question) {
@@ -311,7 +366,7 @@ public class KnowledgeBaseQueryService {
     }
 
 //    改写
-    private String rewriteQuestion(String question, List<Message> history) {
+    private String rewriteQuestion(String question, List<Message> history, String llmProvider) {
         if (!rewriteEnabled || question.isBlank()) {
             return question;
         }
@@ -320,7 +375,7 @@ public class KnowledgeBaseQueryService {
             variables.put("question", question);
             variables.put("history", formatHistoryForRewrite(history));
             String rewritePrompt = rewritePromptTemplate.render(variables);
-            String rewritten = getChatClient().prompt()
+            String rewritten = getChatClientOrDefault(llmProvider).prompt()
                 .user(rewritePrompt)
                 .call()
                 .content();
@@ -446,6 +501,7 @@ public class KnowledgeBaseQueryService {
     private record SearchParams(int topK, double minScore) {
     }
 
-    private record QueryContext(String originalQuestion, List<String> candidateQueries, SearchParams searchParams) {
+    private record QueryContext(String originalQuestion, List<String> candidateQueries, SearchParams searchParams,
+                                String llmProvider) {
     }
 }

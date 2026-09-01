@@ -79,30 +79,41 @@ public class ResumeGradingService {
     }
     
     /**
-     * 分析简历并返回评分和建议
-     * 
+     * 分析简历并返回评分和建议（使用系统默认 Provider）
+     *
      * @param resumeText 简历文本内容
      * @return 分析结果
      */
     public ResumeAnalysisResponse analyzeResume(String resumeText) {
-        log.info("开始分析简历，文本长度: {} 字符", resumeText.length());
-        
+        return analyzeResume(resumeText, null);
+    }
+
+    /**
+     * 分析简历并返回评分和建议
+     *
+     * @param resumeText  简历文本内容
+     * @param llmProvider 评分使用的 Provider（空 = 跟随系统默认）
+     * @return 分析结果
+     */
+    public ResumeAnalysisResponse analyzeResume(String resumeText, String llmProvider) {
+        log.info("开始分析简历，文本长度: {} 字符, provider: {}", resumeText.length(), llmProvider);
+
         try {
             // 加载系统提示词
             String systemPrompt = systemPromptTemplate.render();
-            
+
             // 加载用户提示词并填充变量
             Map<String, Object> variables = new HashMap<>();
             variables.put("resumeText", resumeText);
             String userPrompt = userPromptTemplate.render(variables);
-            
+
             // 添加格式指令到系统提示词
             String systemPromptWithFormat = systemPrompt + "\n\n" + outputConverter.getFormat();
-            
+
             // 调用AI
             ResumeAnalysisResponseDTO dto;
             try {
-                ChatClient chatClient = llmProviderRegistry.getDefaultChatClient();
+                ChatClient chatClient = llmProviderRegistry.getPlainChatClient(llmProvider);
                 dto = structuredOutputInvoker.invoke(
                     chatClient,
                     systemPromptWithFormat,

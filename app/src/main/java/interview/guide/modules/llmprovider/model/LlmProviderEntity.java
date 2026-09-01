@@ -11,7 +11,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -33,11 +32,28 @@ public class LlmProviderEntity {
   @Column(name = "api_key_nonce", nullable = false, length = 64)
   private String apiKeyNonce;
 
-  @Column(nullable = false, length = 128)
+  @Column(length = 128)
   private String model;
+
+  @Builder.Default
+  @Column(name = "api_format", nullable = false, length = 16)
+  private String apiFormat = "openai";
 
   @Column(name = "embedding_model", length = 128)
   private String embeddingModel;
+
+  @Column(name = "rerank_model", length = 128)
+  private String rerankModel;
+
+  @Builder.Default
+  @Column(name = "rerank_api_format", nullable = false, length = 16)
+  private String rerankApiFormat = "cohere";
+
+  @Column(name = "max_tokens")
+  private Integer maxTokens;
+
+  @Column(name = "top_p")
+  private Double topP;
 
   @Column(name = "embedding_dimensions")
   private Integer embeddingDimensions;

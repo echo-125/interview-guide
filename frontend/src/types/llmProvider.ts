@@ -2,21 +2,32 @@ export interface ProviderItem {
   id: string;
   baseUrl: string;
   maskedApiKey: string;
-  model: string;
+  model: string | null;
+  apiFormat: string;
   embeddingModel: string | null;
+  rerankModel: string | null;
+  rerankApiFormat: string;
+  maxTokens: number | null;
+  topP: number | null;
   embeddingDimensions: number | null;
   supportsEmbedding: boolean;
   temperature: number | null;
   defaultChatProvider: boolean;
   defaultEmbeddingProvider: boolean;
+  defaultRerankProvider: boolean;
 }
 
 export interface CreateProviderRequest {
   id: string;
   baseUrl: string;
   apiKey: string;
-  model: string;
+  model?: string;
+  apiFormat?: string;
   embeddingModel?: string;
+  rerankModel?: string;
+  rerankApiFormat?: string;
+  maxTokens?: number;
+  topP?: number;
   embeddingDimensions?: number;
   supportsEmbedding?: boolean;
   temperature?: number;
@@ -26,7 +37,12 @@ export interface UpdateProviderRequest {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  apiFormat?: string;
   embeddingModel?: string;
+  rerankModel?: string;
+  rerankApiFormat?: string;
+  maxTokens?: number;
+  topP?: number;
   embeddingDimensions?: number;
   supportsEmbedding?: boolean;
   temperature?: number;
@@ -41,6 +57,14 @@ export interface ProviderTestResult {
 export interface DefaultProvider {
   defaultProvider: string;
   defaultEmbeddingProvider: string;
+  defaultRerankProvider?: string | null;
+}
+
+export interface FetchModelsRequest {
+  providerId?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  apiFormat?: string;
 }
 
 export interface AsrConfig {

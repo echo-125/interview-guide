@@ -52,11 +52,13 @@ export interface RagChatSessionDetail {
 export const ragChatApi = {
   /**
    * 创建新会话
+   * @param llmProvider 本会话使用的 Provider（空 = 跟随系统默认）
    */
-  async createSession(knowledgeBaseIds: number[], title?: string): Promise<RagChatSession> {
+  async createSession(knowledgeBaseIds: number[], title?: string, llmProvider?: string): Promise<RagChatSession> {
     return request.post<RagChatSession>('/api/rag-chat/sessions', {
       knowledgeBaseIds,
       title,
+      llmProvider: llmProvider || undefined,
     });
   },
 

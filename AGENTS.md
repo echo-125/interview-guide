@@ -7,7 +7,7 @@ Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。
 ## Tech Stack
 
 - Backend: Spring Boot 4.1.0 / Java 25 / Gradle / Spring AI 2.0.0
-- Database: PostgreSQL + pgvector，向量维度 1024，距离类型 COSINE
+- Database: PostgreSQL + pgvector，向量维度可配置（`APP_VECTOR_DIMENSIONS`，默认 1024），距离类型 COSINE
 - Cache & async: Redis / Redisson / Redis Stream
 - Storage & parsing: RustFS/S3 / Apache Tika
 - Mapping & export: MapStruct / iText 8 / SpringDoc OpenAPI
@@ -59,6 +59,8 @@ docker compose -f docker-compose.dev.yml up -d
 ## AI And Async Rules
 
 - 获取聊天模型统一走 `LlmProviderRegistry.getChatClientOrDefault(provider)`。
+- Provider 配置按能力（聊天/向量/重排）拆分，加密存于 `llm_provider_config`；默认指针在 `llm_global_setting`，未显式设置时运行期自动回退到第一个启用且具备对应能力的 Provider，一个可用 Provider 都没有才抛 `BusinessException`。
+- 系统不内置预设模型，`application.yml` 不承载 Provider 定义（legacy YAML 轨仅供无数据库场景与测试使用）。
 - 结构化输出统一走 `StructuredOutputInvoker`，不要在业务代码里复制重试逻辑。
 - Prompt 模板放在 `resources/prompts/`，使用 StringTemplate `.st`。
 - LLM、S3、外部 HTTP 调用不得放在数据库事务内。

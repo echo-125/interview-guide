@@ -102,9 +102,9 @@ public class InterviewSessionEntity {
     @Column(length = 500)
     private String evaluateError;
 
-    // LLM提供商
+    // LLM提供商（空串表示跟随系统默认）
     @Column(length = 50)
-    private String llmProvider = "dashscope";
+    private String llmProvider = "";
 
     // 会话来源：NORMAL / KNOWLEDGE_BASE
     @Column(length = 32)

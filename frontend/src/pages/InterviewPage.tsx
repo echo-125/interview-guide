@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {motion} from 'framer-motion';
 import {interviewApi} from '../api/interview';
+import {getErrorMessage} from '../api/request';
 import ConfirmDialog from '../components/ConfirmDialog';
 import InterviewChatPanel from '../components/InterviewChatPanel';
 import InterviewPageHeader from '../components/InterviewPageHeader';
@@ -57,7 +58,8 @@ export default function Interview({
   const [answer, setAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  // 初始即为创建中：避免首帧渲染出空白（session 为空且无错误时曾直接 return null）
+  const [isCreating, setIsCreating] = useState(true);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const startedRef = useRef(false);
 
@@ -103,7 +105,8 @@ export default function Interview({
       initSession(newSession);
       onSessionCreated?.(newSession.sessionId);
     } catch (err) {
-      setError('创建面试失败，请重试');
+      // 展示后端返回的真实原因（如"尚未配置模型服务，请到「设置 → 模型服务」…"），便于用户自行处理
+      setError(`创建面试失败：${getErrorMessage(err)}`);
       console.error(err);
     } finally {
       setIsCreating(false);
@@ -262,7 +265,22 @@ export default function Interview({
     );
   }
 
-  if (!session || !currentQuestion) return null;
+  // 无可展示内容（如会话创建成功但没有题目），兜底提示而不是渲染空白页
+  if (!session || !currentQuestion) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center">
+          <p className="text-slate-500 dark:text-slate-400 mb-4">暂无可展示的面试内容</p>
+          <button
+            onClick={onBack}
+            className="px-5 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600"
+          >
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-10">

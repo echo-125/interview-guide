@@ -1,5 +1,6 @@
 package interview.guide.modules.resume.service;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.config.AppConfigProperties;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
@@ -36,6 +37,7 @@ public class ResumeUploadService {
     private final AnalyzeStreamProducer analyzeStreamProducer;
     private final ResumeRepository resumeRepository;
     private final TransactionalExecutor transactionalExecutor;
+    private final LlmProviderRegistry llmProviderRegistry;
 
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -43,10 +45,14 @@ public class ResumeUploadService {
      * 上传并分析简历（异步）
      *
      * @param file 简历文件
+     * @param llmProvider 分析使用的 Provider（空 = 跟随系统默认）
      * @return 上传结果（分析将异步进行）
      */
-    public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file) {
+    public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file,
+                                                String llmProvider) {
         long startTime = System.currentTimeMillis();
+        String provider = trimOrNull(llmProvider);
+        validateProvider(provider);
 
         // 1. 验证文件
         fileValidationService.validateFile(file, MAX_FILE_SIZE, "简历");
@@ -85,10 +91,10 @@ public class ResumeUploadService {
             fileKey, System.currentTimeMillis() - storageStart);
 
         // 6. 保存简历到数据库（状态为 PENDING）
-        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl);
+        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl, provider);
 
         // 7. 发送分析任务到 Redis Stream（异步处理）
-        analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText);
+        analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText, provider);
 
         long totalTime = System.currentTimeMillis() - startTime;
         log.info("简历上传处理完成: {}, resumeId={} - 总耗时: {}ms (解析+存储+入库)",
@@ -169,11 +175,15 @@ public class ResumeUploadService {
      * 从数据库获取简历文本并发送分析任务
      *
      * @param resumeId 简历ID
+     * @param llmProvider 分析使用的 Provider（空 = 沿用简历上次的 Provider，再退回系统默认）
      */
-    public void reanalyze(Long resumeId) {
+    public void reanalyze(Long resumeId, String llmProvider) {
         ResumeReanalyzeSource source = loadReanalyzeSource(resumeId);
+        String provider = trimOrNull(llmProvider) != null ? trimOrNull(llmProvider) : source.llmProvider();
+        validateProvider(provider);
 
-        log.info("开始重新分析简历: resumeId={}, filename={}", resumeId, source.originalFilename());
+        log.info("开始重新分析简历: resumeId={}, filename={}, provider={}",
+            resumeId, source.originalFilename(), provider);
 
         String resumeText = source.resumeText();
         boolean shouldCacheResumeText = !hasText(resumeText);
@@ -188,10 +198,10 @@ public class ResumeUploadService {
 
         String taskContent = resumeText;
         transactionalExecutor.run(
-            () -> updateResumeForReanalysis(resumeId, taskContent, shouldCacheResumeText));
+            () -> updateResumeForReanalysis(resumeId, taskContent, shouldCacheResumeText, provider));
 
         // 事务提交后再发送分析任务到 Stream
-        analyzeStreamProducer.sendAnalyzeTask(resumeId, taskContent);
+        analyzeStreamProducer.sendAnalyzeTask(resumeId, taskContent, provider);
 
         log.info("重新分析任务已发送: resumeId={}", resumeId);
     }
@@ -202,14 +212,16 @@ public class ResumeUploadService {
         return new ResumeReanalyzeSource(
             resume.getOriginalFilename(),
             resume.getStorageKey(),
-            resume.getResumeText()
+            resume.getResumeText(),
+            resume.getLlmProvider()
         );
     }
 
     private void updateResumeForReanalysis(
         Long resumeId,
         String resumeText,
-        boolean shouldCacheResumeText
+        boolean shouldCacheResumeText,
+        String llmProvider
     ) {
         ResumeEntity resume = resumeRepository.findById(resumeId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在"));
@@ -217,9 +229,28 @@ public class ResumeUploadService {
         if (shouldCacheResumeText || !hasText(resume.getResumeText())) {
             resume.setResumeText(resumeText);
         }
+        resume.setLlmProvider(trimOrNull(llmProvider));
         resume.setAnalyzeStatus(AsyncTaskStatus.PENDING);
         resume.setAnalyzeError(null);
         resumeRepository.save(resume);
+    }
+
+    /**
+     * 校验 Provider 存在（空值 = 跟随系统默认，直接放行），避免任务入队后才静默失败。
+     */
+    private void validateProvider(String llmProvider) {
+        if (trimOrNull(llmProvider) != null && !llmProviderRegistry.hasProvider(trimOrNull(llmProvider))) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                "LLM Provider '" + llmProvider + "' 不存在或未启用");
+        }
+    }
+
+    private String trimOrNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private boolean hasText(String value) {
@@ -229,7 +260,8 @@ public class ResumeUploadService {
     private record ResumeReanalyzeSource(
         String originalFilename,
         String storageKey,
-        String resumeText
+        String resumeText,
+        String llmProvider
     ) {
     }
 }

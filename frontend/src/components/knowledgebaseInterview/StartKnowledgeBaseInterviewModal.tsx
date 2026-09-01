@@ -17,12 +17,15 @@ import {
   getSelectedCapacity,
   getStrictCapacityMessage,
 } from './interviewCapacity';
+import { useChatProviders } from '../../hooks/useChatProviders';
+import LlmProviderSelect from '../LlmProviderSelect';
 
 export interface StartInterviewConfig {
   category: string;  // 空字符串表示覆盖全部方向
   difficulty: string;
   mainQuestionCount: number;
   followUpCount: number;
+  llmProvider?: string;
 }
 
 interface StartKnowledgeBaseInterviewModalProps {
@@ -48,10 +51,12 @@ export default function StartKnowledgeBaseInterviewModal({
   const [difficulty, setDifficulty] = useState(defaultDifficulty);
   const [mainQuestionCount, setMainQuestionCount] = useState(5);
   const [followUpCount, setFollowUpCount] = useState(1);
+  const [llmProvider, setLlmProvider] = useState('');
   const [capacity, setCapacity] =
     useState<KnowledgeBaseInterviewCapacityResponse | null>(null);
   const [loadingCapacity, setLoadingCapacity] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const chatProviders = useChatProviders();
 
   useEffect(() => {
     if (!open || !knowledgeBase) {
@@ -63,6 +68,7 @@ export default function StartKnowledgeBaseInterviewModal({
     setDifficulty(defaultDifficulty);
     setMainQuestionCount(5);
     setFollowUpCount(1);
+    setLlmProvider('');
   }, [open, knowledgeBase, defaultDifficulty]);
 
   useEffect(() => {
@@ -213,6 +219,17 @@ export default function StartKnowledgeBaseInterviewModal({
                   </label>
                 </div>
 
+                <label className="block">
+                  <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                    面试模型 <span className="text-slate-400 font-normal">(选填，默认跟随系统设置)</span>
+                  </span>
+                  <LlmProviderSelect
+                    providers={chatProviders}
+                    value={llmProvider}
+                    onChange={setLlmProvider}
+                  />
+                </label>
+
                 <div className="rounded-lg bg-slate-50 dark:bg-slate-900 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                   {loadingCapacity ? (
                     <span className="inline-flex items-center gap-2">
@@ -258,7 +275,13 @@ export default function StartKnowledgeBaseInterviewModal({
                 </button>
                 <motion.button
                   type="button"
-                  onClick={() => onStart({ category, difficulty, mainQuestionCount, followUpCount })}
+                  onClick={() => onStart({
+                    category,
+                    difficulty,
+                    mainQuestionCount,
+                    followUpCount,
+                    llmProvider: llmProvider || undefined,
+                  })}
                   disabled={!canStart || starting || loadingCapacity}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}

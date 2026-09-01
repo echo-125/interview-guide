@@ -6,10 +6,15 @@ public record CreateProviderRequest(
     @NotBlank String id,
     @NotBlank String baseUrl,
     @NotBlank String apiKey,
-    @NotBlank String model,
+    String model,
+    String apiFormat,
     String embeddingModel,
     Integer embeddingDimensions,
     Boolean supportsEmbedding,
+    String rerankModel,
+    String rerankApiFormat,
+    Integer maxTokens,
+    Double topP,
     Double temperature
 ) {
     public CreateProviderRequest(
@@ -20,6 +25,7 @@ public record CreateProviderRequest(
         String embeddingModel,
         Double temperature
     ) {
-        this(id, baseUrl, apiKey, model, embeddingModel, null, null, temperature);
+        this(id, baseUrl, apiKey, model, null, embeddingModel, null, null,
+            null, null, null, null, temperature);
     }
 }

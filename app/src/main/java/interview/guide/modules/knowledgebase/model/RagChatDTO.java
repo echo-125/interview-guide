@@ -20,7 +20,9 @@ public class RagChatDTO {
         @NotEmpty(message = "至少选择一个知识库")
         List<Long> knowledgeBaseIds,
 
-        String title  // 可选，为空则自动生成
+        String title,  // 可选，为空则自动生成
+
+        String llmProvider  // 可选，本会话使用的 Provider，空 = 跟随系统默认
     ) {}
 
     /**

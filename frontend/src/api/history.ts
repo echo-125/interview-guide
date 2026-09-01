@@ -146,8 +146,10 @@ export const historyApi = {
 
   /**
    * 重新分析简历
+   * @param llmProvider 分析使用的 Provider（空 = 沿用简历上次的 Provider）
    */
-  async reanalyze(id: number): Promise<void> {
-    return request.post(`/api/resumes/${id}/reanalyze`);
+  async reanalyze(id: number, llmProvider?: string): Promise<void> {
+    const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
+    return request.post(`/api/resumes/${id}/reanalyze${query}`);
   },
 };

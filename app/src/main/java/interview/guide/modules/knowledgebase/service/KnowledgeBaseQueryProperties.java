@@ -12,6 +12,7 @@ public class KnowledgeBaseQueryProperties {
     private Rewrite rewrite = new Rewrite();
     private Search search = new Search();
     private History history = new History();
+    private Rerank rerank = new Rerank();
     private String systemPromptPath = "classpath:prompts/knowledgebase-query-system.st";
     private String userPromptPath = "classpath:prompts/knowledgebase-query-user.st";
     private String rewritePromptPath = "classpath:prompts/knowledgebase-query-rewrite.st";
@@ -35,5 +36,15 @@ public class KnowledgeBaseQueryProperties {
     public static class History {
         private boolean enabled = true;
         private int maxMessages = 10;
+    }
+
+    /**
+     * 向量召回后用 Rerank 模型重排；未配置 default-rerank-provider 时自动关闭。
+     */
+    @Data
+    public static class Rerank {
+        private boolean enabled = true;
+        private int topN = 0;
+        private int candidateMultiplier = 3;
     }
 }

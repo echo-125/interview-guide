@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { resumeApi } from '../api/resume';
 import { getErrorMessage } from '../api/request';
+import { useChatProviders } from '../hooks/useChatProviders';
+import LlmProviderSelect from '../components/LlmProviderSelect';
 import FileUploadCard from '../components/FileUploadCard';
 
 interface UploadPageProps {
@@ -10,13 +12,15 @@ interface UploadPageProps {
 export default function UploadPage({ onUploadComplete }: UploadPageProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [llmProvider, setLlmProvider] = useState('');
+  const chatProviders = useChatProviders();
 
   const handleUpload = async (file: File) => {
     setUploading(true);
     setError('');
 
     try {
-      const data = await resumeApi.uploadAndAnalyze(file);
+      const data = await resumeApi.uploadAndAnalyze(file, llmProvider || undefined);
 
       // 异步模式：只检查上传是否成功（storage 信息）
       if (!data.storage || !data.storage.resumeId) {
@@ -32,17 +36,29 @@ export default function UploadPage({ onUploadComplete }: UploadPageProps) {
   };
 
   return (
-    <FileUploadCard
-      title="开始您的 AI 模拟面试"
-      subtitle="上传 PDF 或 Word 简历，AI 将为您定制专属面试方案"
-      accept=".pdf,.doc,.docx,.txt"
-      formatHint="支持 PDF, DOCX, TXT"
-      maxSizeHint="最大 10MB"
-      uploading={uploading}
-      uploadButtonText="开始上传"
-      selectButtonText="选择简历文件"
-      error={error}
-      onUpload={handleUpload}
-    />
+    <div className="space-y-4">
+      <FileUploadCard
+        title="开始您的 AI 模拟面试"
+        subtitle="上传 PDF 或 Word 简历，AI 将为您定制专属面试方案"
+        accept=".pdf,.doc,.docx,.txt"
+        formatHint="支持 PDF, DOCX, TXT"
+        maxSizeHint="最大 10MB"
+        uploading={uploading}
+        uploadButtonText="开始上传"
+        selectButtonText="选择简历文件"
+        error={error}
+        onUpload={handleUpload}
+      />
+      <div className="max-w-xl mx-auto">
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          分析模型 <span className="text-slate-400 font-normal">(选填，默认跟随系统设置)</span>
+        </label>
+        <LlmProviderSelect
+          providers={chatProviders}
+          value={llmProvider}
+          onChange={setLlmProvider}
+        />
+      </div>
+    </div>
   );
 }

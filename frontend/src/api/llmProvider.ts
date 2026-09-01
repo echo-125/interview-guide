@@ -5,6 +5,7 @@ import type {
   UpdateProviderRequest,
   ProviderTestResult,
   DefaultProvider,
+  FetchModelsRequest,
   AsrConfig,
   TtsConfig,
   AsrConfigRequest,
@@ -39,6 +40,12 @@ export const llmProviderApi = {
 
   updateDefaultEmbeddingProvider: (data: DefaultProvider) =>
     request.put<void>('/api/llm-provider/default-embedding-provider', data),
+
+  updateDefaultRerankProvider: (data: DefaultProvider) =>
+    request.put<void>('/api/llm-provider/default-rerank-provider', data),
+
+  fetchModels: (data: FetchModelsRequest) =>
+    request.post<string[]>('/api/llm-provider/models', data),
 
   // Voice ASR/TTS Config
   getAsrConfig: () =>

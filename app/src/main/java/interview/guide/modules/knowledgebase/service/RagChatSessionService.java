@@ -1,5 +1,6 @@
 package interview.guide.modules.knowledgebase.service;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.mapper.KnowledgeBaseMapper;
@@ -44,6 +45,7 @@ public class RagChatSessionService {
     private final RagChatMapper ragChatMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseQueryProperties queryProperties;
+    private final LlmProviderRegistry llmProviderRegistry;
 
     /**
      * 创建新会话
@@ -58,16 +60,24 @@ public class RagChatSessionService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "部分知识库不存在");
         }
 
+        String llmProvider = normalizeProvider(request.llmProvider());
+        if (llmProvider != null && !llmProviderRegistry.hasProvider(llmProvider)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                "LLM Provider '" + llmProvider + "' 不存在或未启用");
+        }
+
         // 创建会话
         RagChatSessionEntity session = new RagChatSessionEntity();
         session.setTitle(request.title() != null && !request.title().isBlank()
             ? request.title()
             : generateTitle(knowledgeBases));
         session.setKnowledgeBases(new HashSet<>(knowledgeBases));
+        session.setLlmProvider(llmProvider);
 
         session = sessionRepository.save(session);
 
-        log.info("创建 RAG 聊天会话: id={}, title={}", session.getId(), session.getTitle());
+        log.info("创建 RAG 聊天会话: id={}, title={}, provider={}",
+            session.getId(), session.getTitle(), llmProvider);
 
         return ragChatMapper.toSessionDTO(session);
     }
@@ -170,8 +180,9 @@ public class RagChatSessionService {
         List<Message> history = queryProperties.getHistory().isEnabled()
             ? loadHistoryMessages(sessionId) : List.of();
 
-        log.info("加载历史上下文: sessionId={}, historySize={}", sessionId, history.size());
-        return queryService.answerQuestionStream(kbIds, question, history);
+        log.info("加载历史上下文: sessionId={}, historySize={}, provider={}",
+            sessionId, history.size(), session.getLlmProvider());
+        return queryService.answerQuestionStream(kbIds, question, history, session.getLlmProvider());
     }
 
     /**
@@ -235,6 +246,13 @@ public class RagChatSessionService {
     }
 
     // ========== 私有方法 ==========
+
+    private String normalizeProvider(String provider) {
+        if (provider == null || provider.isBlank()) {
+            return null;
+        }
+        return provider.trim();
+    }
 
     /**
      * 加载会话中最近的历史消息作为多轮上下文。

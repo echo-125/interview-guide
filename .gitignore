@@ -28,3 +28,8 @@ frontend/test-results/
 frontend/playwright-report/
 /.agents
 skills-lock.json
+
+# 本地临时文件
+bootrun.log
+test-connectivity.ps1
+.zcode/

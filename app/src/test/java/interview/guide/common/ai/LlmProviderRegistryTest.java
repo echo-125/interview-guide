@@ -121,7 +121,19 @@ class LlmProviderRegistryTest {
         when(properties.getProviders()).thenReturn(new HashMap<>());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> registry.getChatClient("unknown"));
+        assertThrows(BusinessException.class, () -> registry.getChatClient("unknown"));
+    }
+
+    @Test
+    @DisplayName("零配置时抛出引导用户去设置页配置模型的业务异常")
+    void testGetChatClient_NothingConfigured() {
+        // Given：无任何 Provider，默认指针为空（预设移除后的全新状态）
+        when(properties.getProviders()).thenReturn(new HashMap<>());
+        when(properties.getDefaultProvider()).thenReturn("");
+
+        // When & Then
+        BusinessException ex = assertThrows(BusinessException.class, registry::getDefaultChatClient);
+        assertTrue(ex.getMessage().contains("设置"), "错误信息应引导用户到设置页配置: " + ex.getMessage());
     }
 
     @Test
@@ -235,6 +247,80 @@ class LlmProviderRegistryTest {
             assertNotNull(client);
             assertSame(client, registry.getChatClient("dashscope"));
         }
+    }
+
+    @Test
+    @DisplayName("纯向量 Provider 调 getChatClient 抛出业务异常")
+    void embeddingOnlyProviderChatClientThrows() {
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("http://localhost:1234/v1");
+        config.setApiKey("key");
+        config.setEmbeddingModel("text-embedding-v3");
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put("emb-only", config);
+        when(properties.getProviders()).thenReturn(providers);
+
+        assertThrows(BusinessException.class, () -> registry.getChatClient("emb-only"));
+    }
+
+    @Test
+    @DisplayName("纯向量 Provider 可创建 EmbeddingModel")
+    void embeddingOnlyProviderEmbeddingModelWorks() {
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("http://localhost:1234/v1");
+        config.setApiKey("key");
+        config.setEmbeddingModel("text-embedding-v3");
+        config.setEmbeddingDimensions(1024);
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put("emb-only", config);
+        when(properties.getProviders()).thenReturn(providers);
+
+        assertNotNull(registry.getEmbeddingModel("emb-only"));
+    }
+
+    @Test
+    @DisplayName("默认 Rerank Provider：未配置时返回空")
+    void defaultRerankProviderEmptyWhenNotConfigured() {
+        when(properties.getDefaultRerankProvider()).thenReturn(null);
+
+        assertTrue(registry.getDefaultRerankProvider().isEmpty());
+    }
+
+    @Test
+    @DisplayName("默认 Rerank Provider：配置后返回快照")
+    void defaultRerankProviderResolved() {
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("https://api.example.com/v1");
+        config.setApiKey("key");
+        config.setRerankModel("bge-reranker-v2-m3");
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put("rerank-p", config);
+        when(properties.getDefaultRerankProvider()).thenReturn("rerank-p");
+        when(properties.getProviders()).thenReturn(providers);
+
+        var snapshot = registry.getDefaultRerankProvider();
+
+        assertTrue(snapshot.isPresent());
+        assertEquals("bge-reranker-v2-m3", snapshot.get().rerankModel());
+        assertEquals("cohere", snapshot.get().rerankApiFormat());
+    }
+
+    @Test
+    @DisplayName("默认 Rerank Provider：目标 Provider 缺少 rerank 模型时返回空")
+    void defaultRerankProviderEmptyWithoutRerankModel() {
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("https://api.example.com/v1");
+        config.setApiKey("key");
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put("rerank-p", config);
+        when(properties.getDefaultRerankProvider()).thenReturn("rerank-p");
+        when(properties.getProviders()).thenReturn(providers);
+
+        assertTrue(registry.getDefaultRerankProvider().isEmpty());
     }
 
     @Test

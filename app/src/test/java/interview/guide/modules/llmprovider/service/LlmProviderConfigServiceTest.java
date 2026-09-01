@@ -214,7 +214,7 @@ class LlmProviderConfigServiceTest {
         }
 
         @Test
-        @DisplayName("updateProvider 拒绝空串 baseUrl / model / apiKey")
+        @DisplayName("updateProvider 拒绝空串 baseUrl / apiKey")
         void updateProviderRejectsBlankRequiredFields() {
             Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
             providers.put("dashscope",
@@ -227,9 +227,6 @@ class LlmProviderConfigServiceTest {
             assertThrows(BusinessException.class, () ->
                 service.updateProvider("dashscope",
                     new UpdateProviderRequest("   ", null, null, null, null)));
-            assertThrows(BusinessException.class, () ->
-                service.updateProvider("dashscope",
-                    new UpdateProviderRequest(null, null, "", null, null)));
             assertThrows(BusinessException.class, () ->
                 service.updateProvider("dashscope",
                     new UpdateProviderRequest(null, "  ", null, null, null)));
@@ -419,6 +416,183 @@ class LlmProviderConfigServiceTest {
 
             assertDoesNotThrow(() -> nullYamlService.createProvider(
                 new CreateProviderRequest("test", "http://localhost", "key", "model", null, null)));
+        }
+    }
+
+    @Nested
+    @DisplayName("Provider 能力拆分")
+    class CapabilitySplit {
+
+        @Test
+        @DisplayName("createProvider 支持纯向量 Provider（不填聊天模型），YAML 不写 model key")
+        void createEmbeddingOnlyProviderWithoutChatModel() throws IOException {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.createProvider(new CreateProviderRequest(
+                "emb-only", "https://api.example.com/v1", "key",
+                null, null, "text-embedding-v3", 1024, true,
+                null, null, null, null, null));
+
+            assertTrue(providers.containsKey("emb-only"));
+            assertNull(providers.get("emb-only").getModel());
+            assertEquals("text-embedding-v3", providers.get("emb-only").getEmbeddingModel());
+            String yaml = Files.readString(Path.of(properties.getConfigYamlPath()), StandardCharsets.UTF_8);
+            assertFalse(hasYamlKey(yaml, "model"), "纯向量 Provider 不应写 model key");
+            assertTrue(hasYamlKey(yaml, "embedding-model"));
+        }
+
+        @Test
+        @DisplayName("createProvider 聊天/向量/Rerank 都为空时拒绝")
+        void createProviderRejectsWhenNoCapability() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                service.createProvider(new CreateProviderRequest(
+                    "empty", "https://api.example.com/v1", "key",
+                    null, null, null, null, null, null, null, null, null, null)));
+
+            assertEquals(ErrorCode.BAD_REQUEST.getCode(), exception.getCode());
+        }
+
+        @Test
+        @DisplayName("向量模型名含 embed（如 Ollama 的 qwen3-embedding:4b）不会被误判为聊天模型")
+        void createProviderAcceptsEmbeddingModelWithEmbedInName() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.createProvider(new CreateProviderRequest(
+                "ollama-emb", "http://localhost:11434/v1", "key",
+                null, null, "qwen3-embedding:4b", 1024, true,
+                null, null, null, null, null));
+
+            assertEquals("qwen3-embedding:4b", providers.get("ollama-emb").getEmbeddingModel());
+        }
+
+        @Test
+        @DisplayName("向量模型填真实聊天模型名（如 qwen-plus）仍然拒绝")
+        void createProviderRejectsChatModelAsEmbeddingModel() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                service.createProvider(new CreateProviderRequest(
+                    "bad-emb", "https://api.example.com/v1", "key",
+                    null, null, "qwen-plus", 1024, true,
+                    null, null, null, null, null)));
+
+            assertEquals(ErrorCode.BAD_REQUEST.getCode(), exception.getCode());
+        }
+
+        @Test
+        @DisplayName("createProvider 支持纯 Rerank Provider 并写入协议格式")
+        void createRerankOnlyProvider() throws IOException {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.createProvider(new CreateProviderRequest(
+                "rerank-only", "https://api.example.com/v1", "key",
+                null, null, null, null, null,
+                "bge-reranker-v2-m3", "cohere", null, null, null));
+
+            assertEquals("bge-reranker-v2-m3", providers.get("rerank-only").getRerankModel());
+            String yaml = Files.readString(Path.of(properties.getConfigYamlPath()), StandardCharsets.UTF_8);
+            assertTrue(hasYamlKey(yaml, "rerank-model"));
+            assertTrue(hasYamlKey(yaml, "rerank-api-format"));
+        }
+
+        @Test
+        @DisplayName("createProvider 支持 anthropic 聊天协议格式")
+        void createAnthropicProvider() throws IOException {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.createProvider(new CreateProviderRequest(
+                "claude", "https://api.anthropic.com", "key",
+                "claude-sonnet-4-5", "anthropic", null, null, null,
+                null, null, 4096, 0.9, null));
+
+            assertEquals("anthropic", providers.get("claude").getApiFormat());
+            assertEquals(Integer.valueOf(4096), providers.get("claude").getMaxTokens());
+            assertEquals(Double.valueOf(0.9), providers.get("claude").getTopP());
+            String yaml = Files.readString(Path.of(properties.getConfigYamlPath()), StandardCharsets.UTF_8);
+            assertTrue(hasYamlKey(yaml, "api-format"));
+        }
+
+        @Test
+        @DisplayName("createProvider 拒绝非法协议格式")
+        void createProviderRejectsInvalidApiFormat() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            when(properties.getProviders()).thenReturn(providers);
+
+            assertThrows(BusinessException.class, () ->
+                service.createProvider(new CreateProviderRequest(
+                    "bad", "https://api.example.com/v1", "key",
+                    "model", "grpc", null, null, null, null, null, null, null, null)));
+        }
+
+        @Test
+        @DisplayName("updateProvider 允许清空聊天模型（仍有向量能力时）")
+        void updateProviderAllowsClearingChatModel() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            LlmProviderProperties.ProviderConfig config = createProviderConfig(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1", "secret", "qwen-plus", "text-embedding-v3");
+            providers.put("dashscope", config);
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.updateProvider("dashscope", new UpdateProviderRequest(null, null, "", null, null));
+
+            assertNull(config.getModel());
+            verify(registry).reload();
+        }
+
+        @Test
+        @DisplayName("updateProvider 清空所有能力时拒绝")
+        void updateProviderRejectsWhenAllCapabilitiesCleared() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            providers.put("dashscope",
+                createProviderConfig("https://dashscope.aliyuncs.com", "secret", "qwen-plus", null));
+            when(properties.getProviders()).thenReturn(providers);
+
+            assertThrows(BusinessException.class, () ->
+                service.updateProvider("dashscope", new UpdateProviderRequest(null, null, "", null, null)));
+        }
+
+        @Test
+        @DisplayName("updateDefaultRerankProvider 未配置 Rerank 时拒绝")
+        void updateDefaultRerankProviderRejectsMissingRerank() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            providers.put("chat-only",
+                createProviderConfig("https://api.example.com/v1", "key", "model-x", null));
+            when(properties.getProviders()).thenReturn(providers);
+
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                service.updateDefaultRerankProvider(new DefaultProviderDTO(null, null, "chat-only")));
+
+            assertEquals(ErrorCode.BAD_REQUEST.getCode(), exception.getCode());
+        }
+
+        @Test
+        @DisplayName("updateDefaultRerankProvider 成功写入默认重排服务")
+        void updateDefaultRerankProviderPersistsValue() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            LlmProviderProperties.ProviderConfig config =
+                createProviderConfig("https://api.example.com/v1", "key", null, null);
+            config.setRerankModel("bge-reranker-v2-m3");
+            providers.put("rerank-p", config);
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.updateDefaultRerankProvider(new DefaultProviderDTO(null, null, "rerank-p"));
+
+            verify(properties).setDefaultRerankProvider("rerank-p");
+            verify(registry).reload();
+        }
+
+        private boolean hasYamlKey(String yamlContent, String key) {
+            return yamlContent.lines()
+                .map(String::trim)
+                .anyMatch(line -> line.startsWith(key + ":"));
         }
     }
 
