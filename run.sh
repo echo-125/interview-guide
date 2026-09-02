@@ -1,11 +1,27 @@
 #!/bin/bash
 echo "Starting Interview Guide (Low Memory Mode)..."
+cd "$(dirname "$0")" || exit 1
 
-# 低内存模式参数说明：
-#   -Xms128m -Xmx384m          堆内存限制在 128~384MB
-#   -XX:MaxMetaspaceSize=256m  元空间上限（Spring Boot + 全部依赖的类元数据）
-#   -Xss256k                   单线程栈缩小
-#   -XX:+UseSerialGC           单核低内存场景最省内存的 GC
-# 如需调大内存，优先修改 -Xmx 与 -XX:MaxMetaspaceSize。
+# JVM flags:
+#   -Xms128m -Xmx384m          heap capped at 128-384MB
+#   -XX:MaxMetaspaceSize=256m  class metadata cap
+#   -Xss256k                   smaller thread stacks
+#   -XX:+UseSerialGC           smallest-footprint GC for 1-core / low-RAM hosts
+# To give the app more memory, raise -Xmx / -XX:MaxMetaspaceSize first.
+
+# Load .env (KEY=VALUE, '#' comments) so the jar sees POSTGRES_*/REDIS_*/AI_* vars.
+# Strip CR to tolerate CRLF files, and strip a wrapping pair of quotes.
+set -a
+if [ -f .env ]; then
+  while IFS='=' read -r _k _v; do
+    case "$_k" in ''|\#*) continue ;; esac
+    _v="${_v%$'\r'}"
+    case "$_v" in \"*\") _v="${_v#\"}" ; _v="${_v%\"}" ;; \'*\') _v="${_v#\'}" ; _v="${_v%\'}" ;; esac
+    export "$_k=$_v"
+  done < .env
+else
+  echo "[WARN] .env not found beside run.sh, falling back to application.yml defaults."
+fi
+set +a
 
 exec java -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -jar app/build/libs/app.jar
