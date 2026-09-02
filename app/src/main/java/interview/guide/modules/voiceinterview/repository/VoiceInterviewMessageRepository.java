@@ -41,8 +41,8 @@ public interface VoiceInterviewMessageRepository extends JpaRepository<VoiceInte
      * 批量统计多个会话的对话消息数（排除 SUMMARY），避免 N+1。
      * 返回 [(sessionId, count)] 投影。
      */
-    @Query("SELECT m.session.id, COUNT(m) FROM VoiceInterviewMessageEntity m "
-        + "WHERE m.session.id IN :sessionIds AND m.messageType <> :excludedType GROUP BY m.session.id")
+    @Query("SELECT m.sessionId, COUNT(m) FROM VoiceInterviewMessageEntity m "
+        + "WHERE m.sessionId IN :sessionIds AND m.messageType <> :excludedType GROUP BY m.sessionId")
     List<Object[]> countDialogueBySessionIds(@Param("sessionIds") List<Long> sessionIds,
                                              @Param("excludedType") String excludedType);
 }

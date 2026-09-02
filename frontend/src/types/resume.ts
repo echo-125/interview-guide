@@ -43,3 +43,34 @@ export interface ApiError {
   detectedType?: string;
   allowedTypes?: string[];
 }
+
+// ===== JD vs 简历匹配诊断 =====
+
+export interface JdSkillGap {
+  gapSkill: string;        // 缺口技能
+  jdRequirement: string;   // JD 中的要求
+  resumeEvidence: string;  // 简历中的覆盖情况
+  severity: string;        // 严重程度：高/中/低
+}
+
+export interface JdWeakness {
+  area: string;            // 薄弱领域
+  description: string;     // 问题描述
+  advice: string;          // 补强建议
+}
+
+export type JdAnalysisStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface JdAnalysisRecord {
+  id: number;
+  resumeId: number;
+  jdText: string | null;
+  matchScore: number | null;
+  summary: string | null;
+  skillGaps: JdSkillGap[];
+  weaknesses: JdWeakness[];
+  recommendations: string[];
+  analysisStatus: JdAnalysisStatus;
+  analysisError: string | null;
+  createdAt: string;
+}

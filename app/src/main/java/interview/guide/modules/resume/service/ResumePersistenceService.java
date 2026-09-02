@@ -7,7 +7,9 @@ import interview.guide.infrastructure.mapper.ResumeMapper;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeAnalysisEntity;
 import interview.guide.modules.resume.model.ResumeEntity;
+import interview.guide.modules.resume.model.ResumeJdAnalysisEntity;
 import interview.guide.modules.resume.repository.ResumeAnalysisRepository;
+import interview.guide.modules.resume.repository.ResumeJdAnalysisRepository;
 import interview.guide.modules.resume.repository.ResumeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class ResumePersistenceService {
 
     private final ResumeRepository resumeRepository;
     private final ResumeAnalysisRepository analysisRepository;
+    private final ResumeJdAnalysisRepository jdAnalysisRepository;
     private final ObjectMapper objectMapper;
     private final ResumeMapper resumeMapper;
     private final FileHashService fileHashService;
@@ -209,6 +212,14 @@ public class ResumePersistenceService {
         if (!analyses.isEmpty()) {
             analysisRepository.deleteAll(analyses);
             log.info("已删除 {} 条简历分析记录", analyses.size());
+        }
+
+        // 1.1 删除所有 JD 匹配诊断记录
+        List<ResumeJdAnalysisEntity> jdAnalyses =
+            jdAnalysisRepository.findByResumeIdOrderByCreatedAtDescIdDesc(id);
+        if (!jdAnalyses.isEmpty()) {
+            jdAnalysisRepository.deleteAll(jdAnalyses);
+            log.info("已删除 {} 条 JD 匹配诊断记录", jdAnalyses.size());
         }
         
         // 2. 删除简历实体（面试会话会在服务层删除）

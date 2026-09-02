@@ -5,9 +5,10 @@ import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
 import AnalysisPanel from '../components/AnalysisPanel';
 import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
+import JdMatchPanel from '../components/JdMatchPanel';
 import {useToast} from '../components/Toast';
 import {formatDateOnly} from '../utils/date';
-import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic} from 'lucide-react';
+import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic, Target} from 'lucide-react';
 
 interface ResumeDetailPageProps {
   resumeId: number;
@@ -15,7 +16,7 @@ interface ResumeDetailPageProps {
   onStartInterview: (resumeId: number) => void;
 }
 
-type TabType = 'analysis' | 'interview';
+type TabType = 'analysis' | 'jd' | 'interview';
 type DetailViewType = 'list' | 'interviewDetail';
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
@@ -178,7 +179,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   };
 
   const handleTabChange = (tab: TabType) => {
-    const newPage = tab === 'analysis' ? 0 : 1;
+    const newPage = tab === 'analysis' ? 0 : tab === 'jd' ? 1 : 2;
     setPage([newPage, newPage > page ? 1 : -1]);
     setActiveTab(tab);
     setDetailView('list');
@@ -224,6 +225,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const latestAnalysis = resume.analyses?.[0];
   const tabs = [
     { id: 'analysis' as const, label: '简历分析', icon: CheckSquare },
+    { id: 'jd' as const, label: 'JD 匹配', icon: Target },
     { id: 'interview' as const, label: '面试记录', icon: MessageSquare, count: resume.interviews?.length || 0 },
   ];
 
@@ -342,6 +344,8 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
                   onReanalyze={handleReanalyze}
                   reanalyzing={reanalyzing}
                 />
+              ) : activeTab === 'jd' ? (
+                <JdMatchPanel resumeId={resumeId} />
               ) : (
                   <InterviewPanel
                       interviews={resume.interviews || []}

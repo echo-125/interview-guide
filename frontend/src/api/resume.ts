@@ -1,5 +1,5 @@
 import { request } from './request';
-import type { UploadResponse } from '../types/resume';
+import type { UploadResponse, JdAnalysisRecord } from '../types/resume';
 
 export const resumeApi = {
   /**
@@ -22,6 +22,29 @@ export const resumeApi = {
   async reanalyze(resumeId: number | string, llmProvider?: string): Promise<void> {
     const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
     return request.post(`/api/resumes/${resumeId}/reanalyze${query}`);
+  },
+
+  /**
+   * 发起 JD vs 简历匹配诊断（异步，返回 PENDING 记录，轮询列表接口获取状态）
+   * @param jdText 目标岗位 JD 文本
+   * @param llmProvider 分析使用的 Provider（空 = 跟随系统默认）
+   */
+  async startJdAnalysis(
+    resumeId: number | string,
+    jdText: string,
+    llmProvider?: string
+  ): Promise<JdAnalysisRecord> {
+    return request.post<JdAnalysisRecord>(`/api/resumes/${resumeId}/jd-analysis`, {
+      jdText,
+      llmProvider: llmProvider || null,
+    });
+  },
+
+  /**
+   * 获取简历的 JD 匹配诊断记录列表（最新在前）
+   */
+  async listJdAnalyses(resumeId: number | string): Promise<JdAnalysisRecord[]> {
+    return request.get<JdAnalysisRecord[]>(`/api/resumes/${resumeId}/jd-analyses`);
   },
 
   /**

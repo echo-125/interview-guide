@@ -98,6 +98,28 @@ public final class AsyncTaskStreamConstants {
      */
     public static final String FIELD_RESUME_ID = "resumeId";
 
+    // ========== 简历 JD 匹配分析 Stream 配置 ==========
+
+    /**
+     * 简历 JD 匹配分析 Stream Key
+     */
+    public static final String RESUME_JD_ANALYZE_STREAM_KEY = "resume:jd-analyze:stream";
+
+    /**
+     * 简历 JD 匹配分析 Consumer Group 名称
+     */
+    public static final String RESUME_JD_ANALYZE_GROUP_NAME = "jd-analyze-group";
+
+    /**
+     * 简历 JD 匹配分析 Consumer 名称前缀
+     */
+    public static final String RESUME_JD_ANALYZE_CONSUMER_PREFIX = "jd-analyze-consumer-";
+
+    /**
+     * JD 匹配分析记录ID字段
+     */
+    public static final String FIELD_ANALYSIS_ID = "analysisId";
+
     // ========== 面试评估 Stream 配置 ==========
 
     /**

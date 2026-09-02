@@ -10,6 +10,7 @@ import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO.SessionStatus;
 import interview.guide.modules.interview.model.InterviewSessionEntity;
+import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,8 @@ class InterviewSessionIdempotencyTest {
   private LlmProviderRegistry llmProviderRegistry;
   @Mock
   private RedisService redisService;
+  @Mock
+  private ResumeJdAnalysisQueryService jdAnalysisQueryService;
 
   private ObjectMapper objectMapper;
   private InterviewSessionService service;
@@ -63,7 +66,8 @@ class InterviewSessionIdempotencyTest {
         objectMapper,
         evaluateStreamProducer,
         llmProviderRegistry,
-        redisService
+        redisService,
+        jdAnalysisQueryService
     );
     when(redisService.executeWithLock(anyString(), anyLong(), anyLong(), any(), any()))
         .thenAnswer(invocation -> {
@@ -112,6 +116,6 @@ class InterviewSessionIdempotencyTest {
 
     assertThat(result.sessionId()).isEqualTo(existingSessionId);
     verify(questionService, never()).generateQuestionsBySkill(
-        any(), anyString(), anyString(), any(), anyInt(), any(), any(), any());
+        any(), anyString(), anyString(), any(), anyInt(), any(), any(), any(), any());
   }
 }

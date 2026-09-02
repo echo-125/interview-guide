@@ -19,6 +19,7 @@ import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.model.SubmitAnswerRequest;
 import interview.guide.modules.interview.model.SubmitAnswerResponse;
 import interview.guide.modules.interview.model.InterviewSessionDTO.SessionStatus;
+import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -55,6 +56,7 @@ public class InterviewSessionService {
     private final EvaluateStreamProducer evaluateStreamProducer;
     private final LlmProviderRegistry llmProviderRegistry;
     private final RedisService redisService;
+    private final ResumeJdAnalysisQueryService jdAnalysisQueryService;
 
     /**
      * 创建新的面试会话
@@ -135,7 +137,10 @@ public class InterviewSessionService {
         List<HistoricalQuestion> historicalQuestions =
             persistenceService.getHistoricalQuestions(skillId, request.resumeId());
 
-        // 基于 Skill 生成面试问题
+        // 基于 Skill 生成面试问题（有简历时注入 JD 匹配诊断出的薄弱点，无诊断时为空串不影响行为）
+        String weaknessSection = request.resumeId() != null
+            ? jdAnalysisQueryService.buildWeaknessSection(request.resumeId())
+            : "";
         List<InterviewQuestionDTO> questions = questionService.generateQuestionsBySkill(
             request.llmProvider(),
             skillId,
@@ -144,7 +149,8 @@ public class InterviewSessionService {
             request.questionCount(),
             historicalQuestions,
             request.customCategories(),
-            request.jdText()
+            request.jdText(),
+            weaknessSection
         );
 
         if (requestId != null) {

@@ -5,11 +5,15 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
 import interview.guide.modules.resume.model.ResumeDetailDTO;
+import interview.guide.modules.resume.model.ResumeJdAnalysisRequest;
+import interview.guide.modules.resume.model.ResumeJdAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
 import interview.guide.modules.resume.service.ResumeDeleteService;
 import interview.guide.modules.resume.service.ResumeHistoryService;
+import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
 import interview.guide.modules.resume.service.ResumeUploadService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,6 +46,7 @@ public class ResumeController {
     private final ResumeUploadService uploadService;
     private final ResumeDeleteService deleteService;
     private final ResumeHistoryService historyService;
+    private final ResumeJdAnalysisQueryService jdAnalysisQueryService;
 
     /**
      * 上传简历并获取分析结果
@@ -126,6 +132,31 @@ public class ResumeController {
             @RequestParam(value = "llmProvider", required = false) String llmProvider) {
         uploadService.reanalyze(id, llmProvider);
         return Result.success(null);
+    }
+
+    /**
+     * 发起 JD vs 简历匹配诊断（异步）
+     * 创建 PENDING 诊断记录并投递异步分析任务，前端轮询列表接口获取状态
+     *
+     * @param id 简历ID
+     * @param request 请求体：JD 文本 + 可选 Provider
+     * @return 新建的诊断记录（PENDING 状态）
+     */
+    @PostMapping("/api/resumes/{id}/jd-analysis")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
+    public Result<ResumeJdAnalysisResponse> startJdAnalysis(
+            @PathVariable Long id,
+            @Valid @RequestBody ResumeJdAnalysisRequest request) {
+        return Result.success(jdAnalysisQueryService.startAnalysis(id, request));
+    }
+
+    /**
+     * 获取简历的 JD 匹配诊断记录列表（最新在前，含分析状态）
+     */
+    @GetMapping("/api/resumes/{id}/jd-analyses")
+    public Result<List<ResumeJdAnalysisResponse>> listJdAnalyses(@PathVariable Long id) {
+        return Result.success(jdAnalysisQueryService.listByResumeId(id));
     }
 
     /**

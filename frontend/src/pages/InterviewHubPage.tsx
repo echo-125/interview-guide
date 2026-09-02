@@ -3,11 +3,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronDown, ChevronUp, FileStack, FileText, Loader2, Mic,
-  RefreshCw, Sparkles,
+  RefreshCw, Sparkles, Target,
 } from 'lucide-react';
 import { type SkillDTO } from '../api/skill';
 import { interviewApi, type TextSessionMeta } from '../api/interview';
 import { voiceInterviewApi, type SessionMeta } from '../api/voiceInterview';
+import { resumeApi } from '../api/resume';
+import type { JdAnalysisRecord } from '../types/resume';
 import { getSkillIcon } from '../utils/skillIcons';
 import { getTemplateName } from '../utils/voiceInterview';
 import { getScoreTextColor } from '../utils/score';
@@ -40,6 +42,34 @@ export default function InterviewHubPage() {
   // === 最近面试记录 ===
   const [recentInterviews, setRecentInterviews] = useState<RecentInterviewItem[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+
+  // === 选中简历的 JD 匹配诊断摘要 ===
+  const [jdSummary, setJdSummary] = useState<JdAnalysisRecord | null>(null);
+  const [jdSummaryLoading, setJdSummaryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!config.resumeId) {
+      setJdSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setJdSummaryLoading(true);
+    resumeApi.listJdAnalyses(config.resumeId)
+      .then(list => {
+        if (!cancelled) {
+          setJdSummary(list.find(r => r.analysisStatus === 'COMPLETED') ?? null);
+        }
+      })
+      .catch(() => {
+        // 摘要加载失败不打断面试配置流程
+      })
+      .finally(() => {
+        if (!cancelled) setJdSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config.resumeId]);
 
   const loadRecentInterviews = useCallback(async (allSkills: SkillDTO[]) => {
     setLoadingRecent(true);
@@ -385,6 +415,42 @@ export default function InterviewHubPage() {
                       <option key={r.id} value={r.id}>{r.filename}</option>
                     ))}
                   </select>
+
+                  {/* JD 匹配诊断摘要 */}
+                  {(() => {
+                    const rid = config.resumeId;
+                    if (!rid) return null;
+                    return jdSummaryLoading ? (
+                      <p className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
+                        <Loader2 className="w-3 h-3 animate-spin" /> 正在加载诊断摘要...
+                      </p>
+                    ) : jdSummary ? (
+                      <button
+                        onClick={() => navigate(ROUTES.resumeDetail(rid))}
+                        className="flex w-full items-center gap-2 mt-2 text-xs text-slate-500 dark:text-slate-400
+                          hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      >
+                        <Target className="w-3.5 h-3.5 flex-shrink-0 text-primary-500" />
+                        <span>
+                          JD 匹配度 <span className={`font-bold ${getScoreTextColor(jdSummary.matchScore ?? 0)}`}>{jdSummary.matchScore ?? '--'}</span>
+                          · 缺口 {jdSummary.skillGaps?.length ?? 0} 项
+                          {jdSummary.weaknesses?.length > 0 && <> · 薄弱点 {jdSummary.weaknesses.length} 处</>}
+                          ，出题时将自动针对性考察
+                        </span>
+                        <span className="ml-auto font-medium text-primary-500 flex-shrink-0">查看报告</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => navigate(ROUTES.resumeDetail(rid))}
+                        className="flex w-full items-center gap-2 mt-2 text-xs text-slate-400
+                          hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      >
+                        <Target className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>该简历还没有 JD 匹配诊断，先做一次可让面试题更有针对性</span>
+                        <span className="ml-auto font-medium text-primary-500 flex-shrink-0">去诊断</span>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {/* 文字面试 - 题目数 */}
