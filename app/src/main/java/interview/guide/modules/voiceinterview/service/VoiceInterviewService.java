@@ -17,6 +17,7 @@ import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewMessageRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewSessionRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBucket;
@@ -25,10 +26,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -432,6 +436,16 @@ public class VoiceInterviewService {
             sessions = sessionRepository.findByUserIdOrderByUpdatedAtDesc(userId);
         }
 
+        // 批量统计对话消息数，避免 N+1
+        List<Long> sessionIds = sessions.stream().map(VoiceInterviewSessionEntity::getId).toList();
+        Map<Long, Long> dialogueCountById = new java.util.HashMap<>();
+        if (!sessionIds.isEmpty()) {
+            for (Object[] row : messageRepository.countDialogueBySessionIds(
+                    sessionIds, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY)) {
+                dialogueCountById.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            }
+        }
+
         return sessions.stream()
             .map(session -> SessionMetaDTO.builder()
                 .sessionId(session.getId())
@@ -441,7 +455,7 @@ public class VoiceInterviewService {
                 .createdAt(session.getCreatedAt())
                 .updatedAt(session.getUpdatedAt())
                 .actualDuration(session.getActualDuration())
-                .messageCount(countDialogueMessages(session.getId()))
+                .messageCount(dialogueCountById.getOrDefault(session.getId(), 0L))
                 .evaluateStatus(session.getEvaluateStatus() != null ? session.getEvaluateStatus().name() : null)
                 .evaluateError(session.getEvaluateError())
                 .build())
@@ -571,8 +585,29 @@ public class VoiceInterviewService {
                 .status(session.getStatus().name())
                 .startTime(session.getStartTime())
                 .plannedDuration(session.getPlannedDuration())
-                .webSocketUrl(String.format("ws://localhost:8080/ws/voice-interview/%d", session.getId()))
+                .webSocketUrl(buildWebSocketUrl(session.getId()))
                 .build();
+    }
+
+    /**
+     * 根据当前请求动态生成 WebSocket 地址，避免硬编码 localhost。
+     * https 请求对应 wss，否则 ws；无请求上下文时（如定时任务）回退到 ws://localhost:8080。
+     */
+    private String buildWebSocketUrl(Long sessionId) {
+        String base = "ws://localhost:8080";
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            HttpServletRequest request = attrs.getRequest();
+            String scheme = request.getScheme();
+            String host = request.getServerName();
+            int port = request.getServerPort();
+            String wsScheme = "https".equalsIgnoreCase(scheme) ? "wss" : "ws";
+            boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
+                    || ("https".equalsIgnoreCase(scheme) && port == 443);
+            base = defaultPort
+                    ? wsScheme + "://" + host
+                    : wsScheme + "://" + host + ":" + port;
+        }
+        return String.format("%s/ws/voice-interview/%d", base, sessionId);
     }
 
     /**

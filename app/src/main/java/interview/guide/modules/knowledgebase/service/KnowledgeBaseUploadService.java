@@ -78,8 +78,8 @@ public class KnowledgeBaseUploadService {
         // 6. 保存知识库元数据到数据库（状态为 PENDING）
         KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
 
-        // 7. 发送向量化任务到 Redis Stream（异步处理）
-        vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);
+        // 7. 发送向量化任务到 Redis Stream（异步处理；消息只带 kbId，消费者从存储重读内容）
+        vectorizeStreamProducer.sendVectorizeTask(savedKb.getId());
 
         log.info("知识库上传完成，向量化任务已入队: {}, kbId={}", fileName, savedKb.getId());
 
@@ -135,8 +135,8 @@ public class KnowledgeBaseUploadService {
         // 2. 更新状态为 PENDING（通过单独的 Service 保证事务生效）
         persistenceService.updateVectorStatusToPending(kbId);
 
-        // 3. 发送向量化任务到 Stream
-        vectorizeStreamProducer.sendVectorizeTask(kbId, content);
+        // 3. 发送向量化任务到 Stream（消息只带 kbId，消费者从存储重读内容）
+        vectorizeStreamProducer.sendVectorizeTask(kbId);
 
         log.info("重新向量化任务已发送: kbId={}", kbId);
     }

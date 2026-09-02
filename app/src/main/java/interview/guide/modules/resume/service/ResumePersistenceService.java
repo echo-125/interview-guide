@@ -121,6 +121,16 @@ public class ResumePersistenceService {
     public Optional<ResumeAnalysisEntity> getLatestAnalysis(Long resumeId) {
         return Optional.ofNullable(analysisRepository.findFirstByResumeIdOrderByAnalyzedAtDesc(resumeId));
     }
+
+    /**
+     * 批量获取多个简历各自最新的评测结果（避免 N+1）
+     */
+    public List<ResumeAnalysisEntity> findLatestAnalyses(List<Long> resumeIds) {
+        if (resumeIds == null || resumeIds.isEmpty()) {
+            return List.of();
+        }
+        return analysisRepository.findLatestByResumeIds(resumeIds);
+    }
     
     /**
      * 获取简历的最新评测结果（返回DTO）

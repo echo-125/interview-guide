@@ -44,6 +44,7 @@ public class InterviewSessionService {
 
     private static final String CREATE_LOCK_PREFIX = "interview:create:";
     private static final String CREATE_RESULT_PREFIX = "interview:create:result:";
+    private static final String SESSION_OPERATION_LOCK_PREFIX = "interview:session:";
     private static final Duration CREATE_RESULT_TTL = Duration.ofDays(1);
 
     private final InterviewQuestionService questionService;
@@ -59,20 +60,31 @@ public class InterviewSessionService {
      * 创建新的面试会话
      * 注意：如果已有未完成的会话，不会创建新的，而是返回现有会话
      * 前端应该先调用 findUnfinishedSession 检查，或者使用 forceCreate 参数强制创建
+     *
+     * <p>并发保护：有 requestId 时按 requestId 幂等加锁；同一 resumeId 的并发创建
+     * 也按 resumeId 加锁，覆盖 findUnfinishedSession 检查与创建过程，避免重复创建。
      */
     public InterviewSessionDTO createSession(CreateInterviewRequest request) {
         String requestId = normalizeRequestId(request.requestId());
-        if (requestId == null) {
-            return createSessionInternal(request);
+        if (requestId != null) {
+            return redisService.executeWithLock(
+                CREATE_LOCK_PREFIX + requestId,
+                185,
+                120,
+                TimeUnit.SECONDS,
+                () -> createIdempotentSession(request, requestId)
+            );
         }
-
-        return redisService.executeWithLock(
-            CREATE_LOCK_PREFIX + requestId,
-            185,
-            600,
-            TimeUnit.SECONDS,
-            () -> createIdempotentSession(request, requestId)
-        );
+        if (request.resumeId() != null) {
+            return redisService.executeWithLock(
+                CREATE_LOCK_PREFIX + "resume:" + request.resumeId(),
+                185,
+                120,
+                TimeUnit.SECONDS,
+                () -> createSessionInternal(request)
+            );
+        }
+        return createSessionInternal(request);
     }
 
     private InterviewSessionDTO createIdempotentSession(CreateInterviewRequest request, String requestId) {
@@ -408,6 +420,14 @@ public class InterviewSessionService {
      * 如果是最后一题，自动触发异步评估
      */
     public SubmitAnswerResponse submitAnswer(SubmitAnswerRequest request) {
+        return redisService.executeWithLock(
+            SESSION_OPERATION_LOCK_PREFIX + request.sessionId(),
+            10, 30, TimeUnit.SECONDS,
+            () -> doSubmitAnswer(request)
+        );
+    }
+
+    private SubmitAnswerResponse doSubmitAnswer(SubmitAnswerRequest request) {
         CachedSession session = getOrRestoreSession(request.sessionId());
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
@@ -485,6 +505,17 @@ public class InterviewSessionService {
      * 暂存答案（不进入下一题）
      */
     public void saveAnswer(SubmitAnswerRequest request) {
+        redisService.executeWithLock(
+            SESSION_OPERATION_LOCK_PREFIX + request.sessionId(),
+            10, 30, TimeUnit.SECONDS,
+            () -> {
+                doSaveAnswer(request);
+                return null;
+            }
+        );
+    }
+
+    private void doSaveAnswer(SubmitAnswerRequest request) {
         CachedSession session = getOrRestoreSession(request.sessionId());
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
@@ -526,6 +557,17 @@ public class InterviewSessionService {
      * 提前交卷（触发异步评估）
      */
     public void completeInterview(String sessionId) {
+        redisService.executeWithLock(
+            SESSION_OPERATION_LOCK_PREFIX + sessionId,
+            10, 30, TimeUnit.SECONDS,
+            () -> {
+                doCompleteInterview(sessionId);
+                return null;
+            }
+        );
+    }
+
+    private void doCompleteInterview(String sessionId) {
         CachedSession session = getOrRestoreSession(sessionId);
 
         if (session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.EVALUATED) {

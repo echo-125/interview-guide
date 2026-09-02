@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { skillApi, type SkillDTO, type CategoryDTO } from '../api/skill';
 import { historyApi, type ResumeListItem } from '../api/history';
 import { getSkillIcon } from '../utils/skillIcons';
+import { useToast } from '../components/Toast';
 
 export type InterviewMode = 'text' | 'voice';
 export type Difficulty = 'junior' | 'mid' | 'senior';
@@ -44,6 +45,7 @@ export function useInterviewConfig(options?: {
 }) {
   const { defaultMode = 'text', defaultResumeId, autoLoad = true } = options ?? {};
 
+  const { showToast } = useToast();
   const [mode, setMode] = useState<InterviewMode>(defaultMode);
   const [skillId, setSkillId] = useState(DEFAULT_SKILL_ID);
   const [difficulty, setDifficulty] = useState<Difficulty>('mid');
@@ -90,7 +92,7 @@ export function useInterviewConfig(options?: {
 
   const handleParseJd = async () => {
     if (!customJdText || customJdText.length < MIN_JD_LENGTH) {
-      alert(`JD 内容太少（至少 ${MIN_JD_LENGTH} 字），请补充后重试`);
+      showToast(`JD 内容太少（至少 ${MIN_JD_LENGTH} 字），请补充后重试`, 'error');
       return;
     }
     setParsingJd(true);
@@ -99,7 +101,7 @@ export function useInterviewConfig(options?: {
       setCustomCategories(categories);
       setParsedCustomJdText(customJdText);
     } catch {
-      alert('JD 解析失败，请重试或选择预设主题');
+      showToast('JD 解析失败，请重试或选择预设主题', 'error');
     } finally {
       setParsingJd(false);
     }

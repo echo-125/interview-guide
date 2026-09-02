@@ -252,6 +252,8 @@ export class VoiceInterviewWebSocket {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectDelay = 2000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   constructor(_sessionId: number, url: string, handlers: WebSocketEventHandlers) {
     this.url = url;
@@ -262,6 +264,9 @@ export class VoiceInterviewWebSocket {
    * 建立 WebSocket 连接
    */
   connect(): void {
+    if (this.disposed) {
+      return;
+    }
     try {
       this.ws = new WebSocket(this.url);
 
@@ -319,9 +324,9 @@ export class VoiceInterviewWebSocket {
       this.ws.onclose = (event) => {
         this.handlers.onClose?.(event);
 
-        if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (!this.disposed && !event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
-          setTimeout(() => this.connect(), this.reconnectDelay);
+          this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
         }
       };
 
@@ -370,15 +375,26 @@ export class VoiceInterviewWebSocket {
   }
 
   /**
-   * 关闭连接
+   * 关闭连接（不重连）
    */
   disconnect(): void {
+    this.disposed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
-      // 不重连
       this.reconnectAttempts = this.maxReconnectAttempts;
       this.ws.close(1000, 'User disconnected');
       this.ws = null;
     }
+  }
+
+  /**
+   * 彻底销毁：阻止任何后续连接/重连（组件卸载时调用）
+   */
+  destroy(): void {
+    this.disconnect();
   }
 
   /**

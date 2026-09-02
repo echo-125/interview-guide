@@ -30,10 +30,22 @@ public class DocumentParseService {
 
     private static final int MAX_TEXT_LENGTH = 5 * 1024 * 1024; // 5MB
 
+    // Tika 标注 AutoDetectParser 线程安全，可复用；PDFParserConfig / NoOpEmbeddedDocumentExtractor 构建后亦不可变
+    private final AutoDetectParser parser = new AutoDetectParser();
+    private final EmbeddedDocumentExtractor noOpExtractor = new NoOpEmbeddedDocumentExtractor();
+    private final PDFParserConfig pdfConfig = createPdfParserConfig();
+
     private final TextCleaningService textCleaningService;
 
     public DocumentParseService(TextCleaningService textCleaningService) {
         this.textCleaningService = textCleaningService;
+    }
+
+    private static PDFParserConfig createPdfParserConfig() {
+        PDFParserConfig config = new PDFParserConfig();
+        config.setExtractInlineImages(false);
+        config.setSortByPosition(true); // 按 x/y 坐标排序文本，改善多栏布局解析顺序
+        return config;
     }
 
     /**
@@ -106,35 +118,28 @@ public class DocumentParseService {
      * @throws SAXException    SAX 解析异常
      */
     private String parseContent(InputStream inputStream) throws IOException, TikaException, SAXException {
-        // 1. 创建自动检测解析器
-        AutoDetectParser parser = new AutoDetectParser();
-
-        // 2. 创建内容处理器，只接收正文，限制最大长度为 5MB
+        // 1. 创建内容处理器，只接收正文，限制最大长度为 5MB（每次新建）
         BodyContentHandler handler = new BodyContentHandler(MAX_TEXT_LENGTH);
 
-        // 3. 创建元数据对象
+        // 2. 创建元数据对象（每次新建）
         Metadata metadata = new Metadata();
 
-        // 4. 创建解析上下文
+        // 3. 创建解析上下文（每次新建）
         ParseContext context = new ParseContext();
 
-        // 5. 显式指定 Parser 到 Context（增强健壮性）
+        // 4. 显式指定 Parser 到 Context（增强健壮性）
         context.set(Parser.class, parser);
 
-        // 6. 禁用嵌入文档解析（关键：避免提取图片引用和临时文件路径）
-        context.set(EmbeddedDocumentExtractor.class, new NoOpEmbeddedDocumentExtractor());
+        // 5. 禁用嵌入文档解析（关键：避免提取图片引用和临时文件路径）
+        context.set(EmbeddedDocumentExtractor.class, noOpExtractor);
 
-        // 7. PDF 专用配置：关闭图片提取，按位置排序文本
-        PDFParserConfig pdfConfig = new PDFParserConfig();
-        pdfConfig.setExtractInlineImages(false);
-        pdfConfig.setSortByPosition(true); // 按 x/y 坐标排序文本，改善多栏布局解析顺序
-        // 注意：Tika 2.9.2 中 setExtractAnnotations 方法可能不存在，关闭图片提取已足够
+        // 6. PDF 专用配置（复用不可变配置）
         context.set(PDFParserConfig.class, pdfConfig);
 
-        // 8. 执行解析
+        // 7. 执行解析
         parser.parse(inputStream, handler, metadata, context);
 
-        // 9. 返回提取的文本内容
+        // 8. 返回提取的文本内容
         return handler.toString();
     }
 

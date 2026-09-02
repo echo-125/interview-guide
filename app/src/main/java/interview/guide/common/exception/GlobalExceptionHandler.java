@@ -144,10 +144,11 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理其他未知异常
-     * 统一返回 HTTP 200，通过业务错误码区分异常类型
+     * 未知异常返回真实 HTTP 500，便于监控/网关/前端识别真实故障；
+     * 业务异常（BusinessException 等）仍走 HTTP 200 + Result.error 契约。
      */
     @ExceptionHandler(Exception.class)
-    @ResponseStatus(HttpStatus.OK)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleException(Exception e) {
         log.error("系统异常: {}", e.getMessage(), e);
         return Result.error(ErrorCode.INTERNAL_ERROR, "系统繁忙，请稍后重试");

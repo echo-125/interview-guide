@@ -1,6 +1,8 @@
 package interview.guide.modules.resume;
 
 import interview.guide.common.annotation.RateLimit;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
 import interview.guide.modules.resume.model.ResumeDetailDTO;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
@@ -93,7 +95,7 @@ public class ResumeController {
                 .body(result.pdfBytes());
         } catch (Exception e) {
             log.error("导出PDF失败: resumeId={}", id, e);
-            return ResponseEntity.internalServerError().build();
+            throw new BusinessException(ErrorCode.EXPORT_PDF_FAILED, "导出PDF失败，请稍后重试");
         }
     }
 

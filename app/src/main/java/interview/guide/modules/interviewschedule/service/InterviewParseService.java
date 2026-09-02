@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.ai.PromptSecurityConstants;
+import interview.guide.common.util.LogUtil;
 import interview.guide.modules.interviewschedule.model.CreateInterviewRequest;
 import interview.guide.modules.interviewschedule.model.ParseResponse;
 import lombok.RequiredArgsConstructor;
@@ -325,7 +326,7 @@ public class InterviewParseService {
                 }
             }
 
-            log.debug("提取到的 JSON 内容: {}", jsonContent);
+            log.debug("提取到的 JSON 内容: {}", LogUtil.abbreviate(jsonContent));
             Map<String, Object> result = objectMapper.readValue(jsonContent, new TypeReference<Map<String, Object>>() {});
 
             if (result == null || result.isEmpty()) {

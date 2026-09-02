@@ -1,6 +1,8 @@
 package interview.guide.modules.interview;
 
 import interview.guide.common.annotation.RateLimit;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
 import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.InterviewDetailDTO;
@@ -169,9 +171,12 @@ public class InterviewController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("导出PDF失败", e);
-            return ResponseEntity.internalServerError().build();
+            // 统一返回 Result.error（由全局异常处理器风格对齐），避免裸 500
+            throw new BusinessException(ErrorCode.EXPORT_PDF_FAILED, "导出PDF失败，请稍后重试");
         }
     }
     

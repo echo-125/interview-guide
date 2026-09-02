@@ -12,6 +12,8 @@ interface StreamSseOptions {
   trimDataPrefixSpace?: boolean;
   unescapeEscapedNewlines?: boolean;
   dataJoiner?: string;
+  /** 取消信号：中止请求/停止读取流（组件卸载或切换会话时使用） */
+  signal?: AbortSignal;
 }
 
 function toApiUrl(url: string): string {
@@ -255,6 +257,9 @@ async function readStream(response: Response, options: StreamSseOptions): Promis
   let buffer = '';
 
   while (true) {
+    if (options.signal?.aborted) {
+      return;
+    }
     const { done, value } = await reader.read();
 
     if (done) {
@@ -270,11 +275,21 @@ async function readStream(response: Response, options: StreamSseOptions): Promis
 
 export async function streamSse(options: StreamSseOptions): Promise<void> {
   try {
-    const response = await fetch(toApiUrl(options.url), options.init);
+    const response = await fetch(toApiUrl(options.url), {
+      ...options.init,
+      signal: options.signal,
+    });
     await assertStreamResponse(response);
     await readStream(response, options);
+    if (options.signal?.aborted) {
+      // 被取消时不再触发 onComplete，避免向已卸载组件写状态
+      return;
+    }
     options.onComplete();
   } catch (error) {
+    if (options.signal?.aborted) {
+      return;
+    }
     options.onError(new Error(getErrorMessage(error)));
   }
 }

@@ -120,6 +120,9 @@ public class RagChatController {
         log.info("收到 RAG 聊天流式请求: sessionId={}, question={}, 线程: {} (虚拟线程: {})",
             sessionId, request.question(), Thread.currentThread(), Thread.currentThread().isVirtual());
 
+        // 0. 清理该会话残留的未完成占位消息，避免重复占位
+        sessionService.cleanupIncompletePlaceholders(sessionId);
+
         // 1. 准备消息（保存用户消息，创建 AI 消息占位）
         Long messageId = sessionService.prepareStreamMessage(sessionId, request.question());
 
@@ -144,6 +147,11 @@ public class RagChatController {
                     : "【错误】回答生成失败：" + e.getMessage();
                 sessionService.completeStreamMessage(messageId, content);
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
+            })
+            .doOnCancel(() -> {
+                // 客户端中断（取消订阅）时清理占位消息，避免 completed=false 永久残留
+                sessionService.cancelStreamMessage(messageId);
+                log.info("RAG 聊天流式被取消，已清理占位消息: sessionId={}, messageId={}", sessionId, messageId);
             });
     }
 }

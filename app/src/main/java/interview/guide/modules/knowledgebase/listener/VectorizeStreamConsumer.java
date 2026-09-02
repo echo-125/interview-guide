@@ -2,9 +2,13 @@ package interview.guide.modules.knowledgebase.listener;
 
 import interview.guide.common.async.AbstractStreamConsumer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.redis.RedisService;
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.knowledgebase.service.KnowledgeBaseParseService;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseVectorService;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.stream.StreamMessageId;
@@ -22,18 +26,21 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
 
     private final KnowledgeBaseVectorService vectorService;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final KnowledgeBaseParseService parseService;
 
     public VectorizeStreamConsumer(
         RedisService redisService,
         KnowledgeBaseVectorService vectorService,
-        KnowledgeBaseRepository knowledgeBaseRepository
+        KnowledgeBaseRepository knowledgeBaseRepository,
+        KnowledgeBaseParseService parseService
     ) {
         super(redisService);
         this.vectorService = vectorService;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.parseService = parseService;
     }
 
-    record VectorizePayload(Long kbId, String content) {}
+    record VectorizePayload(Long kbId) {}
 
     @Override
     protected String taskDisplayName() {
@@ -63,12 +70,11 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     @Override
     protected VectorizePayload parsePayload(StreamMessageId messageId, Map<String, String> data) {
         String kbIdStr = data.get(AsyncTaskStreamConstants.FIELD_KB_ID);
-        String content = data.get(AsyncTaskStreamConstants.FIELD_CONTENT);
-        if (kbIdStr == null || content == null) {
+        if (kbIdStr == null) {
             log.warn("消息格式错误，跳过: messageId={}", messageId);
             return null;
         }
-        return new VectorizePayload(Long.parseLong(kbIdStr), content);
+        return new VectorizePayload(Long.parseLong(kbIdStr));
     }
 
     @Override
@@ -91,11 +97,17 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     @Override
     protected void processBusiness(VectorizePayload payload) {
         Long kbId = payload.kbId();
-        if (!knowledgeBaseRepository.existsById(kbId)) {
+        KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId).orElse(null);
+        if (kb == null) {
             log.warn("知识库已被删除，跳过向量化任务: kbId={}", kbId);
             return;
         }
-        vectorService.vectorizeAndStore(payload.kbId(), payload.content());
+        // 消息只携带 kbId，内容从存储重新解析，避免大文本进 Stream
+        String content = parseService.downloadAndParseContent(kb.getStorageKey(), kb.getOriginalFilename());
+        if (content == null || content.trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容: kbId=" + kbId);
+        }
+        vectorService.vectorizeAndStore(kbId, content);
     }
 
     @Override
@@ -111,11 +123,9 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     @Override
     protected void retryMessage(VectorizePayload payload, int retryCount) {
         Long kbId = payload.kbId();
-        String content = payload.content();
         try {
             Map<String, String> message = Map.of(
                 AsyncTaskStreamConstants.FIELD_KB_ID, kbId.toString(),
-                AsyncTaskStreamConstants.FIELD_CONTENT, content,
                 AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount)
             );
 
@@ -129,6 +139,8 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
         } catch (Exception e) {
             log.error("重试入队失败: kbId={}, error={}", kbId, e.getMessage(), e);
             updateVectorStatus(kbId, VectorStatus.FAILED, truncateError("重试入队失败: " + e.getMessage()));
+            // 重抛给模板：保留原消息 pending 由回收机制重投，避免任务静默丢失
+            throw e;
         }
     }
 

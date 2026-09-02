@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Rerank（重排）模型客户端，支持 cohere 兼容格式（Jina/SiliconFlow/Cohere/vLLM 等）
@@ -38,6 +39,11 @@ public class RerankClient {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private final LlmProviderRegistry registry;
+  /**
+   * 按 apiKey 缓存 RestClient，避免每次重排调用都新建 JDK HttpClient。
+   * RestClient 构建后线程安全；apiKey 变更时 computeIfAbsent 自动重建。
+   */
+  private final Map<String, RestClient> restClientCache = new ConcurrentHashMap<>();
 
   public RerankClient(LlmProviderRegistry registry) {
     this.registry = registry;
@@ -75,6 +81,8 @@ public class RerankClient {
     String lastFailure = "Unknown error";
     for (String targetUrl : candidateUrls) {
       try {
+        // SSRF 纵深防御：入口对目标 URL 校验（客户端级 InetAddressFilter 保持不变）
+        UrlAccessGuard.assertExternalUrl(targetUrl);
         responseBody = buildRestClient(provider.apiKey())
             .post()
             .uri(URI.create(targetUrl))
@@ -102,17 +110,19 @@ public class RerankClient {
   }
 
   private RestClient buildRestClient(String apiKey) {
-    HttpClientSettings settings = HttpClientSettings.defaults()
-        .withConnectTimeout(Duration.ofSeconds(5))
-        .withReadTimeout(Duration.ofSeconds(10))
-        .withInetAddressFilter(
-            InetAddressFilter.externalAddresses()
-                .or(InetAddressFilter.adapt(InetAddress::isLoopbackAddress))
-                .or("198.18.0.0/15"));
-    return RestClient.builder()
-        .defaultHeader("Authorization", "Bearer " + apiKey)
-        .requestFactory(ClientHttpRequestFactoryBuilder.jdk().build(settings))
-        .build();
+    return restClientCache.computeIfAbsent(apiKey, key -> {
+      HttpClientSettings settings = HttpClientSettings.defaults()
+          .withConnectTimeout(Duration.ofSeconds(5))
+          .withReadTimeout(Duration.ofSeconds(10))
+          .withInetAddressFilter(
+              InetAddressFilter.externalAddresses()
+                  .or(InetAddressFilter.adapt(InetAddress::isLoopbackAddress))
+                  .or("198.18.0.0/15"));
+      return RestClient.builder()
+          .defaultHeader("Authorization", "Bearer " + apiKey)
+          .requestFactory(ClientHttpRequestFactoryBuilder.jdk().build(settings))
+          .build();
+    });
   }
 
   private Map<String, Object> buildCohereRequest(String model, String query, List<String> documents, int topN) {

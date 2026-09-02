@@ -17,7 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 知识库查询服务
@@ -90,12 +92,16 @@ public class KnowledgeBaseListService {
 
     /**
      * 根据ID列表获取知识库名称列表
+     * 批量查询避免 N+1
      */
     public List<String> getKnowledgeBaseNames(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> nameById = knowledgeBaseRepository.findAllById(ids).stream()
+            .collect(Collectors.toMap(KnowledgeBaseEntity::getId, KnowledgeBaseEntity::getName, (a, b) -> a));
         return ids.stream()
-            .map(id -> knowledgeBaseRepository.findById(id)
-                .map(KnowledgeBaseEntity::getName)
-                .orElse("未知知识库"))
+            .map(id -> nameById.getOrDefault(id, "未知知识库"))
             .toList();
     }
 

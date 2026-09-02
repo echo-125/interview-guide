@@ -51,9 +51,18 @@ public class LlmProviderRegistry {
     private final Map<String, ChatClient> clientCache = new ConcurrentHashMap<>();
     private final Map<String, ChatModel> chatModelCache = new ConcurrentHashMap<>();
     private final Map<String, EmbeddingModel> embeddingModelCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> clientCacheVersion = new ConcurrentHashMap<>();
+    private final Map<String, Long> chatModelCacheVersion = new ConcurrentHashMap<>();
+    private final Map<String, Long> embeddingModelCacheVersion = new ConcurrentHashMap<>();
     private final LlmProviderRepository providerRepository;
     private final LlmGlobalSettingRepository globalSettingRepository;
     private final ApiKeyEncryptionService encryptionService;
+
+    /**
+     * 配置版本号：每次 reload() 自增，缓存访问时比对版本，配置变更后自动重建。
+     * 解决「改 Key/BaseUrl 后旧客户端仍持有旧配置」以及 reload 并发窗口残留旧条目的问题。
+     */
+    private volatile long configVersion = 0;
 
     private final ToolCallingManager toolCallingManager;
     private final ObservationRegistry observationRegistry;
@@ -104,8 +113,14 @@ public class LlmProviderRegistry {
      * @throws IllegalArgumentException if the providerId is unknown
      */
     public ChatClient getChatClient(String providerId) {
+        Long version = clientCacheVersion.get(providerId);
+        if (version != null && isStale(version)) {
+            clientCache.remove(providerId);
+            clientCacheVersion.remove(providerId);
+        }
         return clientCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new client for provider: {}", id);
+            clientCacheVersion.put(id, configVersion);
             return createChatClient(id);
         });
     }
@@ -141,7 +156,12 @@ public class LlmProviderRegistry {
      */
     public ChatClient getPlainChatClient(String providerId) {
         String id = resolveProviderId(providerId);
-        return clientCache.computeIfAbsent(id + ":plain", key -> createPlainChatClient(id));
+        String cacheKey = id + ":plain";
+        evictIfStale(clientCache, clientCacheVersion, cacheKey);
+        return clientCache.computeIfAbsent(cacheKey, key -> {
+            clientCacheVersion.put(cacheKey, configVersion);
+            return createPlainChatClient(id);
+        });
     }
 
     /**
@@ -150,7 +170,12 @@ public class LlmProviderRegistry {
      */
     public ChatClient getVoiceChatClient(String providerId) {
         String id = resolveProviderId(providerId);
-        return clientCache.computeIfAbsent(id + ":voice", key -> createVoiceChatClient(id));
+        String cacheKey = id + ":voice";
+        evictIfStale(clientCache, clientCacheVersion, cacheKey);
+        return clientCache.computeIfAbsent(cacheKey, key -> {
+            clientCacheVersion.put(cacheKey, configVersion);
+            return createVoiceChatClient(id);
+        });
     }
 
     /**
@@ -177,12 +202,36 @@ public class LlmProviderRegistry {
         clientCache.clear();
         chatModelCache.clear();
         embeddingModelCache.clear();
+        clientCacheVersion.clear();
+        chatModelCacheVersion.clear();
+        embeddingModelCacheVersion.clear();
+        configVersion++;
         log.info("[LlmProviderRegistry] Cache cleared ({} entries). Next access will re-create clients.", size);
     }
 
+    /**
+     * 缓存条目是否已过期（configVersion 不一致表示配置已变更）。
+     */
+    private boolean isStale(long entryVersion) {
+        return entryVersion != configVersion;
+    }
+
+    /**
+     * 若条目已过期则从缓存移除（配置变更后下次访问重建）。
+     */
+    private <K, V> void evictIfStale(Map<K, V> cache, Map<K, Long> versionMap, K key) {
+        Long version = versionMap.get(key);
+        if (version != null && isStale(version)) {
+            cache.remove(key);
+            versionMap.remove(key);
+        }
+    }
+
     public EmbeddingModel getEmbeddingModel(String providerId) {
+        evictIfStale(embeddingModelCache, embeddingModelCacheVersion, providerId);
         return embeddingModelCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new embedding model for provider: {}", id);
+            embeddingModelCacheVersion.put(id, configVersion);
             return createEmbeddingModel(id);
         });
     }
@@ -235,8 +284,10 @@ public class LlmProviderRegistry {
     }
 
     private ChatModel getChatModel(String providerId) {
+        evictIfStale(chatModelCache, chatModelCacheVersion, providerId);
         return chatModelCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new ChatModel for provider: {}", id);
+            chatModelCacheVersion.put(id, configVersion);
             return buildChatModel(id);
         });
     }

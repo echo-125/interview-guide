@@ -133,6 +133,8 @@ public class VoiceEvaluateStreamConsumer extends AbstractStreamConsumer<VoiceEva
             log.error("重试入队失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
             voiceInterviewService.updateEvaluateStatus(
                     sessionId, AsyncTaskStatus.FAILED, truncateError("重试入队失败: " + e.getMessage()));
+            // 重抛给模板：保留原消息 pending 由回收机制重投，避免任务静默丢失
+            throw e;
         }
     }
 }

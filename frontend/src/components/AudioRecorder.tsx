@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
+import { useToast } from './Toast';
 // @ts-ignore - vad is loaded via script tag
 import { Mic, MicOff } from 'lucide-react';
 
@@ -34,6 +35,7 @@ export default function AudioRecorder({
   onSpeechStart,
   onSpeechEnd,
 }: AudioRecorderProps) {
+  const { showToast } = useToast();
   const [volume, setVolume] = useState(0);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -268,7 +270,7 @@ export default function AudioRecorder({
       }
       console.error('Error accessing microphone:', error);
       const message = error instanceof Error ? error.message : '无法访问麦克风，请检查权限设置';
-      alert(message);
+      showToast(message, 'error');
     }
   };
 

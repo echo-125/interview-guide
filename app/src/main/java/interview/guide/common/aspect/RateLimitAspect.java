@@ -232,27 +232,10 @@ public class RateLimitAspect {
             return "unknown";
         }
 
-        HttpServletRequest request = attributes.getRequest();
-        String ip = request.getHeader("X-Forwarded-For");
-
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-
-        return ip != null ? ip : "unknown";
+        // 直接使用 TCP 连接的真实来源 IP，不信任可伪造的 X-Forwarded-For 等头。
+        // 若未来引入反向代理，需通过 server.forward-headers-strategy + 可信代理配置取真实 IP。
+        String ip = attributes.getRequest().getRemoteAddr();
+        return ip != null && !ip.isBlank() ? ip : "unknown";
     }
 
     private String getCurrentUserId() {

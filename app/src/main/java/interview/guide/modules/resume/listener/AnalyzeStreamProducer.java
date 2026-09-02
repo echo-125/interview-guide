@@ -22,7 +22,7 @@ public class AnalyzeStreamProducer extends AbstractStreamProducer<AnalyzeStreamP
     private final ResumeRepository resumeRepository;
     private final TransactionalExecutor transactionalExecutor;
 
-    record AnalyzeTaskPayload(Long resumeId, String content, String llmProvider) {}
+    record AnalyzeTaskPayload(Long resumeId, String llmProvider) {}
 
     public AnalyzeStreamProducer(
         RedisService redisService,
@@ -36,13 +36,14 @@ public class AnalyzeStreamProducer extends AbstractStreamProducer<AnalyzeStreamP
 
     /**
      * 发送分析任务到 Redis Stream
+     * 消息只携带 resumeId，内容由消费者从数据库（ResumeEntity.resumeText）重新读取，
+     * 避免大文本进 Stream。
      *
      * @param resumeId 简历ID
-     * @param content  简历内容
      * @param llmProvider 分析使用的 Provider（空 = 跟随系统默认）
      */
-    public void sendAnalyzeTask(Long resumeId, String content, String llmProvider) {
-        sendTask(new AnalyzeTaskPayload(resumeId, content, llmProvider));
+    public void sendAnalyzeTask(Long resumeId, String llmProvider) {
+        sendTask(new AnalyzeTaskPayload(resumeId, llmProvider));
     }
 
     @Override
@@ -59,7 +60,6 @@ public class AnalyzeStreamProducer extends AbstractStreamProducer<AnalyzeStreamP
     protected Map<String, String> buildMessage(AnalyzeTaskPayload payload) {
         Map<String, String> message = new java.util.LinkedHashMap<>();
         message.put(AsyncTaskStreamConstants.FIELD_RESUME_ID, payload.resumeId().toString());
-        message.put(AsyncTaskStreamConstants.FIELD_CONTENT, payload.content());
         if (payload.llmProvider() != null && !payload.llmProvider().isBlank()) {
             message.put(AsyncTaskStreamConstants.FIELD_LLM_PROVIDER, payload.llmProvider());
         }

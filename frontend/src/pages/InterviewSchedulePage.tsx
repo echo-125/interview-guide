@@ -10,9 +10,11 @@ import { ScheduleList } from '../components/interviewschedule/ScheduleList';
 import { InterviewFormModal } from '../components/interviewschedule/InterviewFormModal';
 import { CalendarErrorBoundary } from '../components/interviewschedule/CalendarErrorBoundary';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
 import type { InterviewSchedule, InterviewFormData, InterviewStatus } from '../types/interviewSchedule';
 
 export const InterviewSchedulePage: React.FC = () => {
+  const { showToast } = useToast();
   const {
     interviews,
     loading,
@@ -28,8 +30,6 @@ export const InterviewSchedulePage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedInterview, setSelectedInterview] = useState<InterviewSchedule | null>(null);
-  const [pendingChanges, setPendingChanges] = useState<Map<number, Date>>(new Map());
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [interviewToDelete, setInterviewToDelete] = useState<number | null>(null);
 
@@ -80,7 +80,7 @@ export const InterviewSchedulePage: React.FC = () => {
         });
       } catch (error) {
         console.error('Failed to update interview time:', error);
-        alert('更新面试时间失败，请重试');
+        showToast('更新面试时间失败，请重试', 'error');
       }
     }
   }, [interviews, updateInterview]);
@@ -103,7 +103,7 @@ export const InterviewSchedulePage: React.FC = () => {
         });
       } catch (error) {
         console.error('Failed to update interview duration:', error);
-        alert('更新面试时长失败，请重试');
+        showToast('更新面试时长失败，请重试', 'error');
       }
     }
   }, [interviews, updateInterview]);
@@ -118,32 +118,7 @@ export const InterviewSchedulePage: React.FC = () => {
     setSelectedInterview(null);
   }, [modalMode, selectedInterview, createInterview, updateInterview]);
 
-  // Event drop functionality removed - react-big-calendar doesn't support drag and drop in this version
-
-  const handleConfirmChanges = useCallback(async () => {
-    for (const [id, newTime] of pendingChanges) {
-      const interview = interviews.find(i => i.id === id);
-      if (interview) {
-        await updateInterview(id, {
-          companyName: interview.companyName,
-          position: interview.position,
-          interviewTime: dayjs(newTime).format('YYYY-MM-DDTHH:mm:ss'),
-          interviewType: interview.interviewType,
-          meetingLink: interview.meetingLink,
-          roundNumber: interview.roundNumber,
-          interviewer: interview.interviewer,
-          notes: interview.notes,
-        });
-      }
-    }
-    setPendingChanges(new Map());
-    setIsConfirmOpen(false);
-  }, [pendingChanges, interviews, updateInterview]);
-
-  const handleCancelChanges = useCallback(() => {
-    setPendingChanges(new Map());
-    setIsConfirmOpen(false);
-  }, []);
+  // 注：react-big-calendar 该版本不支持拖拽/缩放，onEventDrop/onEventResize 直接保存；无批量确认逻辑
 
   if (loading) {
     return (
@@ -207,14 +182,6 @@ export const InterviewSchedulePage: React.FC = () => {
         }}
         initialData={selectedInterview || undefined}
         mode={modalMode}
-      />
-
-      <ConfirmDialog
-        open={isConfirmOpen}
-        title="确认调整面试时间"
-        message={`您调整了 ${pendingChanges.size} 个面试的时间,确认保存吗?`}
-        onConfirm={handleConfirmChanges}
-        onCancel={handleCancelChanges}
       />
 
       <ConfirmDialog

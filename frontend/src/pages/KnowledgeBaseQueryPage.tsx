@@ -64,12 +64,24 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   // refs
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const rafRef = useRef<number>();
+  const abortRef = useRef<AbortController | null>(null);
 
   const [, startTransition] = useTransition();
 
   useEffect(() => {
     loadKnowledgeBases();
     loadSessions();
+  }, []);
+
+  // 组件卸载时中止未完成的流式请求，避免向已卸载组件写状态
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -266,6 +278,11 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     setQuestion('');
     setLoading(true);
 
+    // 取消上一次未完成的流式请求，避免旧响应写入新会话
+    abortRef.current?.abort();
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+
     let sessionId = currentSessionId;
     if (!sessionId) {
       try {
@@ -332,7 +349,8 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
           console.error('流式查询失败:', error);
           updateAssistantMessage(fullContent || error.message || '回答失败，请重试');
           setLoading(false);
-        }
+        },
+        abortController.signal
       );
     } catch (err) {
       console.error('发起流式查询失败:', err);

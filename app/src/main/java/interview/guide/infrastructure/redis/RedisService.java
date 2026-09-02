@@ -50,6 +50,19 @@ public class RedisService {
     private final RedissonClient redissonClient;
     private final ConcurrentMap<String, StreamMessageId> streamReclaimCursors = new ConcurrentHashMap<>();
 
+    /**
+     * getOrLoad 空值占位标记，防止缓存穿透。
+     * 必须是可随 Redis codec 序列化往返的 String，读取时用 equals 判定；
+     * 若用 Object 单例 + == 比较，跨进程读回的副本永远不匹配。
+     */
+    private static final String NULL_VALUE_MARKER = "__REDIS_NULL_VALUE__";
+
+    /**
+     * 空值占位的 TTL 上限：负缓存只用于抵挡穿透，
+     * 过长会延迟真实数据写入后的可见性。
+     */
+    private static final Duration NULL_VALUE_MAX_TTL = Duration.ofSeconds(60);
+
     // ==================== 基础键值操作 ====================
 
     /**
@@ -78,17 +91,60 @@ public class RedisService {
 
     /**
      * 获取值，如果不存在则使用 loader 加载并缓存
+     * 带互斥单飞（single-flight）：并发未命中时只有一个线程执行 loader，其余等待；
+     * loader 返回 null 时写入短 TTL 空值占位，防止缓存穿透。
      */
     public <T> T getOrLoad(String key, Duration ttl, Function<String, T> loader) {
-        RBucket<T> bucket = redissonClient.getBucket(key);
-        T value = bucket.get();
-        if (value == null) {
-            value = loader.apply(key);
-            if (value != null) {
-                bucket.set(value, ttl);
+        RBucket<Object> bucket = redissonClient.getBucket(key);
+        Object value = bucket.get();
+        if (value != null) {
+            return decodeCached(value);
+        }
+        // 互斥：同一 key 并发未命中时只放行一个 loader；
+        // 锁不可用（等待超时/被中断）时退化为直接加载，不能把并发请求变成错误
+        RLock lock = redissonClient.getLock("cache:load:" + key);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(3, 10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        try {
+            if (locked) {
+                Object cached = bucket.get();
+                if (cached != null) {
+                    return decodeCached(cached);
+                }
+            }
+            T result = loader.apply(key);
+            if (result != null) {
+                bucket.set(result, ttl);
+                return result;
+            }
+            // 空值占位，短 TTL 防止穿透
+            bucket.set(NULL_VALUE_MARKER, negativeCacheTtl(ttl));
+            return null;
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
             }
         }
-        return value;
+    }
+
+    /**
+     * 解码缓存命中：空值占位返回 null，其余按调用方泛型返回。
+     */
+    private <T> T decodeCached(Object value) {
+        return NULL_VALUE_MARKER.equals(value) ? null : cast(value);
+    }
+
+    private Duration negativeCacheTtl(Duration ttl) {
+        return ttl.compareTo(NULL_VALUE_MAX_TTL) > 0 ? NULL_VALUE_MAX_TTL : ttl;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T cast(Object value) {
+        return (T) value;
     }
 
     /**

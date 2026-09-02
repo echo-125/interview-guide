@@ -377,30 +377,32 @@ public class QwenAsrService {
      * @param sessionId Session identifier
      */
     public void stopTranscription(String sessionId) {
+        AsrSession session;
         synchronized (lockForSession(sessionId)) {
-            AsrSession session = sessions.remove(sessionId);
+            session = sessions.remove(sessionId);
             // Clean up the session lock to prevent memory leak
             sessionLocks.remove(sessionId);
-            if (session == null) {
-                log.warn("[Session: {}] Attempted to stop non-existent session", sessionId);
-                return;
-            }
+        }
+        if (session == null) {
+            log.warn("[Session: {}] Attempted to stop non-existent session", sessionId);
+            return;
+        }
 
-            try {
-                session.getConversation().endSession();
-                log.info("[Session: {}] Transcription session stopped", sessionId);
-            } catch (InterruptedException e) {
-                log.error("[Session: {}] Thread interrupted while ending session", sessionId, e);
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                log.warn("[Session: {}] Error while ending session (may already be closed): {}", sessionId, e.getMessage());
-            }
+        // 网络 close 放到锁外执行，避免持锁做阻塞 IO 拖慢其他重连/操作
+        try {
+            session.getConversation().endSession();
+            log.info("[Session: {}] Transcription session stopped", sessionId);
+        } catch (InterruptedException e) {
+            log.error("[Session: {}] Thread interrupted while ending session", sessionId, e);
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("[Session: {}] Error while ending session (may already be closed): {}", sessionId, e.getMessage());
+        }
 
-            try {
-                session.getConversation().close();
-            } catch (Exception e) {
-                log.debug("[Session: {}] Connection already closed: {}", sessionId, e.getMessage());
-            }
+        try {
+            session.getConversation().close();
+        } catch (Exception e) {
+            log.debug("[Session: {}] Connection already closed: {}", sessionId, e.getMessage());
         }
     }
 
@@ -487,8 +489,8 @@ public class QwenAsrService {
                     String emotion = transcriptObj.has("emotion") ?
                             transcriptObj.get("emotion").getAsString() : "neutral";
 
-                    log.debug("[Session: {}] Transcription completed - language: {}, emotion: {}, text: {}",
-                            sessionId, language, emotion, transcript);
+                    log.debug("[Session: {}] Transcription completed - language: {}, emotion: {}, textLength: {}",
+                            sessionId, language, emotion, transcript.length());
 
                     onFinal.accept(transcript);
                     break;

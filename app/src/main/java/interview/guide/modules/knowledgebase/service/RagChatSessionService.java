@@ -170,6 +170,34 @@ public class RagChatSessionService {
     }
 
     /**
+     * 流式响应被客户端取消时清理占位消息，避免 completed=false 的占位永久残留。
+     */
+    @Transactional
+    public void cancelStreamMessage(Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        messageRepository.findById(messageId).ifPresent(message -> {
+            if (!Boolean.TRUE.equals(message.getCompleted())) {
+                messageRepository.delete(message);
+                log.info("清理被取消的 RAG 流式占位消息: messageId={}", messageId);
+            }
+        });
+    }
+
+    /**
+     * 清理会话中残留的未完成占位消息（prepare 前调用，防重复占位）。
+     */
+    @Transactional
+    public void cleanupIncompletePlaceholders(Long sessionId) {
+        List<RagChatMessageEntity> placeholders = messageRepository.findBySessionIdAndCompletedFalse(sessionId);
+        if (!placeholders.isEmpty()) {
+            messageRepository.deleteAll(placeholders);
+            log.info("清理会话残留占位消息: sessionId={}, count={}", sessionId, placeholders.size());
+        }
+    }
+
+    /**
      * 获取流式回答（带多轮上下文）
      */
     public Flux<String> getStreamAnswer(Long sessionId, String question) {

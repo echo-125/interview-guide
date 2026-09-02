@@ -21,7 +21,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 简历历史服务
@@ -41,23 +43,35 @@ public class ResumeHistoryService {
 
     /**
      * 获取所有简历列表
+     * 批量查询最新分析与面试次数，避免 N+1
      */
     public List<ResumeListItemDTO> getAllResumes() {
         List<ResumeEntity> resumes = resumePersistenceService.findAllResumes();
+        if (resumes.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> resumeIds = resumes.stream().map(ResumeEntity::getId).toList();
+        // 批量取每个简历最新分析
+        Map<Long, ResumeAnalysisEntity> latestAnalysisById = resumePersistenceService.findLatestAnalyses(resumeIds)
+            .stream()
+            .collect(Collectors.toMap(a -> a.getResume().getId(), a -> a, (a, b) -> a));
+        // 批量统计面试次数
+        Map<Long, Long> interviewCountById = resumeIds.stream()
+            .collect(Collectors.toMap(id -> id, interviewPersistenceService::countByResumeId, (a, b) -> a));
 
         return resumes.stream().map(resume -> {
             // 获取最新分析结果的分数
             Integer latestScore = null;
             LocalDateTime lastAnalyzedAt = null;
-            Optional<ResumeAnalysisEntity> analysisOpt = resumePersistenceService.getLatestAnalysis(resume.getId());
-            if (analysisOpt.isPresent()) {
-                ResumeAnalysisEntity analysis = analysisOpt.get();
+            ResumeAnalysisEntity analysis = latestAnalysisById.get(resume.getId());
+            if (analysis != null) {
                 latestScore = analysis.getOverallScore();
                 lastAnalyzedAt = analysis.getAnalyzedAt();
             }
 
             // 获取面试次数
-            int interviewCount = interviewPersistenceService.findByResumeId(resume.getId()).size();
+            long interviewCount = interviewCountById.getOrDefault(resume.getId(), 0L);
 
             // 使用 MapStruct 映射
             return new ResumeListItemDTO(
@@ -68,7 +82,7 @@ public class ResumeHistoryService {
                 resume.getAccessCount(),
                 latestScore,
                 lastAnalyzedAt,
-                interviewCount,
+                (int) interviewCount,
                 resume.getAnalyzeStatus(),
                 resume.getAnalyzeError()
             );

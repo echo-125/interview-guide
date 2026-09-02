@@ -4,6 +4,7 @@ import {AnimatePresence, motion} from 'framer-motion';
 import {AlertCircle, CheckCircle, Clock, FileStack, RefreshCw, Sparkles, Upload} from 'lucide-react';
 import {historyApi, ResumeListItem} from '../api/history';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import {useToast} from '../components/Toast';
 import {formatDateOnly} from '../utils/date';
 import {getScoreProgressColor} from '../utils/score';
 import { ROUTES } from '../constants/routes';
@@ -43,6 +44,7 @@ function resumesEqual(a: ResumeListItem[], b: ResumeListItem[]): boolean {
 
 export default function HistoryList({onSelectResume}: HistoryListProps) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [resumes, setResumes] = useState<ResumeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,7 +94,7 @@ export default function HistoryList({onSelectResume}: HistoryListProps) {
       await loadResumes();
       setDeleteConfirm(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败，请稍后重试');
+      showToast(err instanceof Error ? err.message : '删除失败，请稍后重试', 'error');
     } finally {
       setDeletingId(null);
     }

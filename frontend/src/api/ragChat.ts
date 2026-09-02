@@ -114,7 +114,8 @@ export const ragChatApi = {
     question: string,
     onMessage: (chunk: string) => void,
     onComplete: () => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     return streamSse({
       url: `/api/rag-chat/sessions/${sessionId}/messages/stream`,
@@ -130,6 +131,7 @@ export const ragChatApi = {
       trimDataPrefixSpace: false,
       unescapeEscapedNewlines: true,
       dataJoiner: '',
+      signal,
     });
   },
 };

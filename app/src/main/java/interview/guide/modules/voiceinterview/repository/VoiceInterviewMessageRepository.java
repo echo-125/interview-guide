@@ -2,9 +2,12 @@ package interview.guide.modules.voiceinterview.repository;
 
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -34,4 +37,12 @@ public interface VoiceInterviewMessageRepository extends JpaRepository<VoiceInte
     Optional<VoiceInterviewMessageEntity> findFirstBySessionIdAndMessageTypeOrderBySequenceNumAsc(
         Long sessionId, String messageType);
 
+    /**
+     * 批量统计多个会话的对话消息数（排除 SUMMARY），避免 N+1。
+     * 返回 [(sessionId, count)] 投影。
+     */
+    @Query("SELECT m.session.id, COUNT(m) FROM VoiceInterviewMessageEntity m "
+        + "WHERE m.session.id IN :sessionIds AND m.messageType <> :excludedType GROUP BY m.session.id")
+    List<Object[]> countDialogueBySessionIds(@Param("sessionIds") List<Long> sessionIds,
+                                             @Param("excludedType") String excludedType);
 }

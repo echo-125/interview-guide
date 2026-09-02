@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import AudioRecorder from '../components/AudioRecorder';
 import InterviewPageHeader from '../components/InterviewPageHeader';
 import RealtimeSubtitle from '../components/RealtimeSubtitle';
+import { useToast } from '../components/Toast';
 import { skillApi, type SkillDTO } from '../api/skill';
 import { getTemplateName } from '../utils/voiceInterview';
 import {
@@ -27,6 +28,7 @@ type VoiceConfig = {
 export default function VoiceInterviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
   const entryState = (location.state as {
     voiceConfig?: VoiceConfig;
     voiceSessionId?: number;
@@ -282,7 +284,8 @@ export default function VoiceInterviewPage() {
         clearInterval(timerRef.current);
       }
       if (wsRef.current) {
-        wsRef.current.disconnect();
+        wsRef.current.destroy();
+        wsRef.current = null;
       }
       clearAudioPlaybackWatchdog();
       chunkPlaybackSourceRef.current?.stop();
@@ -528,6 +531,14 @@ export default function VoiceInterviewPage() {
     }, 500);
   }, [createWebSocketHandlers]);
 
+  /**
+   * 后端未返回 webSocketUrl 时的兜底：从当前页面地址推导，避免硬编码 localhost。
+   */
+  const buildWebSocketFallbackUrl = useCallback((sessionId: number) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws/voice-interview/${sessionId}`;
+  }, []);
+
   const handlePhaseConfig = useCallback(async (config: {
     skillId: string;
     difficulty?: string;
@@ -558,14 +569,14 @@ export default function VoiceInterviewPage() {
       setSessionId(session.sessionId);
       setCurrentPhase(session.currentPhase);
 
-      const wsUrl = session.webSocketUrl || `ws://localhost:8080/ws/voice-interview/${session.sessionId}`;
+      const wsUrl = session.webSocketUrl || buildWebSocketFallbackUrl(session.sessionId);
       connectWithHandlers(session.sessionId, wsUrl);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '创建面试会话失败，请重试';
       setError(errorMessage);
       setConnectionStatus('disconnected');
       setIsAsrReady(false);
-      alert('创建会话失败：' + errorMessage);
+      showToast('创建会话失败：' + errorMessage, 'error');
     }
   }, [connectWithHandlers]);
 
@@ -619,7 +630,7 @@ export default function VoiceInterviewPage() {
       }
       setMessages(restored);
 
-      const wsUrl = session.webSocketUrl || `ws://localhost:8080/ws/voice-interview/${session.sessionId}`;
+      const wsUrl = session.webSocketUrl || buildWebSocketFallbackUrl(session.sessionId);
       connectWithHandlers(session.sessionId, wsUrl);
     } catch (error) {
       setError(error instanceof Error ? error.message : '恢复会话失败');
@@ -698,7 +709,7 @@ export default function VoiceInterviewPage() {
       await voiceInterviewApi.pauseSession(sessionId);
       navigate('/interviews');
     } catch (error) {
-      alert('暂停失败，请重试');
+      showToast('暂停失败，请重试', 'error');
     }
   };
 

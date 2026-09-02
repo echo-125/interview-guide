@@ -3,6 +3,8 @@ package interview.guide.modules.resume.repository;
 import interview.guide.modules.resume.model.ResumeAnalysisEntity;
 import interview.guide.modules.resume.model.ResumeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -27,4 +29,12 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysisEn
      * 根据简历ID查找所有评测记录
      */
     List<ResumeAnalysisEntity> findByResumeIdOrderByAnalyzedAtDesc(Long resumeId);
+
+    /**
+     * 批量查询多个简历各自最新的评测记录（避免 N+1）
+     */
+    @Query("SELECT a FROM ResumeAnalysisEntity a WHERE a.resume.id IN :resumeIds "
+        + "AND a.analyzedAt = (SELECT MAX(a2.analyzedAt) FROM ResumeAnalysisEntity a2 "
+        + "WHERE a2.resume.id = a.resume.id)")
+    List<ResumeAnalysisEntity> findLatestByResumeIds(@Param("resumeIds") List<Long> resumeIds);
 }

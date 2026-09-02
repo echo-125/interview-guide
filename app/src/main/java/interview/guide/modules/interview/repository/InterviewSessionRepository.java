@@ -2,8 +2,10 @@ package interview.guide.modules.interview.repository;
 
 import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.model.InterviewSessionEntity.SessionStatus;
+import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.resume.model.ResumeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -29,7 +31,19 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
      */
     @Query("SELECT s FROM InterviewSessionEntity s LEFT JOIN FETCH s.resume WHERE s.sessionId = :sessionId")
     Optional<InterviewSessionEntity> findBySessionIdWithResume(@Param("sessionId") String sessionId);
-    
+
+    /**
+     * 原子领取评估任务：仅当状态为 PENDING 或 FAILED 时才置为 PROCESSING。
+     * 返回 0 表示领取冲突（已被其他消费者处理），用于重复任务去重。
+     */
+    @Modifying
+    @Query("UPDATE InterviewSessionEntity s SET s.evaluateStatus = :processing "
+        + "WHERE s.sessionId = :sessionId AND s.evaluateStatus IN :allowedStatuses")
+    int claimEvaluation(
+        @Param("sessionId") String sessionId,
+        @Param("processing") AsyncTaskStatus processing,
+        @Param("allowedStatuses") List<AsyncTaskStatus> allowedStatuses);
+
     /**
      * 根据简历查找所有面试记录
      */
@@ -44,6 +58,11 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
      * 根据简历ID查找最近的面试记录（用于历史题去重）
      */
     List<InterviewSessionEntity> findTop10ByResumeIdOrderByCreatedAtDesc(Long resumeId);
+
+    /**
+     * 按简历ID统计面试次数（避免 N+1）
+     */
+    long countByResumeId(Long resumeId);
     
     /**
      * 查找简历的未完成面试（CREATED或IN_PROGRESS状态）

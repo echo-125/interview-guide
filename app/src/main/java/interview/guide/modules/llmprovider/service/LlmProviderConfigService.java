@@ -2,6 +2,7 @@ package interview.guide.modules.llmprovider.service;
 
 import interview.guide.common.ai.ApiPathResolver;
 import interview.guide.common.ai.LlmProviderRegistry;
+import interview.guide.common.ai.UrlAccessGuard;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.common.exception.BusinessException;
@@ -328,6 +329,8 @@ public class LlmProviderConfigService {
       try {
         java.net.URI wsUri = java.net.URI.create(asr.getUrl());
         String host = wsUri.getHost();
+        // SSRF 防护：仅允许公网地址，拒绝内网/回环/保留地址
+        UrlAccessGuard.assertExternalHost(host, asr.getUrl());
         int port = wsUri.getPort() > 0 ? wsUri.getPort() : (wsUri.getScheme().equals("wss") ? 443 : 80);
         java.net.InetSocketAddress address = new java.net.InetSocketAddress(host, port);
         java.net.Socket socket = new java.net.Socket();

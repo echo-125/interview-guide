@@ -138,7 +138,8 @@ public class ResumeGradingService {
             
         } catch (Exception e) {
             log.error("简历分析失败: {}", e.getMessage(), e);
-            return createErrorResponse(resumeText, e.getMessage());
+            // 失败必须显式抛出，让 Stream 消费者走 markFailed，避免 0 分结果被当作成功入库
+            throw new BusinessException(ErrorCode.RESUME_ANALYSIS_FAILED, "简历分析失败：" + e.getMessage());
         }
     }
     
@@ -164,25 +165,6 @@ public class ResumeGradingService {
             dto.summary(),
             dto.strengths(),
             suggestions,
-            originalText
-        );
-    }
-    
-    /**
-     * 创建错误响应
-     */
-    private ResumeAnalysisResponse createErrorResponse(String originalText, String errorMessage) {
-        return new ResumeAnalysisResponse(
-            0,
-            new ScoreDetail(0, 0, 0, 0, 0),
-            "分析过程中出现错误: " + errorMessage,
-            List.of(),
-            List.of(new Suggestion(
-                "系统",
-                "高",
-                "AI分析服务暂时不可用",
-                "请稍后重试，或检查AI服务是否正常运行"
-            )),
             originalText
         );
     }

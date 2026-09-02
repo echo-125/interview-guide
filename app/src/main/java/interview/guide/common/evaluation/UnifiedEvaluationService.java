@@ -1,5 +1,6 @@
 package interview.guide.common.evaluation;
 
+import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.ai.StructuredOutputInvoker;
 import interview.guide.common.evaluation.EvaluationReport.CategoryScore;
 import interview.guide.common.evaluation.EvaluationReport.QuestionEvaluation;
@@ -41,6 +42,7 @@ public class UnifiedEvaluationService {
     private final PromptTemplate summaryUserPromptTemplate;
     private final BeanOutputConverter<SummaryDTO> summaryOutputConverter;
     private final StructuredOutputInvoker structuredOutputInvoker;
+    private final PromptSanitizer promptSanitizer;
     private final int evaluationBatchSize;
     private final ResourceLoader resourceLoader;
 
@@ -75,9 +77,11 @@ public class UnifiedEvaluationService {
 
     public UnifiedEvaluationService(
             StructuredOutputInvoker structuredOutputInvoker,
+            PromptSanitizer promptSanitizer,
             ResourceLoader resourceLoader,
             InterviewEvaluationProperties evaluationProperties) throws IOException {
         this.structuredOutputInvoker = structuredOutputInvoker;
+        this.promptSanitizer = promptSanitizer;
         this.resourceLoader = resourceLoader;
         this.systemPromptTemplate = new PromptTemplate(loadPrompt(evaluationProperties.getSystemPromptPath()));
         this.userPromptTemplate = new PromptTemplate(loadPrompt(evaluationProperties.getUserPromptPath()));
@@ -167,11 +171,12 @@ public class UnifiedEvaluationService {
         String qaRecords = buildQARecords(batch);
         String systemPrompt = systemPromptTemplate.render();
 
+        // Prompt 注入防护：用户可控文本（简历/问答/参考基线）先净化再用随机分隔符包裹
         Map<String, Object> variables = new HashMap<>();
-        variables.put("resumeText", resumeContext);
-        variables.put("qaRecords", qaRecords);
-        variables.put("referenceContext",
-            (referenceContext != null && !referenceContext.isBlank()) ? referenceContext : "无");
+        variables.put("resumeText", promptSanitizer.wrapWithDelimiters("resume", promptSanitizer.sanitize(resumeContext)));
+        variables.put("qaRecords", promptSanitizer.wrapWithDelimiters("qa", promptSanitizer.sanitize(qaRecords)));
+        variables.put("referenceContext", promptSanitizer.wrapWithDelimiters("reference",
+            promptSanitizer.sanitize((referenceContext != null && !referenceContext.isBlank()) ? referenceContext : "无")));
         String userPrompt = userPromptTemplate.render(variables);
 
         String systemPromptWithFormat = systemPrompt + "\n\n" + outputConverter.getFormat();
@@ -252,14 +257,14 @@ public class UnifiedEvaluationService {
         try {
             String summarySystem = summarySystemPromptTemplate.render();
             Map<String, Object> vars = new HashMap<>();
-            vars.put("resumeText", resumeContext);
-            vars.put("referenceContext",
-                (referenceContext != null && !referenceContext.isBlank()) ? referenceContext : "无");
-            vars.put("categorySummary", buildCategorySummary(qaRecords, evaluations));
-            vars.put("questionHighlights", buildQuestionHighlights(qaRecords, evaluations));
-            vars.put("fallbackOverallFeedback", fallbackFeedback);
-            vars.put("fallbackStrengths", String.join("\n", fallbackStrengths));
-            vars.put("fallbackImprovements", String.join("\n", fallbackImprovements));
+            vars.put("resumeText", promptSanitizer.wrapWithDelimiters("resume", promptSanitizer.sanitize(resumeContext)));
+            vars.put("referenceContext", promptSanitizer.wrapWithDelimiters("reference",
+                promptSanitizer.sanitize((referenceContext != null && !referenceContext.isBlank()) ? referenceContext : "无")));
+            vars.put("categorySummary", promptSanitizer.wrapWithDelimiters("category", promptSanitizer.sanitize(buildCategorySummary(qaRecords, evaluations))));
+            vars.put("questionHighlights", promptSanitizer.wrapWithDelimiters("highlights", promptSanitizer.sanitize(buildQuestionHighlights(qaRecords, evaluations))));
+            vars.put("fallbackOverallFeedback", promptSanitizer.wrapWithDelimiters("feedback", promptSanitizer.sanitize(fallbackFeedback)));
+            vars.put("fallbackStrengths", promptSanitizer.wrapWithDelimiters("strengths", promptSanitizer.sanitize(String.join("\n", fallbackStrengths))));
+            vars.put("fallbackImprovements", promptSanitizer.wrapWithDelimiters("improvements", promptSanitizer.sanitize(String.join("\n", fallbackImprovements))));
             String summaryUser = summaryUserPromptTemplate.render(vars);
 
             String systemWithFormat = summarySystem + "\n\n" + summaryOutputConverter.getFormat();

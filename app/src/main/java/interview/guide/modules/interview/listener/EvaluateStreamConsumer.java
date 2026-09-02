@@ -104,7 +104,24 @@ public class EvaluateStreamConsumer extends AbstractStreamConsumer<EvaluateStrea
 
     @Override
     protected void markProcessing(EvaluatePayload payload) {
+        // 领取逻辑已由 tryMarkProcessing 的 CAS 完成，这里保持幂等（仅防御性更新）
         updateEvaluateStatus(payload.sessionId(), AsyncTaskStatus.PROCESSING, null);
+    }
+
+    @Override
+    protected boolean tryMarkProcessing(EvaluatePayload payload) {
+        // CAS：仅当 PENDING/FAILED 时领取成功，避免重复入队的评估任务并发执行
+        int claimed = sessionRepository.claimEvaluation(
+            payload.sessionId(),
+            AsyncTaskStatus.PROCESSING,
+            List.of(AsyncTaskStatus.PENDING, AsyncTaskStatus.FAILED)
+        );
+        if (claimed > 0) {
+            log.debug("评估任务已领取: sessionId={}", payload.sessionId());
+            return true;
+        }
+        log.info("评估任务领取冲突，跳过: sessionId={}", payload.sessionId());
+        return false;
     }
 
     @Override
@@ -169,6 +186,8 @@ public class EvaluateStreamConsumer extends AbstractStreamConsumer<EvaluateStrea
         } catch (Exception e) {
             log.error("重试入队失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
             updateEvaluateStatus(sessionId, AsyncTaskStatus.FAILED, truncateError("重试入队失败: " + e.getMessage()));
+            // 重抛给模板：保留原消息 pending 由回收机制重投，避免任务静默丢失
+            throw e;
         }
     }
 

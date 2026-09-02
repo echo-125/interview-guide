@@ -93,8 +93,8 @@ public class ResumeUploadService {
         // 6. 保存简历到数据库（状态为 PENDING）
         ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl, provider);
 
-        // 7. 发送分析任务到 Redis Stream（异步处理）
-        analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText, provider);
+        // 7. 发送分析任务到 Redis Stream（异步处理；消息只带 resumeId，消费者从 DB 重读文本）
+        analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), provider);
 
         long totalTime = System.currentTimeMillis() - startTime;
         log.info("简历上传处理完成: {}, resumeId={} - 总耗时: {}ms (解析+存储+入库)",
@@ -200,8 +200,8 @@ public class ResumeUploadService {
         transactionalExecutor.run(
             () -> updateResumeForReanalysis(resumeId, taskContent, shouldCacheResumeText, provider));
 
-        // 事务提交后再发送分析任务到 Stream
-        analyzeStreamProducer.sendAnalyzeTask(resumeId, taskContent, provider);
+        // 事务提交后再发送分析任务到 Stream（消息只带 resumeId，消费者从 DB 重读文本）
+        analyzeStreamProducer.sendAnalyzeTask(resumeId, provider);
 
         log.info("重新分析任务已发送: resumeId={}", resumeId);
     }

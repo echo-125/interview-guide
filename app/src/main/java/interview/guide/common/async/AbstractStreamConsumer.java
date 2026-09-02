@@ -30,9 +30,10 @@ public abstract class AbstractStreamConsumer<T> {
     @PostConstruct
     public void init() {
         this.consumerName = consumerPrefix() + UUID.randomUUID().toString().substring(0, 8);
+        int threads = consumerThreads();
         this.executorService = new ThreadPoolExecutor(
-            1,
-            1,
+            threads,
+            threads,
             0L,
             TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(),
@@ -46,7 +47,15 @@ public abstract class AbstractStreamConsumer<T> {
 
         running.set(true);
         executorService.submit(this::startConsumer);
-        log.info("{} consumer started: consumerName={}", taskDisplayName(), consumerName);
+        log.info("{} consumer started: consumerName={}, threads={}", taskDisplayName(), consumerName, threads);
+    }
+
+    /**
+     * 消费线程数。单条消息处理可能包含 LLM 长耗时调用，默认 2 个线程避免
+     * 单线程阻塞整个 Stream；子类可按需覆盖。
+     */
+    protected int consumerThreads() {
+        return 2;
     }
 
     @PreDestroy
@@ -54,6 +63,14 @@ public abstract class AbstractStreamConsumer<T> {
         running.set(false);
         if (executorService != null) {
             executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
         log.info("{} consumer stopped: consumerName={}", taskDisplayName(), consumerName);
     }
@@ -120,7 +137,7 @@ public abstract class AbstractStreamConsumer<T> {
                 return;
             }
             if (!tryMarkProcessing(payload)) {
-                ackMessage(messageId);
+                // 领取冲突（另一消费者正在处理）：不 ack，让消息留在 Pending 由回收机制处理
                 log.info("{} task was not claimed: {}", taskDisplayName(), payloadIdentifier(payload));
                 return;
             }
@@ -131,13 +148,20 @@ public abstract class AbstractStreamConsumer<T> {
         } catch (Exception e) {
             log.error("{} task failed: {}", taskDisplayName(), payloadIdentifier(payload), e);
             if (retryCount < AsyncTaskStreamConstants.MAX_RETRY_COUNT) {
-                retryMessage(payload, retryCount + 1);
+                // 先重投成功再 ack，避免「ack 但任务未入队」导致任务丢失
+                try {
+                    retryMessage(payload, retryCount + 1);
+                    ackMessage(messageId);
+                } catch (Exception retryEx) {
+                    log.error("{} task retry enqueue failed, leaving message unacked: {}",
+                        taskDisplayName(), payloadIdentifier(payload), retryEx);
+                }
             } else {
                 markFailed(payload, truncateError(
                     taskDisplayName() + " failed after retry " + retryCount + ": " + e.getMessage()
                 ));
+                ackMessage(messageId);
             }
-            ackMessage(messageId);
         }
     }
 
@@ -205,5 +229,9 @@ public abstract class AbstractStreamConsumer<T> {
 
     protected abstract void markFailed(T payload, String error);
 
+    /**
+     * 重新入队重试任务。入队失败时必须抛出异常：模板会保留原消息 pending
+     * 交给回收机制重投；若吞掉异常，原消息将被 ack，任务会静默丢失。
+     */
     protected abstract void retryMessage(T payload, int retryCount);
 }

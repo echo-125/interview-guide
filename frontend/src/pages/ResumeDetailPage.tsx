@@ -5,6 +5,7 @@ import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
 import AnalysisPanel from '../components/AnalysisPanel';
 import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
+import {useToast} from '../components/Toast';
 import {formatDateOnly} from '../utils/date';
 import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic} from 'lucide-react';
 
@@ -19,6 +20,7 @@ type DetailViewType = 'list' | 'interviewDetail';
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
   const location = useLocation();
+  const { showToast } = useToast();
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('analysis');
@@ -122,7 +124,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert('导出失败，请重试');
+      showToast('导出失败，请重试', 'error');
     } finally {
       setExporting(null);
     }
@@ -141,7 +143,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert('导出失败，请重试');
+      showToast('导出失败，请重试', 'error');
     } finally {
       setExporting(null);
     }
@@ -154,7 +156,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       setSelectedInterview(detail);
       setDetailView('interviewDetail');
     } catch (err) {
-      alert('加载面试详情失败');
+      showToast('加载面试详情失败', 'error');
     } finally {
       setLoadingInterview(false);
     }

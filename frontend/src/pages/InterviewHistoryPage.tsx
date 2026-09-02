@@ -20,6 +20,7 @@ import {
 import {skillApi, type SkillDTO} from '../api/skill';
 import {getTemplateName} from '../utils/voiceInterview';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import {useToast} from '../components/Toast';
 import {
   AlertCircle,
   CheckCircle,
@@ -222,6 +223,7 @@ export default function InterviewHistoryPage({
   knowledgeBaseId,
 }: InterviewHistoryPageProps) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const knowledgeBaseFilterId = knowledgeBaseId ?? null;
   const isKnowledgeBaseView = knowledgeBaseFilterId !== null && !Number.isNaN(knowledgeBaseFilterId);
   const [items, setItems] = useState<UnifiedInterviewItem[]>([]);
@@ -387,7 +389,7 @@ export default function InterviewHistoryPage({
       await loadAll();
       setDeleteItem(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败，请稍后重试');
+      showToast(err instanceof Error ? err.message : '删除失败，请稍后重试', 'error');
     } finally {
       setDeletingSessionId(null);
     }
@@ -407,7 +409,7 @@ export default function InterviewHistoryPage({
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('导出失败，请重试');
+      showToast('导出失败，请重试', 'error');
     } finally {
       setExporting(null);
     }
@@ -425,7 +427,7 @@ export default function InterviewHistoryPage({
       await voiceInterviewApi.generateEvaluation(item.voiceSessionId);
       await loadAll(true);
     } catch {
-      alert('重新生成评估失败，请稍后再试');
+      showToast('重新生成评估失败，请稍后再试', 'error');
     } finally {
       setRetryingVoiceSessionId(null);
     }

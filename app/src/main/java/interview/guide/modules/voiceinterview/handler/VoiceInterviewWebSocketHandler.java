@@ -3,6 +3,7 @@ package interview.guide.modules.voiceinterview.handler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
+import interview.guide.common.util.LogUtil;
 import interview.guide.modules.voiceinterview.dto.WebSocketControlMessage;
 import interview.guide.modules.voiceinterview.dto.WebSocketSubtitleMessage;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
@@ -636,7 +637,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 return;
             }
 
-            log.info("Getting LLM response for session {}, text: {}", sessionId, userText);
+            log.info("Getting LLM response for session {}, text: {}", sessionId, LogUtil.abbreviate(userText));
 
             VoiceInterviewSessionEntity sessionEntity = getSessionEntity(sessionId);
             if (sessionEntity == null) {
@@ -702,7 +703,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
 
                 recordTimerSinceNanos("app.voice.interview.llm.duration", llmStartNanos, "status", "success");
                 incrementCounter("app.voice.interview.llm.calls", "status", "success", "streaming", "true");
-                log.info("LLM response for session {}: '{}'", sessionId, aiReply);
+                log.info("LLM response for session {}: '{}'", sessionId, LogUtil.abbreviate(aiReply));
 
                 if (!session.isOpen()) {
                     log.warn("WebSocket closed during LLM processing, discarding response for session {}", sessionId);
@@ -798,7 +799,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 aiReply = llmService.chat(userText, sessionEntity, conversationHistory);
                 recordTimerSinceNanos("app.voice.interview.llm.duration", llmStartNanos, "status", "success");
                 incrementCounter("app.voice.interview.llm.calls", "status", "success", "streaming", "false");
-                log.info("LLM response for session {}: '{}'", sessionId, aiReply);
+                log.info("LLM response for session {}: '{}'", sessionId, LogUtil.abbreviate(aiReply));
 
                 if (!session.isOpen()) {
                     log.warn("WebSocket closed during LLM processing, discarding response for session {}", sessionId);
@@ -1158,6 +1159,50 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
             }
         } catch (Exception e) {
             log.error("Error during stale session cleanup", e);
+        }
+        sweepDeadWebSocketMaps();
+    }
+
+    /**
+     * 清理已失效但未触发 afterConnectionClosed 的 WebSocket 本地状态，
+     * 防止客户端异常断开（TCP 未及时 FIN）导致 map 条目与 ASR 连接长期滞留。
+     */
+    private void sweepDeadWebSocketMaps() {
+        try {
+            long now = System.currentTimeMillis();
+            for (String sessionId : sessions.keySet()) {
+                WebSocketSession ws = sessions.get(sessionId);
+                if (ws == null) {
+                    continue;
+                }
+                boolean wsDead = !ws.isOpen();
+                Long lastActive = lastActivityTime.get(sessionId);
+                boolean inactiveTooLong = lastActive != null
+                    && (now - lastActive) > PAUSE_TIMEOUT_MS;
+                if (wsDead || inactiveTooLong) {
+                    log.warn("Sweeping stale WebSocket session {} (open={}, inactiveMs={})",
+                        sessionId, ws.isOpen(), lastActive == null ? -1 : (now - lastActive));
+                    try {
+                        sttService.stopTranscription(sessionId);
+                    } catch (Exception e) {
+                        log.debug("Failed to stop ASR for stale session {}: {}", sessionId, e.getMessage());
+                    }
+                    sessions.remove(sessionId);
+                    sessionStates.remove(sessionId);
+                    lastActivityTime.remove(sessionId);
+                }
+            }
+            // openingAudioCache 容量上限：防止长时间运行无界增长
+            int cacheMax = 200;
+            int overflow = openingAudioCache.size() - cacheMax;
+            if (overflow > 0) {
+                openingAudioCache.keySet().stream()
+                    .limit(overflow)
+                    .forEach(openingAudioCache::remove);
+                log.debug("Trimmed openingAudioCache by {} entries", overflow);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to sweep stale WebSocket state", e);
         }
     }
 

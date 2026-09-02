@@ -5,6 +5,7 @@ import interview.guide.common.ai.PromptSecurityConstants;
 import interview.guide.common.ai.RerankClient;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.LogUtil;
 import interview.guide.modules.knowledgebase.model.QueryRequest;
 import interview.guide.modules.knowledgebase.model.QueryResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -124,7 +125,7 @@ public class KnowledgeBaseQueryService {
      * @return AI回答
      */
     public String answerQuestion(List<Long> knowledgeBaseIds, String question) {
-        log.info("收到知识库提问: kbIds={}, question={}", knowledgeBaseIds, question);
+        log.info("收到知识库提问: kbIds={}, question={}", knowledgeBaseIds, LogUtil.abbreviate(question));
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
             return NO_RESULT_RESPONSE;
         }
@@ -158,7 +159,8 @@ public class KnowledgeBaseQueryService {
 
         } catch (Exception e) {
             log.error("知识库问答失败: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED, "知识库查询失败：" + e.getMessage());
+            // 错误详情只进日志，对用户只给友好文案
+            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED, "知识库查询失败，请稍后重试");
         }
     }
 
@@ -230,7 +232,8 @@ public class KnowledgeBaseQueryService {
      */
     public Flux<String> answerQuestionStream(List<Long> knowledgeBaseIds, String question,
                                              List<Message> history, String llmProvider) {
-        log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}, provider={}", knowledgeBaseIds, question,
+        log.info("收到知识库流式提问: kbIds={}, question={}, historySize={}, provider={}", knowledgeBaseIds,
+                LogUtil.abbreviate(question),
                 history != null ? history.size() : 0, llmProvider);
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || normalizeQuestion(question).isBlank()) {
             return Flux.just(NO_RESULT_RESPONSE);
@@ -280,7 +283,7 @@ public class KnowledgeBaseQueryService {
 
         } catch (Exception e) {
             log.error("知识库流式问答失败: {}", e.getMessage(), e);
-            return Flux.just("【错误】知识库查询失败：" + e.getMessage());
+            return Flux.just("【错误】知识库查询失败，请稍后重试");
         }
     }
 

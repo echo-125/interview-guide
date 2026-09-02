@@ -5,6 +5,7 @@ import com.anthropic.models.models.ModelListPage;
 import com.openai.client.OpenAIClient;
 import com.openai.models.models.Model;
 import interview.guide.common.ai.ApiPathResolver;
+import interview.guide.common.ai.UrlAccessGuard;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.llmprovider.dto.FetchModelsRequest;
@@ -85,6 +86,8 @@ public class ModelCatalogService {
   }
 
   private List<String> fetchAnthropicModels(String baseUrl, String apiKey) {
+    // SSRF 防护：Anthropic SDK 不暴露自定义 OkHttpClient 入口，入口统一校验 baseUrl
+    UrlAccessGuard.assertExternalUrl(baseUrl);
     com.anthropic.client.AnthropicClient client = AnthropicOkHttpClient.builder()
         .apiKey(apiKey)
         .baseUrl(ApiPathResolver.stripTrailingSlashes(baseUrl))

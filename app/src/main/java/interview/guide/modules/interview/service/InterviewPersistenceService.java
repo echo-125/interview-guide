@@ -284,7 +284,9 @@ public class InterviewPersistenceService {
                 sessionId, report.overallScore(), answersToSave.size());
 
         } catch (JacksonException e) {
-            log.error("序列化报告失败: {}", e.getMessage(), e);
+            log.error("序列化报告失败，事务回滚: sessionId={}, error={}", sessionId, e.getMessage(), e);
+            // 必须抛出以触发回滚，避免「状态已标 EVALUATED 但报告未完整保存」的不一致
+            throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED, "保存面试报告失败", e);
         }
     }
     
@@ -304,6 +306,13 @@ public class InterviewPersistenceService {
      */
     public List<InterviewSessionEntity> findByResumeId(Long resumeId) {
         return sessionRepository.findByResumeIdOrderByCreatedAtDesc(resumeId);
+    }
+
+    /**
+     * 按简历ID统计面试次数（避免 N+1）
+     */
+    public long countByResumeId(Long resumeId) {
+        return sessionRepository.countByResumeId(resumeId);
     }
 
     /**

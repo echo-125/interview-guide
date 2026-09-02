@@ -21,8 +21,7 @@ public class ApiKeyEncryptionService {
   private static final int NONCE_BYTES = 12;
   private static final int GCM_TAG_BITS = 128;
   private static final String CIPHER = "AES/GCM/NoPadding";
-  private static final String DEV_FALLBACK_KEY =
-      "interview-guide-dev-only-provider-api-key-encryption";
+  private static final int RANDOM_FALLBACK_KEY_BYTES = 32;
 
   private final LlmProviderProperties properties;
   private final SecureRandom secureRandom = new SecureRandom();
@@ -56,8 +55,13 @@ public class ApiKeyEncryptionService {
           "APP_AI_CONFIG_ENCRYPTION_KEY 未配置，且未显式允许 Provider API Key 开发 fallback");
     }
 
-    log.warn("APP_AI_CONFIG_ENCRYPTION_KEY is not configured; using explicitly enabled fallback key");
-    return DEV_FALLBACK_KEY;
+    // 开发 fallback：使用进程内随机密钥（不再硬编码），重启后历史密文无法解密，
+    // 仅用于无持久化需求的开发环境。
+    byte[] randomKey = new byte[RANDOM_FALLBACK_KEY_BYTES];
+    secureRandom.nextBytes(randomKey);
+    log.warn("APP_AI_CONFIG_ENCRYPTION_KEY 未配置；已使用进程内随机密钥作为开发 fallback，"
+        + "应用重启后历史密文将无法解密，请配置固定加密密钥");
+    return java.util.Base64.getEncoder().encodeToString(randomKey);
   }
 
   public EncryptedValue encrypt(String plainText) {
