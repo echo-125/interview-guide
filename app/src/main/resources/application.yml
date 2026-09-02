@@ -8,6 +8,12 @@ logging:
 
 server:
   port: 8080
+  # 低内存部署调优：平台级线程池上限。注意 spring.threads.virtual.enabled=true 时
+  # Tomcat 使用虚拟线程处理请求，此处的 threads.max 仅对非虚拟线程回退场景生效
+  tomcat:
+    threads:
+      max: 10
+      min-spare: 2
   # 明确指定HTTP响应编码
   servlet:
     encoding:
@@ -46,6 +52,11 @@ spring:
     # 与 docker-compose.dev.yml 中 postgres 服务默认一致（本地只起依赖容器 + bootRun 时无需改）
     password: ${POSTGRES_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
+    # 低内存部署调优：个人单用户轻量使用（尤其是云端数据库）时收缩连接池，
+    # 每个空闲连接在服务端与客户端各占一份内存，3 个连接足够覆盖日常并发
+    hikari:
+      maximum-pool-size: ${APP_HIKARI_MAX_POOL_SIZE:3}
+      minimum-idle: ${APP_HIKARI_MIN_IDLE:1}
 
   jpa:
     hibernate:

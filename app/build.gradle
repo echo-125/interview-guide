@@ -149,3 +149,8 @@ tasks.named('bootRun') {
         }
     }
 }
+
+// 生产打包：固定可执行 Jar 名称，便于一键启动脚本引用（app/build/libs/app.jar）
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
