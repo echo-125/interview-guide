@@ -26,6 +26,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -47,17 +48,39 @@ public class PdfExportService {
     /**
      * 创建支持中文的字体
      */
-    private PdfFont createChineseFont() {
-        try (var fontStream = getClass().getClassLoader().getResourceAsStream("fonts/ZhuqueFangsong-Regular.ttf")) {
-            if (fontStream != null) {
-                byte[] fontBytes = fontStream.readAllBytes();
-                log.debug("使用项目内嵌字体: fonts/ZhuqueFangsong-Regular.ttf");
-                return PdfFontFactory.createFont(fontBytes, PdfEncodings.IDENTITY_H, EmbeddingStrategy.FORCE_EMBEDDED);
-            }
+    /**
+     * 字体文件字节缓存：几 MB 的 TTF 只读一次，避免每次导出重复解析
+     */
+    private volatile byte[] chineseFontBytes;
 
-            log.error("未找到字体文件: fonts/ZhuqueFangsong-Regular.ttf");
-            throw new BusinessException(ErrorCode.EXPORT_PDF_FAILED, "字体文件缺失，请联系管理员");
-            
+    private byte[] loadChineseFontBytes() {
+        byte[] bytes = chineseFontBytes;
+        if (bytes == null) {
+            synchronized (this) {
+                if (chineseFontBytes == null) {
+                    try (var fontStream = getClass().getClassLoader()
+                            .getResourceAsStream("fonts/ZhuqueFangsong-Regular.ttf")) {
+                        if (fontStream == null) {
+                            log.error("未找到字体文件: fonts/ZhuqueFangsong-Regular.ttf");
+                            throw new BusinessException(ErrorCode.EXPORT_PDF_FAILED, "字体文件缺失，请联系管理员");
+                        }
+                        chineseFontBytes = fontStream.readAllBytes();
+                        log.debug("已加载项目内嵌字体: fonts/ZhuqueFangsong-Regular.ttf");
+                    } catch (IOException e) {
+                        log.error("读取字体文件失败: {}", e.getMessage(), e);
+                        throw new BusinessException(ErrorCode.EXPORT_PDF_FAILED, "读取字体文件失败: " + e.getMessage());
+                    }
+                }
+                bytes = chineseFontBytes;
+            }
+        }
+        return bytes;
+    }
+
+    private PdfFont createChineseFont() {
+        try {
+            return PdfFontFactory.createFont(loadChineseFontBytes(), PdfEncodings.IDENTITY_H,
+                EmbeddingStrategy.FORCE_EMBEDDED);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -80,9 +103,9 @@ public class PdfExportService {
      */
     public byte[] exportResumeAnalysis(ResumeEntity resume, ResumeAnalysisResponse analysis) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PdfWriter writer = new PdfWriter(baos);
-        PdfDocument pdfDoc = new PdfDocument(writer);
-        Document document = new Document(pdfDoc);
+        Document document = new Document(new PdfDocument(new PdfWriter(baos)));
+        // try-with-resources 仅兜底异常路径的资源释放，正常路径由末尾显式 close 完成
+        try (document) {
         
         // 使用支持中文的字体
         PdfFont font = createChineseFont();
@@ -156,18 +179,19 @@ public class PdfExportService {
             }
         }
         
-        document.close();
-        return baos.toByteArray();
+            document.close();
+            return baos.toByteArray();
+        }
     }
-    
+
     /**
      * 导出面试报告为PDF
      */
     public byte[] exportInterviewReport(InterviewSessionEntity session) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PdfWriter writer = new PdfWriter(baos);
-        PdfDocument pdfDoc = new PdfDocument(writer);
-        Document document = new Document(pdfDoc);
+        Document document = new Document(new PdfDocument(new PdfWriter(baos)));
+        // try-with-resources 仅兜底异常路径的资源释放，正常路径由末尾显式 close 完成
+        try (document) {
         
         // 使用支持中文的字体
         PdfFont font = createChineseFont();
@@ -274,10 +298,11 @@ public class PdfExportService {
             }
         }
         
-        document.close();
-        return baos.toByteArray();
+            document.close();
+            return baos.toByteArray();
+        }
     }
-    
+
     private Paragraph createSectionTitle(String title) {
         return new Paragraph(title)
             .setFontSize(14)

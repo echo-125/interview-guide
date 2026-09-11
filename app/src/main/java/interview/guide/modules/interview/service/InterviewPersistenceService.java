@@ -9,6 +9,7 @@ import interview.guide.modules.interview.model.InterviewAnswerEntity;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
 import interview.guide.modules.interview.model.InterviewSessionEntity;
+import interview.guide.modules.interview.model.SessionListItemDTO;
 import interview.guide.modules.interview.repository.InterviewAnswerRepository;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.resume.model.ResumeEntity;
@@ -28,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 面试持久化服务
@@ -395,12 +397,23 @@ public class InterviewPersistenceService {
     }
 
     /**
-     * 获取所有面试记录（按创建时间倒序）
+     * 单条 GROUP BY 批量统计每个简历的面试次数，替代逐条 countByResumeId
      */
-    public List<InterviewSessionEntity> findAll() {
-        return sessionRepository.findAllByOrderByCreatedAtDesc();
+    public Map<Long, Long> countByResumeIds(List<Long> resumeIds) {
+        if (resumeIds == null || resumeIds.isEmpty()) {
+            return Map.of();
+        }
+        return sessionRepository.countByResumeIdIn(resumeIds).stream()
+            .collect(Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
     }
-    
+
+    /**
+     * 获取会话列表（投影查询，按创建时间倒序，不含 TEXT 大字段）
+     */
+    public List<SessionListItemDTO> findAllSessionListItems() {
+        return sessionRepository.findAllSessionListItems();
+    }
+
     /**
      * 删除简历的所有面试会话
      * 由于InterviewSessionEntity设置了cascade = CascadeType.ALL, orphanRemoval = true

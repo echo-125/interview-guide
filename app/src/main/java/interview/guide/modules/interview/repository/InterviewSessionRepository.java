@@ -2,6 +2,7 @@ package interview.guide.modules.interview.repository;
 
 import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.model.InterviewSessionEntity.SessionStatus;
+import interview.guide.modules.interview.model.SessionListItemDTO;
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.resume.model.ResumeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -63,6 +64,13 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
      * 按简历ID统计面试次数（避免 N+1）
      */
     long countByResumeId(Long resumeId);
+
+    /**
+     * 单条 GROUP BY 批量统计多个简历的面试次数，替代逐条 countByResumeId
+     */
+    @Query("SELECT s.resumeId, COUNT(s) FROM InterviewSessionEntity s "
+        + "WHERE s.resumeId IN :resumeIds GROUP BY s.resumeId")
+    List<Object[]> countByResumeIdIn(@Param("resumeIds") List<Long> resumeIds);
     
     /**
      * 查找简历的未完成面试（CREATED或IN_PROGRESS状态）
@@ -84,6 +92,20 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
      * 查找所有面试会话（按创建时间倒序）
      */
     List<InterviewSessionEntity> findAllByOrderByCreatedAtDesc();
+
+    /**
+     * 会话列表投影：只取列表所需标量列（构造器表达式），
+     * 避免把 questionsJson 等四个 TEXT 大字段整表拉回内存
+     */
+    @Query("""
+        SELECT new interview.guide.modules.interview.model.SessionListItemDTO(
+            s.sessionId, s.skillId, s.difficulty, s.resumeId,
+            COALESCE(s.totalQuestions, 0), s.status, s.evaluateStatus, s.evaluateError,
+            s.overallScore, s.sourceType, s.knowledgeBaseId, s.interviewCategory, s.createdAt, s.completedAt)
+        FROM InterviewSessionEntity s
+        ORDER BY s.createdAt DESC
+        """)
+    List<SessionListItemDTO> findAllSessionListItems();
 
     /**
      * 根据 skillId 查找最近的面试记录（用于通用模式历史题去重）

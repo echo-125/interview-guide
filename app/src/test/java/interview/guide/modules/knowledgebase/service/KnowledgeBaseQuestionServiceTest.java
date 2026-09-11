@@ -52,12 +52,11 @@ class KnowledgeBaseQuestionServiceTest {
   class ListFiltering {
 
     @Test
-    @DisplayName("按 category 筛选时只返回该方向的题")
+    @DisplayName("按 category 筛选时把过滤条件下推给仓储")
     void shouldFilterByCategory() {
       KnowledgeBaseQuestionEntity redis = entity("Redis 主问题", "Redis");
-      KnowledgeBaseQuestionEntity jvm = entity("JVM 主问题", "JVM");
-      when(questionRepository.findByKnowledgeBase_IdOrderByUpdatedAtDesc(1L))
-          .thenReturn(List.of(redis, jvm));
+      when(questionRepository.findFiltered(1L, "Redis", null, null))
+          .thenReturn(List.of(redis));
 
       List<KnowledgeBaseQuestionDTO> result =
           service.listQuestions(1L, null, "Redis", null, null);
@@ -67,9 +66,9 @@ class KnowledgeBaseQuestionServiceTest {
     }
 
     @Test
-    @DisplayName("category 为空白时返回全部")
+    @DisplayName("category 为空白时以 null 下推查询")
     void shouldReturnAllWhenCategoryIsBlank() {
-      when(questionRepository.findByKnowledgeBase_IdOrderByUpdatedAtDesc(1L))
+      when(questionRepository.findFiltered(1L, null, null, null))
           .thenReturn(List.of(entity("Q1", "JVM"), entity("Q2", "Redis")));
 
       List<KnowledgeBaseQuestionDTO> result =
@@ -83,7 +82,7 @@ class KnowledgeBaseQuestionServiceTest {
     void shouldReadLegacyStringFollowUps() throws Exception {
       KnowledgeBaseQuestionEntity question = entity("Q1", "JVM");
       question.setFollowUpsJson(objectMapper.writeValueAsString(List.of("追问1")));
-      when(questionRepository.findByKnowledgeBase_IdOrderByUpdatedAtDesc(1L))
+      when(questionRepository.findFiltered(1L, null, null, null))
           .thenReturn(List.of(question));
 
       List<KnowledgeBaseQuestionDTO> result =

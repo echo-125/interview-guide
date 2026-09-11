@@ -52,10 +52,8 @@ public class InterviewController {
      */
     @GetMapping("/api/interview/sessions")
     public Result<List<SessionListItemDTO>> listSessions() {
-        List<SessionListItemDTO> items = persistenceService.findAll().stream()
-            .map(SessionListItemDTO::from)
-            .toList();
-        return Result.success(items);
+        // 投影查询：只取列表所需列，避免全量加载 questionsJson 等 TEXT 大字段
+        return Result.success(persistenceService.findAllSessionListItems());
     }
 
     /**

@@ -15,6 +15,7 @@ import interview.guide.modules.resume.model.ResumeListItemDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -45,6 +46,7 @@ public class ResumeHistoryService {
      * 获取所有简历列表
      * 批量查询最新分析与面试次数，避免 N+1
      */
+    @Transactional(readOnly = true)
     public List<ResumeListItemDTO> getAllResumes() {
         List<ResumeEntity> resumes = resumePersistenceService.findAllResumes();
         if (resumes.isEmpty()) {
@@ -56,9 +58,8 @@ public class ResumeHistoryService {
         Map<Long, ResumeAnalysisEntity> latestAnalysisById = resumePersistenceService.findLatestAnalyses(resumeIds)
             .stream()
             .collect(Collectors.toMap(a -> a.getResume().getId(), a -> a, (a, b) -> a));
-        // 批量统计面试次数
-        Map<Long, Long> interviewCountById = resumeIds.stream()
-            .collect(Collectors.toMap(id -> id, interviewPersistenceService::countByResumeId, (a, b) -> a));
+        // 单条 GROUP BY 统计各简历的面试次数（替代逐条 COUNT）
+        Map<Long, Long> interviewCountById = interviewPersistenceService.countByResumeIds(resumeIds);
 
         return resumes.stream().map(resume -> {
             // 获取最新分析结果的分数

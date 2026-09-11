@@ -26,7 +26,6 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
-import java.util.Locale;
 
 @Slf4j
 @Service
@@ -53,16 +52,15 @@ public class KnowledgeBaseQuestionService {
                                                       String category,
                                                       String difficulty,
                                                       String keyword) {
-    List<KnowledgeBaseQuestionEntity> questions = status == null
-        ? questionRepository.findByKnowledgeBase_IdOrderByUpdatedAtDesc(knowledgeBaseId)
-        : questionRepository.findByKnowledgeBase_IdAndStatusOrderByUpdatedAtDesc(knowledgeBaseId, status);
     String categoryFilter = trimToNull(category);
     String difficultyFilter = trimToNull(difficulty);
     String keywordFilter = trimToNull(keyword);
+    // 过滤条件下推到查询（见 findFiltered 的 Javadoc），避免全量拉回内存过滤
+    List<KnowledgeBaseQuestionEntity> questions = status == null
+        ? questionRepository.findFiltered(knowledgeBaseId, categoryFilter, difficultyFilter, keywordFilter)
+        : questionRepository.findFilteredWithStatus(
+            knowledgeBaseId, status, categoryFilter, difficultyFilter, keywordFilter);
     return questions.stream()
-        .filter(q -> categoryFilter == null || categoryFilter.equals(q.getCategory()))
-        .filter(q -> difficultyFilter == null || difficultyFilter.equals(q.getDifficulty()))
-        .filter(q -> keywordFilter == null || containsKeyword(q, keywordFilter))
         .map(this::toDTO)
         .toList();
   }
@@ -231,19 +229,6 @@ public class KnowledgeBaseQuestionService {
   private KnowledgeBaseQuestionEntity getQuestion(Long questionId) {
     return questionRepository.findById(questionId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_QUESTION_NOT_FOUND));
-  }
-
-  private boolean containsKeyword(KnowledgeBaseQuestionEntity question, String keyword) {
-    String lower = keyword.toLowerCase(Locale.ROOT);
-    return contains(question.getQuestion(), lower)
-        || contains(question.getReferenceAnswer(), lower)
-        || contains(question.getScoringRubric(), lower)
-        || contains(question.getTopicSummary(), lower)
-        || contains(question.getCategory(), lower);
-  }
-
-  private boolean contains(String value, String keyword) {
-    return value != null && value.toLowerCase(Locale.ROOT).contains(keyword);
   }
 
   private List<String> readStringList(String value) {
