@@ -1,6 +1,5 @@
 package interview.guide.modules.knowledgebase.service;
 
-import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.util.TextUtil;
