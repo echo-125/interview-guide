@@ -4,6 +4,7 @@ import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
+import interview.guide.modules.interview.model.AnswerBodyRequest;
 import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.InterviewDetailDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
@@ -15,6 +16,7 @@ import interview.guide.modules.interview.service.InterviewHistoryService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.interview.service.InterviewSessionService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -92,11 +94,9 @@ public class InterviewController {
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
     public Result<SubmitAnswerResponse> submitAnswer(
             @PathVariable String sessionId,
-            @RequestBody Map<String, Object> body) {
-        Integer questionIndex = (Integer) body.get("questionIndex");
-        String answer = (String) body.get("answer");
-        log.info("提交答案: 会话{}, 问题{}", sessionId, questionIndex);
-        SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, questionIndex, answer);
+            @Valid @RequestBody AnswerBodyRequest body) {
+        log.info("提交答案: 会话{}, 问题{}", sessionId, body.questionIndex());
+        SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, body.questionIndex(), body.answer());
         SubmitAnswerResponse response = sessionService.submitAnswer(request);
         return Result.success(response);
     }
@@ -128,11 +128,9 @@ public class InterviewController {
     @PutMapping("/api/interview/sessions/{sessionId}/answers")
     public Result<Void> saveAnswer(
             @PathVariable String sessionId,
-            @RequestBody Map<String, Object> body) {
-        Integer questionIndex = (Integer) body.get("questionIndex");
-        String answer = (String) body.get("answer");
-        log.info("暂存答案: 会话{}, 问题{}", sessionId, questionIndex);
-        SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, questionIndex, answer);
+            @Valid @RequestBody AnswerBodyRequest body) {
+        log.info("暂存答案: 会话{}, 问题{}", sessionId, body.questionIndex());
+        SubmitAnswerRequest request = new SubmitAnswerRequest(sessionId, body.questionIndex(), body.answer());
         sessionService.saveAnswer(request);
         return Result.success(null);
     }

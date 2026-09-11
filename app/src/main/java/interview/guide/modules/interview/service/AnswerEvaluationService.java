@@ -5,6 +5,7 @@ import interview.guide.common.evaluation.QaRecord;
 import interview.guide.common.evaluation.UnifiedEvaluationService;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO.CategoryScore;
@@ -151,18 +152,14 @@ public class AnswerEvaluationService {
     }
 
     private boolean hasQuestionReference(InterviewQuestionDTO question) {
-        return hasText(question.referenceAnswer())
-            || hasText(question.scoringRubric())
+        return TextUtil.hasText(question.referenceAnswer())
+            || TextUtil.hasText(question.scoringRubric())
             || (question.keyPoints() != null && !question.keyPoints().isEmpty());
     }
 
     private void appendIfPresent(StringBuilder sb, String label, String value) {
-        if (hasText(value)) {
+        if (TextUtil.hasText(value)) {
             sb.append(label).append(": ").append(value.trim()).append('\n');
         }
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 }

@@ -51,6 +51,8 @@ spring:
 
 app:
   ai:
+    # 注意：以下 providers 预设仅供 legacy YAML 轨（无数据库场景）与测试夹具使用；
+    # 正式运行时模型服务完全由「设置 → 模型服务」页配置（落库 llm_provider_config）
     default-provider: dashscope
     security:
       api-key-encryption-key: test-provider-api-key-encryption-key

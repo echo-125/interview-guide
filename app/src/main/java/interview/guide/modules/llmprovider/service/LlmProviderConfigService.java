@@ -7,6 +7,7 @@ import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
 import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
@@ -168,7 +169,7 @@ public class LlmProviderConfigService {
                 .topP(e.getValue().getTopP())
                 .embeddingDimensions(resolveEmbeddingDimensions(e.getValue().getEmbeddingDimensions()))
                 .supportsEmbedding(Boolean.TRUE.equals(e.getValue().getSupportsEmbedding())
-                    || trimOrNull(e.getValue().getEmbeddingModel()) != null)
+                    || TextUtil.trimToNull(e.getValue().getEmbeddingModel()) != null)
                 .temperature(e.getValue().getTemperature())
                 .defaultChatProvider(e.getKey().equals(properties.getDefaultProvider()))
                 .defaultEmbeddingProvider(e.getKey().equals(properties.getDefaultEmbeddingProvider()))
@@ -220,7 +221,7 @@ public class LlmProviderConfigService {
             .topP(config.getTopP())
             .embeddingDimensions(resolveEmbeddingDimensions(config.getEmbeddingDimensions()))
             .supportsEmbedding(Boolean.TRUE.equals(config.getSupportsEmbedding())
-                || trimOrNull(config.getEmbeddingModel()) != null)
+                || TextUtil.trimToNull(config.getEmbeddingModel()) != null)
             .temperature(config.getTemperature())
             .defaultChatProvider(id.equals(properties.getDefaultProvider()))
             .defaultEmbeddingProvider(id.equals(properties.getDefaultEmbeddingProvider()))
@@ -365,20 +366,20 @@ public class LlmProviderConfigService {
         createProviderLegacy(request);
         return;
       }
-      String providerId = trimOrNull(request.id());
+      String providerId = TextUtil.trimToNull(request.id());
       if (providerRepository.existsById(providerId)) {
         throw new BusinessException(ErrorCode.PROVIDER_ALREADY_EXISTS,
             "Provider '" + request.id() + "' 已存在");
       }
       String baseUrl = requireNonBlank(request.baseUrl(), "baseUrl");
-      String model = trimOrNull(request.model());
+      String model = TextUtil.trimToNull(request.model());
       String apiKey = requireNonBlank(request.apiKey(), "apiKey");
-      String embeddingModel = trimOrNull(request.embeddingModel());
+      String embeddingModel = TextUtil.trimToNull(request.embeddingModel());
       Integer embeddingDimensions = resolveEmbeddingDimensions(request.embeddingDimensions());
       boolean supportsEmbedding = request.supportsEmbedding() != null
           ? request.supportsEmbedding()
           : embeddingModel != null;
-      String rerankModel = trimOrNull(request.rerankModel());
+      String rerankModel = TextUtil.trimToNull(request.rerankModel());
       validateAtLeastOneCapability(providerId, model, supportsEmbedding && embeddingModel != null, rerankModel);
       validateEmbeddingConfig(providerId, supportsEmbedding, embeddingModel, embeddingDimensions);
       String apiFormat = requireValidApiFormat(request.apiFormat());
@@ -421,12 +422,12 @@ public class LlmProviderConfigService {
       }
       LlmProviderEntity provider = getProviderEntityOrThrow(id);
 
-      String trimmedBaseUrl = trimOrNull(request.baseUrl());
+      String trimmedBaseUrl = TextUtil.trimToNull(request.baseUrl());
       if (request.baseUrl() != null && trimmedBaseUrl == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "baseUrl 不能为空字符串");
       }
-      String trimmedModel = trimOrNull(request.model());
-      String trimmedApiKey = trimOrNull(request.apiKey());
+      String trimmedModel = TextUtil.trimToNull(request.model());
+      String trimmedApiKey = TextUtil.trimToNull(request.apiKey());
       if (request.apiKey() != null && trimmedApiKey == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "apiKey 不能为空字符串");
       }
@@ -437,7 +438,7 @@ public class LlmProviderConfigService {
         provider.setApiFormat(requireValidApiFormat(request.apiFormat()));
       }
       if (request.embeddingModel() != null) {
-        provider.setEmbeddingModel(trimOrNull(request.embeddingModel()));
+        provider.setEmbeddingModel(TextUtil.trimToNull(request.embeddingModel()));
       }
       if (request.embeddingDimensions() != null) {
         provider.setEmbeddingDimensions(resolveEmbeddingDimensions(request.embeddingDimensions()));
@@ -446,14 +447,14 @@ public class LlmProviderConfigService {
         provider.setSupportsEmbedding(request.supportsEmbedding());
       }
       if (request.rerankModel() != null) {
-        provider.setRerankModel(trimOrNull(request.rerankModel()));
+        provider.setRerankModel(TextUtil.trimToNull(request.rerankModel()));
       }
       if (request.rerankApiFormat() != null) {
         provider.setRerankApiFormat(requireValidRerankApiFormat(request.rerankApiFormat()));
       }
       validateAtLeastOneCapability(id, provider.getModel(),
-          provider.isSupportsEmbedding() && trimOrNull(provider.getEmbeddingModel()) != null,
-          trimOrNull(provider.getRerankModel()));
+          provider.isSupportsEmbedding() && TextUtil.trimToNull(provider.getEmbeddingModel()) != null,
+          TextUtil.trimToNull(provider.getRerankModel()));
       validateEmbeddingConfig(
           id,
           provider.isSupportsEmbedding(),
@@ -513,12 +514,12 @@ public class LlmProviderConfigService {
         updateDefaultProviderLegacy(request);
         return;
       }
-      String providerId = trimOrNull(request.defaultProvider());
+      String providerId = TextUtil.trimToNull(request.defaultProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultProvider 不能为空");
       }
       LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
-      if (trimOrNull(provider.getModel()) == null) {
+      if (TextUtil.trimToNull(provider.getModel()) == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST,
             "Provider '" + providerId + "' 未配置聊天模型，不能设为默认聊天服务");
       }
@@ -536,12 +537,12 @@ public class LlmProviderConfigService {
   public void updateDefaultEmbeddingProvider(DefaultProviderDTO request) {
     rwLock.writeLock().lock();
     try {
-      String providerId = trimOrNull(request.defaultEmbeddingProvider());
+      String providerId = TextUtil.trimToNull(request.defaultEmbeddingProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultEmbeddingProvider 不能为空");
       }
       LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
-      String embeddingModel = trimOrNull(provider.getEmbeddingModel());
+      String embeddingModel = TextUtil.trimToNull(provider.getEmbeddingModel());
       if (!provider.isSupportsEmbedding() || embeddingModel == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST,
             "Provider '" + providerId + "' 不支持 Embedding，不能设为默认向量服务");
@@ -569,12 +570,12 @@ public class LlmProviderConfigService {
         updateDefaultRerankProviderLegacy(request);
         return;
       }
-      String providerId = trimOrNull(request.defaultRerankProvider());
+      String providerId = TextUtil.trimToNull(request.defaultRerankProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
       }
       LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
-      if (trimOrNull(provider.getRerankModel()) == null) {
+      if (TextUtil.trimToNull(provider.getRerankModel()) == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST,
             "Provider '" + providerId + "' 未配置 Rerank 模型，不能设为默认重排服务");
       }
@@ -707,9 +708,9 @@ public class LlmProviderConfigService {
     ProviderConfig config = new ProviderConfig();
     config.setBaseUrl(request.baseUrl());
     config.setApiKey(request.apiKey());
-    String model = trimOrNull(request.model());
-    String embeddingModel = trimOrNull(request.embeddingModel());
-    String rerankModel = trimOrNull(request.rerankModel());
+    String model = TextUtil.trimToNull(request.model());
+    String embeddingModel = TextUtil.trimToNull(request.embeddingModel());
+    String rerankModel = TextUtil.trimToNull(request.rerankModel());
     validateAtLeastOneCapability(request.id(), model, embeddingModel != null, rerankModel);
     validateEmbeddingConfig(
         request.id(),
@@ -736,22 +737,22 @@ public class LlmProviderConfigService {
 
   private void updateProviderLegacy(String id, UpdateProviderRequest request) {
     ProviderConfig config = getLegacyProviderConfigOrThrow(id);
-    String trimmedBaseUrl = trimOrNull(request.baseUrl());
+    String trimmedBaseUrl = TextUtil.trimToNull(request.baseUrl());
     if (request.baseUrl() != null && trimmedBaseUrl == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "baseUrl 不能为空字符串");
     }
-    String trimmedApiKey = trimOrNull(request.apiKey());
+    String trimmedApiKey = TextUtil.trimToNull(request.apiKey());
     if (request.apiKey() != null && trimmedApiKey == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "apiKey 不能为空字符串");
     }
 
     if (trimmedBaseUrl != null) config.setBaseUrl(trimmedBaseUrl);
-    if (request.model() != null) config.setModel(trimOrNull(request.model()));
+    if (request.model() != null) config.setModel(TextUtil.trimToNull(request.model()));
     if (request.apiFormat() != null) {
       config.setApiFormat(requireValidApiFormat(request.apiFormat()));
     }
     if (request.embeddingModel() != null) {
-      config.setEmbeddingModel(trimOrNull(request.embeddingModel()));
+      config.setEmbeddingModel(TextUtil.trimToNull(request.embeddingModel()));
     }
     if (request.embeddingDimensions() != null) {
       config.setEmbeddingDimensions(resolveEmbeddingDimensions(request.embeddingDimensions()));
@@ -760,7 +761,7 @@ public class LlmProviderConfigService {
       config.setSupportsEmbedding(request.supportsEmbedding());
     }
     if (request.rerankModel() != null) {
-      config.setRerankModel(trimOrNull(request.rerankModel()));
+      config.setRerankModel(TextUtil.trimToNull(request.rerankModel()));
     }
     if (request.rerankApiFormat() != null) {
       config.setRerankApiFormat(requireValidRerankApiFormat(request.rerankApiFormat()));
@@ -774,8 +775,8 @@ public class LlmProviderConfigService {
     if (request.temperature() != null) {
       config.setTemperature(request.temperature());
     }
-    validateAtLeastOneCapability(id, trimOrNull(config.getModel()),
-        trimOrNull(config.getEmbeddingModel()) != null, trimOrNull(config.getRerankModel()));
+    validateAtLeastOneCapability(id, TextUtil.trimToNull(config.getModel()),
+        TextUtil.trimToNull(config.getEmbeddingModel()) != null, TextUtil.trimToNull(config.getRerankModel()));
     if (trimmedApiKey != null) {
       config.setApiKey(trimmedApiKey);
       updateEnvValue(toEnvKey(id), trimmedApiKey);
@@ -799,7 +800,7 @@ public class LlmProviderConfigService {
   }
 
   private void updateDefaultProviderLegacy(DefaultProviderDTO request) {
-    String providerId = trimOrNull(request.defaultProvider());
+    String providerId = TextUtil.trimToNull(request.defaultProvider());
     if (providerId == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultProvider 不能为空");
     }
@@ -810,12 +811,12 @@ public class LlmProviderConfigService {
   }
 
   private void updateDefaultRerankProviderLegacy(DefaultProviderDTO request) {
-    String providerId = trimOrNull(request.defaultRerankProvider());
+    String providerId = TextUtil.trimToNull(request.defaultRerankProvider());
     if (providerId == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
     }
     ProviderConfig provider = getLegacyProviderConfigOrThrow(providerId);
-    if (trimOrNull(provider.getRerankModel()) == null) {
+    if (TextUtil.trimToNull(provider.getRerankModel()) == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST,
           "Provider '" + providerId + "' 未配置 Rerank 模型，不能设为默认重排服务");
     }
@@ -834,7 +835,7 @@ public class LlmProviderConfigService {
         config.getRerankModel(),
         rerankApiFormatOrDefault(config.getRerankApiFormat()),
         resolveEmbeddingDimensions(config.getEmbeddingDimensions()),
-        Boolean.TRUE.equals(config.getSupportsEmbedding()) || trimOrNull(config.getEmbeddingModel()) != null,
+        Boolean.TRUE.equals(config.getSupportsEmbedding()) || TextUtil.trimToNull(config.getEmbeddingModel()) != null,
         config.getTemperature()
     );
   }
@@ -970,16 +971,8 @@ public class LlmProviderConfigService {
     return requestBody;
   }
 
-  private String trimOrNull(String value) {
-    if (value == null) {
-      return null;
-    }
-    String normalized = value.trim();
-    return normalized.isEmpty() ? null : normalized;
-  }
-
   private String requireNonBlank(String value, String fieldName) {
-    String normalized = trimOrNull(value);
+    String normalized = TextUtil.trimToNull(value);
     if (normalized == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 不能为空");
     }
@@ -991,7 +984,7 @@ public class LlmProviderConfigService {
       String model,
       boolean hasEmbedding,
       String rerankModel) {
-    if (trimOrNull(model) == null && !hasEmbedding && trimOrNull(rerankModel) == null) {
+    if (TextUtil.trimToNull(model) == null && !hasEmbedding && TextUtil.trimToNull(rerankModel) == null) {
       throw new BusinessException(ErrorCode.BAD_REQUEST,
           "Provider '" + providerId + "' 至少需要配置 聊天模型 / 向量模型 / Rerank 模型 中的一项");
     }
@@ -1036,7 +1029,7 @@ public class LlmProviderConfigService {
       boolean supportsEmbedding,
       String embeddingModel,
       Integer embeddingDimensions) {
-    String normalizedModel = trimOrNull(embeddingModel);
+    String normalizedModel = TextUtil.trimToNull(embeddingModel);
     if (!supportsEmbedding) {
       return;
     }
@@ -1101,7 +1094,7 @@ public class LlmProviderConfigService {
       List<String> outcomes = new ArrayList<>();
       boolean allSuccess = true;
 
-      if (trimOrNull(config.model()) != null) {
+      if (TextUtil.trimToNull(config.model()) != null) {
         ConnectivityOutcome outcome = "anthropic".equals(config.apiFormat())
             ? tryPost(restClient, id, config, buildCandidateUrls(config.baseUrl(), "messages"),
                 buildAnthropicTestRequestBody(config.model()),
@@ -1112,14 +1105,14 @@ public class LlmProviderConfigService {
         allSuccess &= outcome.success();
         outcomes.add(capabilityOutcome("聊天", outcome));
       }
-      if (config.supportsEmbedding() && trimOrNull(config.embeddingModel()) != null) {
+      if (config.supportsEmbedding() && TextUtil.trimToNull(config.embeddingModel()) != null) {
         ConnectivityOutcome outcome = tryPost(restClient, id, config,
             buildCandidateUrls(config.baseUrl(), "embeddings"),
             buildEmbeddingTestRequestBody(config.embeddingModel()), Map.of(), "向量");
         allSuccess &= outcome.success();
         outcomes.add(capabilityOutcome("向量", outcome));
       }
-      if (trimOrNull(config.rerankModel()) != null) {
+      if (TextUtil.trimToNull(config.rerankModel()) != null) {
         ConnectivityOutcome outcome = "dashscope".equals(config.rerankApiFormat())
             ? tryPost(restClient, id, config, buildDashscopeRerankUrls(config.baseUrl()),
                 buildDashscopeRerankTestRequestBody(config.rerankModel()), Map.of(), "Rerank(dashscope)")
@@ -1219,10 +1212,10 @@ public class LlmProviderConfigService {
   }
 
   private String resolveTestResultModel(ProviderRuntimeConfig config) {
-    if (trimOrNull(config.model()) != null) {
+    if (TextUtil.trimToNull(config.model()) != null) {
       return config.model();
     }
-    if (trimOrNull(config.embeddingModel()) != null) {
+    if (TextUtil.trimToNull(config.embeddingModel()) != null) {
       return config.embeddingModel();
     }
     return config.rerankModel();

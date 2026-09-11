@@ -8,6 +8,7 @@ import interview.guide.common.ai.ApiPathResolver;
 import interview.guide.common.ai.UrlAccessGuard;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.llmprovider.dto.FetchModelsRequest;
 import interview.guide.modules.llmprovider.model.LlmProviderEntity;
 import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
@@ -36,10 +37,10 @@ public class ModelCatalogService {
   private final ApiKeyEncryptionService encryptionService;
 
   public List<String> fetchModels(FetchModelsRequest request) {
-    String providerId = trimOrNull(request.providerId());
-    String baseUrl = trimOrNull(request.baseUrl());
-    String apiKey = trimOrNull(request.apiKey());
-    String apiFormat = trimOrNull(request.apiFormat());
+    String providerId = TextUtil.trimToNull(request.providerId());
+    String baseUrl = TextUtil.trimToNull(request.baseUrl());
+    String apiKey = TextUtil.trimToNull(request.apiKey());
+    String apiFormat = TextUtil.trimToNull(request.apiFormat());
 
     if (providerId != null) {
       LlmProviderEntity provider = providerRepository.findById(providerId)
@@ -132,14 +133,6 @@ public class ModelCatalogService {
     List<String> result = new ArrayList<>(modelIds);
     result.sort(Comparator.naturalOrder());
     return result;
-  }
-
-  private String trimOrNull(String value) {
-    if (value == null) {
-      return null;
-    }
-    String normalized = value.trim();
-    return normalized.isEmpty() ? null : normalized;
   }
 
   private boolean isBlank(String value) {

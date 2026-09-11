@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.knowledgebase.listener.QuestionGenStreamProducer;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseQuestionRequest;
 import interview.guide.modules.knowledgebase.model.GenerateKnowledgeBaseQuestionsRequest;
@@ -52,9 +53,9 @@ public class KnowledgeBaseQuestionService {
                                                       String category,
                                                       String difficulty,
                                                       String keyword) {
-    String categoryFilter = trimToNull(category);
-    String difficultyFilter = trimToNull(difficulty);
-    String keywordFilter = trimToNull(keyword);
+    String categoryFilter = TextUtil.trimToNull(category);
+    String difficultyFilter = TextUtil.trimToNull(difficulty);
+    String keywordFilter = TextUtil.trimToNull(keyword);
     // 过滤条件下推到查询（见 findFiltered 的 Javadoc），避免全量拉回内存过滤
     List<KnowledgeBaseQuestionEntity> questions = status == null
         ? questionRepository.findFiltered(knowledgeBaseId, categoryFilter, difficultyFilter, keywordFilter)
@@ -90,10 +91,10 @@ public class KnowledgeBaseQuestionService {
   public KnowledgeBaseQuestionDTO updateQuestion(Long questionId, UpdateKnowledgeBaseQuestionRequest request) {
     KnowledgeBaseQuestionEntity question = getQuestion(questionId);
     if (request.difficulty() != null) {
-      question.setDifficulty(normalizeDifficulty(request.difficulty()));
+      question.setDifficulty(TextUtil.normalizeDifficulty(request.difficulty()));
     }
     if (request.type() != null) {
-      question.setType(trimToNull(request.type()));
+      question.setType(TextUtil.trimToNull(request.type()));
     }
     if (request.category() != null) {
       if (request.category().isBlank()) {
@@ -108,22 +109,22 @@ public class KnowledgeBaseQuestionService {
       question.setQuestion(request.question().trim());
     }
     if (request.topicSummary() != null) {
-      question.setTopicSummary(trimToNull(request.topicSummary()));
+      question.setTopicSummary(TextUtil.trimToNull(request.topicSummary()));
     }
     if (request.referenceAnswer() != null) {
-      question.setReferenceAnswer(trimToNull(request.referenceAnswer()));
+      question.setReferenceAnswer(TextUtil.trimToNull(request.referenceAnswer()));
     }
     if (request.keyPoints() != null) {
       question.setKeyPointsJson(writeStringList(request.keyPoints()));
     }
     if (request.scoringRubric() != null) {
-      question.setScoringRubric(trimToNull(request.scoringRubric()));
+      question.setScoringRubric(TextUtil.trimToNull(request.scoringRubric()));
     }
     if (request.followUps() != null) {
       question.setFollowUpsJson(writeFollowUps(request.followUps()));
     }
     if (request.sourceContext() != null) {
-      question.setSourceContext(trimToNull(request.sourceContext()));
+      question.setSourceContext(TextUtil.trimToNull(request.sourceContext()));
     }
     if (request.status() != null) {
       question.setStatus(request.status());
@@ -153,7 +154,7 @@ public class KnowledgeBaseQuestionService {
   public QuestionGenStatusResponse submitGenerationTask(
       Long knowledgeBaseId,
       GenerateKnowledgeBaseQuestionsRequest request) {
-    String difficulty = normalizeDifficulty(request.difficulty());
+    String difficulty = TextUtil.normalizeDifficulty(request.difficulty());
     int followUpCount = request.followUpCount() == null
         ? DEFAULT_FOLLOW_UP_COUNT
         : Math.max(0, Math.min(request.followUpCount(), 5));
@@ -165,7 +166,7 @@ public class KnowledgeBaseQuestionService {
         Math.max(1, request.questionCount()),
         followUpCount,
         categoryLimit,
-        trimToNull(request.llmProvider())
+        TextUtil.trimToNull(request.llmProvider())
     );
     QuestionGenStatusResponse response =
         questionGenerationStateService.createTask(knowledgeBaseId, config);
@@ -182,16 +183,16 @@ public class KnowledgeBaseQuestionService {
   private void applyCreateRequest(KnowledgeBaseQuestionEntity question,
                                   CreateKnowledgeBaseQuestionRequest request) {
     question.setSkillId(KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID);
-    question.setDifficulty(normalizeDifficulty(request.difficulty()));
-    question.setType(trimToNull(request.type()));
+    question.setDifficulty(TextUtil.normalizeDifficulty(request.difficulty()));
+    question.setType(TextUtil.trimToNull(request.type()));
     question.setCategory(normalizeCategory(request.category(), null));
     question.setQuestion(request.question().trim());
-    question.setTopicSummary(trimToNull(request.topicSummary()));
-    question.setReferenceAnswer(trimToNull(request.referenceAnswer()));
+    question.setTopicSummary(TextUtil.trimToNull(request.topicSummary()));
+    question.setReferenceAnswer(TextUtil.trimToNull(request.referenceAnswer()));
     question.setKeyPointsJson(writeStringList(request.keyPoints()));
-    question.setScoringRubric(trimToNull(request.scoringRubric()));
+    question.setScoringRubric(TextUtil.trimToNull(request.scoringRubric()));
     question.setFollowUpsJson(writeFollowUps(request.followUps()));
-    question.setSourceContext(trimToNull(request.sourceContext()));
+    question.setSourceContext(TextUtil.trimToNull(request.sourceContext()));
   }
 
   private KnowledgeBaseQuestionDTO toDTO(KnowledgeBaseQuestionEntity question) {
@@ -273,25 +274,18 @@ public class KnowledgeBaseQuestionService {
           .filter(value -> value != null && value.question() != null && !value.question().isBlank())
           .map(value -> new KnowledgeBaseQuestionFollowUpDTO(
               value.question().trim(),
-              trimToNull(value.referenceAnswer()),
+              TextUtil.trimToNull(value.referenceAnswer()),
               value.keyPoints() == null ? List.of() : value.keyPoints().stream()
                   .filter(item -> item != null && !item.isBlank())
                   .map(String::trim)
                   .toList(),
-              trimToNull(value.scoringRubric())
+              TextUtil.trimToNull(value.scoringRubric())
           ))
           .toList();
       return objectMapper.writeValueAsString(sanitized);
     } catch (JacksonException e) {
       throw new BusinessException(ErrorCode.INTERNAL_ERROR, "序列化追问字段失败", e);
     }
-  }
-
-  private String normalizeDifficulty(String difficulty) {
-    if (difficulty == null || difficulty.isBlank()) {
-      return InterviewDefaults.DIFFICULTY;
-    }
-    return difficulty.trim();
   }
 
   /**
@@ -304,13 +298,6 @@ public class KnowledgeBaseQuestionService {
       return fallback != null && !fallback.isBlank() ? fallback.trim() : "未分类";
     }
     return category.trim();
-  }
-
-  private String trimToNull(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    return value.trim();
   }
 
 }

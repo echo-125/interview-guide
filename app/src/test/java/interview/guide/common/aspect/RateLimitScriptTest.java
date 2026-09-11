@@ -37,7 +37,6 @@ class RateLimitScriptTest {
         RateLimit ann = TestClass.class.getMethod("defaultMethod").getAnnotation(RateLimit.class);
 
         assertEquals(RateLimit.Dimension.GLOBAL, ann.dimension());
-        assertEquals(0, ann.timeout());
         assertEquals(1, ann.interval());
         assertEquals(RateLimit.TimeUnit.SECONDS, ann.timeUnit());
         assertEquals("", ann.fallback());
@@ -50,7 +49,6 @@ class RateLimitScriptTest {
 
         assertEquals(RateLimit.Dimension.IP, ann.dimension());
         assertEquals(100.0, ann.count(), 0.001);
-        assertEquals(2, ann.timeout());
         assertEquals(2, ann.interval());
         assertEquals(RateLimit.TimeUnit.SECONDS, ann.timeUnit());
         assertEquals("fallback", ann.fallback());
@@ -75,7 +73,7 @@ class RateLimitScriptTest {
         public void defaultMethod() {}
 
         @RateLimit(dimension = RateLimit.Dimension.IP,
-                count = 100, interval = 2, timeout = 2,
+                count = 100, interval = 2,
                 timeUnit = RateLimit.TimeUnit.SECONDS, fallback = "fallback")
         public void customMethod() {}
 

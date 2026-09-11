@@ -4,6 +4,7 @@ import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.resume.listener.ResumeJdAnalysisStreamProducer;
 import interview.guide.modules.resume.model.ResumeEntity;
 import interview.guide.modules.resume.model.ResumeJdAnalysisEntity;
@@ -53,7 +54,7 @@ public class ResumeJdAnalysisQueryService {
         ResumeJdAnalysisEntity entity = new ResumeJdAnalysisEntity();
         entity.setResume(resume);
         entity.setJdText(request.jdText().trim());
-        entity.setLlmProvider(trimOrNull(request.llmProvider()));
+        entity.setLlmProvider(TextUtil.trimToNull(request.llmProvider()));
 
         ResumeJdAnalysisEntity saved = jdAnalysisRepository.save(entity);
         jdAnalysisStreamProducer.sendJdAnalyzeTask(saved.getId(), entity.getLlmProvider());
@@ -175,13 +176,5 @@ public class ResumeJdAnalysisQueryService {
 
     private <T> List<T> readList(String json, TypeReference<List<T>> type) {
         return objectMapper.readValue(json != null ? json : "[]", type);
-    }
-
-    private String trimOrNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 }

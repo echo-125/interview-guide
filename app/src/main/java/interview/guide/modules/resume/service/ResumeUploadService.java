@@ -8,6 +8,7 @@ import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
 import interview.guide.modules.resume.listener.AnalyzeStreamProducer;
 import interview.guide.modules.resume.model.ResumeEntity;
@@ -51,7 +52,7 @@ public class ResumeUploadService {
     public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file,
                                                 String llmProvider) {
         long startTime = System.currentTimeMillis();
-        String provider = trimOrNull(llmProvider);
+        String provider = TextUtil.trimToNull(llmProvider);
         validateProvider(provider);
 
         // 1. 验证文件
@@ -179,19 +180,19 @@ public class ResumeUploadService {
      */
     public void reanalyze(Long resumeId, String llmProvider) {
         ResumeReanalyzeSource source = loadReanalyzeSource(resumeId);
-        String provider = trimOrNull(llmProvider) != null ? trimOrNull(llmProvider) : source.llmProvider();
+        String provider = TextUtil.trimToNull(llmProvider) != null ? TextUtil.trimToNull(llmProvider) : source.llmProvider();
         validateProvider(provider);
 
         log.info("开始重新分析简历: resumeId={}, filename={}, provider={}",
             resumeId, source.originalFilename(), provider);
 
         String resumeText = source.resumeText();
-        boolean shouldCacheResumeText = !hasText(resumeText);
+        boolean shouldCacheResumeText = !TextUtil.hasText(resumeText);
         if (shouldCacheResumeText) {
             // 如果没有缓存的文本，尝试重新解析
             resumeText = parseService.downloadAndParseContent(
                 source.storageKey(), source.originalFilename());
-            if (!hasText(resumeText)) {
+            if (!TextUtil.hasText(resumeText)) {
                 throw new BusinessException(ErrorCode.RESUME_PARSE_FAILED, "无法获取简历文本内容");
             }
         }
@@ -226,10 +227,10 @@ public class ResumeUploadService {
         ResumeEntity resume = resumeRepository.findById(resumeId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在"));
 
-        if (shouldCacheResumeText || !hasText(resume.getResumeText())) {
+        if (shouldCacheResumeText || !TextUtil.hasText(resume.getResumeText())) {
             resume.setResumeText(resumeText);
         }
-        resume.setLlmProvider(trimOrNull(llmProvider));
+        resume.setLlmProvider(TextUtil.trimToNull(llmProvider));
         resume.setAnalyzeStatus(AsyncTaskStatus.PENDING);
         resume.setAnalyzeError(null);
         resumeRepository.save(resume);
@@ -239,22 +240,10 @@ public class ResumeUploadService {
      * 校验 Provider 存在（空值 = 跟随系统默认，直接放行），避免任务入队后才静默失败。
      */
     private void validateProvider(String llmProvider) {
-        if (trimOrNull(llmProvider) != null && !llmProviderRegistry.hasProvider(trimOrNull(llmProvider))) {
+        if (TextUtil.trimToNull(llmProvider) != null && !llmProviderRegistry.hasProvider(TextUtil.trimToNull(llmProvider))) {
             throw new BusinessException(ErrorCode.BAD_REQUEST,
                 "LLM Provider '" + llmProvider + "' 不存在或未启用");
         }
-    }
-
-    private String trimOrNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
     }
 
     private record ResumeReanalyzeSource(

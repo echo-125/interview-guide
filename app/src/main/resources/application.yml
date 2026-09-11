@@ -8,6 +8,8 @@ logging:
 
 server:
   port: 8080
+  # 优雅停机：等待在途请求完成（SSE/WebSocket/Stream 消费较多，硬切易中断）
+  shutdown: graceful
   # 低内存部署调优：平台级线程池上限。注意 spring.threads.virtual.enabled=true 时
   # Tomcat 使用虚拟线程处理请求，此处的 threads.max 仅对非虚拟线程回退场景生效
   tomcat:
@@ -49,14 +51,19 @@ spring:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}?sslmode=${POSTG
       RES_SSLMODE:disable}
     username: ${POSTGRES_USER:postgres}
-    # 与 docker-compose.dev.yml 中 postgres 服务默认一致（本地只起依赖容器 + bootRun 时无需改）
-    password: ${POSTGRES_PASSWORD:123456}
+    # 不提供默认密码（AGENTS.md 禁止硬编码数据库密码）：缺失时启动即报错，
+    # 请在 .env 中设置 POSTGRES_PASSWORD（见 .env.example，需与 compose 的 postgres 凭证一致）
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     # 低内存部署调优：个人单用户轻量使用（尤其是云端数据库）时收缩连接池，
     # 每个空闲连接在服务端与客户端各占一份内存，3 个连接足够覆盖日常并发
     hikari:
       maximum-pool-size: ${APP_HIKARI_MAX_POOL_SIZE:3}
       minimum-idle: ${APP_HIKARI_MIN_IDLE:1}
+
+  # 优雅停机单阶段超时上限（配合 server.shutdown: graceful）
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
   jpa:
     # 关闭 OSIV：RAG/评估等请求在事务外调用 LLM 数十秒，
@@ -238,7 +245,8 @@ app:
       asr:
         url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
         model: qwen3-asr-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        # 空串默认值：未配置 Key 不阻断启动，语音功能使用时由服务内校验报可操作错误
+        api-key: ${AI_BAILIAN_API_KEY:}
         language: zh
         format: pcm
         sample-rate: 16000
@@ -252,7 +260,7 @@ app:
       # 音色列表文档：https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
       tts:
         model: qwen3-tts-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        api-key: ${AI_BAILIAN_API_KEY:}
         voice: Cherry
         format: pcm
         sample-rate: 24000

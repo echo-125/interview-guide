@@ -7,6 +7,7 @@ import interview.guide.common.ai.StructuredOutputInvoker;
 import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionFollowUpDTO;
@@ -109,7 +110,7 @@ public class KnowledgeBaseQuestionGenerationService {
       return;
     }
 
-    String normalizedDifficulty = normalizeDifficulty(config.difficulty());
+    String normalizedDifficulty = TextUtil.normalizeDifficulty(config.difficulty());
     int normalizedFollowUp = Math.max(0, Math.min(config.followUpCount(), 5));
     int normalizedCategoryLimit = Math.max(1, Math.min(config.categoryLimit(), 5));
 
@@ -219,13 +220,13 @@ public class KnowledgeBaseQuestionGenerationService {
       entity.setKnowledgeBase(kb);
       entity.setSkillId(KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID);
       entity.setDifficulty(difficulty);
-      entity.setType(trimToNull(dto.type()));
+      entity.setType(TextUtil.trimToNull(dto.type()));
       entity.setCategory(category);
       entity.setQuestion(rawQuestion);
-      entity.setTopicSummary(trimToNull(dto.topicSummary()));
-      entity.setReferenceAnswer(trimToNull(dto.referenceAnswer()));
+      entity.setTopicSummary(TextUtil.trimToNull(dto.topicSummary()));
+      entity.setReferenceAnswer(TextUtil.trimToNull(dto.referenceAnswer()));
       entity.setKeyPointsJson(writeStringList(dto.keyPoints()));
-      entity.setScoringRubric(trimToNull(dto.scoringRubric()));
+      entity.setScoringRubric(TextUtil.trimToNull(dto.scoringRubric()));
       entity.setFollowUpsJson(writeFollowUps(dto.followUps(), followUpCount));
       entity.setSourceContext(sourceContext);
       entity.setKbContentHash(kb.getFileHash());
@@ -305,25 +306,11 @@ public class KnowledgeBaseQuestionGenerationService {
     }
   }
 
-  private String normalizeDifficulty(String difficulty) {
-    if (difficulty == null || difficulty.isBlank()) {
-      return InterviewDefaults.DIFFICULTY;
-    }
-    return difficulty.trim();
-  }
-
   private String normalizeCategory(String category, String fallback) {
     if (category == null || category.isBlank()) {
       return fallback != null && !fallback.isBlank() ? fallback.trim() : "未分类";
     }
     return category.trim();
-  }
-
-  private String trimToNull(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    return value.trim();
   }
 
   private String normalizeQuestionKey(String question) {
@@ -362,12 +349,12 @@ public class KnowledgeBaseQuestionGenerationService {
           .filter(value -> value != null && value.question() != null && !value.question().isBlank())
           .map(value -> new KnowledgeBaseQuestionFollowUpDTO(
               value.question().trim(),
-              trimToNull(value.referenceAnswer()),
+              TextUtil.trimToNull(value.referenceAnswer()),
               value.keyPoints() == null ? List.of() : value.keyPoints().stream()
                   .filter(item -> item != null && !item.isBlank())
                   .map(String::trim)
                   .toList(),
-              trimToNull(value.scoringRubric())
+              TextUtil.trimToNull(value.scoringRubric())
           ))
           .limit(followUpCount)
           .toList();

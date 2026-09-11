@@ -75,18 +75,9 @@ public @interface RateLimit {
      * 时间单位
      * 默认为秒，即默认"每秒 count 次"
      *
-     * @return 时间单位
+     * @return 时间窗口
      */
     TimeUnit timeUnit() default TimeUnit.SECONDS;
-
-    /**
-     * 等待令牌的超时时间
-     * 如果设置为0，表示不等待，直接获取令牌，失败则拒绝
-     * 如果大于0，会尝试等待指定时间获取令牌
-     *
-     * @return 超时时间
-     */
-    long timeout() default 0;
 
     /**
      * 降级方法名

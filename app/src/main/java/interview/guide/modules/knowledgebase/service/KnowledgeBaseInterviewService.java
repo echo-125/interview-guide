@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.interview.service.InterviewSessionService;
@@ -58,8 +59,8 @@ public class KnowledgeBaseInterviewService {
     knowledgeBaseRepository.findById(request.knowledgeBaseId())
         .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
 
-    String category = trimToNull(request.category());
-    String difficulty = normalizeDifficulty(request.difficulty());
+    String category = TextUtil.trimToNull(request.category());
+    String difficulty = TextUtil.normalizeDifficulty(request.difficulty());
     int mainCount = request.mainQuestionCount();
     int followUpCount = request.followUpCount();
 
@@ -106,8 +107,8 @@ public class KnowledgeBaseInterviewService {
     knowledgeBaseRepository.findById(knowledgeBaseId)
         .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
 
-    String normalizedCategory = trimToNull(category);
-    String normalizedDifficulty = normalizeDifficulty(difficulty);
+    String normalizedCategory = TextUtil.trimToNull(category);
+    String normalizedDifficulty = TextUtil.normalizeDifficulty(difficulty);
     List<QuestionSource> allSources = toQuestionSources(selectActiveQuestions(
         knowledgeBaseId, null, normalizedDifficulty));
     List<QuestionSource> scopedSources = allSources.stream()
@@ -237,7 +238,7 @@ public class KnowledgeBaseInterviewService {
   private List<CategoryOption> calculateCategoryOptions(List<QuestionSource> sources) {
     Map<String, Integer> counts = new LinkedHashMap<>();
     for (QuestionSource source : sources) {
-      String category = trimToNull(source.question().getCategory());
+      String category = TextUtil.trimToNull(source.question().getCategory());
       if (category != null) {
         counts.merge(category, 1, Integer::sum);
       }
@@ -300,20 +301,6 @@ public class KnowledgeBaseInterviewService {
       log.warn("解析追问失败: {}", e.getMessage());
       return List.of();
     }
-  }
-
-  private String normalizeDifficulty(String difficulty) {
-    if (difficulty == null || difficulty.isBlank()) {
-      return InterviewDefaults.DIFFICULTY;
-    }
-    return difficulty.trim();
-  }
-
-  private String trimToNull(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    return value.trim();
   }
 
   private String defaultString(String value, String fallback) {

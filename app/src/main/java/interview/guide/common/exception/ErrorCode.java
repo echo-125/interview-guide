@@ -66,6 +66,7 @@ public enum ErrorCode {
 
     // ========== 面试日程模块错误 9xxx ==========
     INTERVIEW_SCHEDULE_NOT_FOUND(9001, "面试日程不存在"),
+    INTERVIEW_SCHEDULE_PARSE_FAILED(9002, "面试邀约解析失败"),
 
     // ========== 语音面试模块错误 10xxx ==========
     VOICE_SESSION_NOT_FOUND(10001, "语音面试会话不存在"),

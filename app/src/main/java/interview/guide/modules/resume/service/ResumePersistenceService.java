@@ -4,6 +4,7 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.file.FileHashService;
 import interview.guide.infrastructure.mapper.ResumeMapper;
+import interview.guide.common.util.TextUtil;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeAnalysisEntity;
 import interview.guide.modules.resume.model.ResumeEntity;
@@ -81,7 +82,7 @@ public class ResumePersistenceService {
             resume.setStorageKey(storageKey);
             resume.setStorageUrl(storageUrl);
             resume.setResumeText(resumeText);
-            resume.setLlmProvider(trimOrNull(llmProvider));
+            resume.setLlmProvider(TextUtil.trimToNull(llmProvider));
 
             ResumeEntity saved = resumeRepository.save(resume);
             log.info("简历已保存: id={}, hash={}, provider={}", saved.getId(), fileHash, llmProvider);
@@ -225,13 +226,5 @@ public class ResumePersistenceService {
         // 2. 删除简历实体（面试会话会在服务层删除）
         resumeRepository.delete(resume);
         log.info("简历已删除: id={}, filename={}", id, resume.getOriginalFilename());
-    }
-
-    private String trimOrNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 }

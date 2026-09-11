@@ -1,16 +1,18 @@
 package interview.guide.modules.interviewschedule.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.ai.PromptSecurityConstants;
+import interview.guide.common.ai.StructuredOutputInvoker;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.util.LogUtil;
 import interview.guide.modules.interviewschedule.model.CreateInterviewRequest;
 import interview.guide.modules.interviewschedule.model.ParseResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -29,7 +31,7 @@ import java.util.regex.Pattern;
 public class InterviewParseService {
 
     private final LlmProviderRegistry llmProviderRegistry;
-    private final ObjectMapper objectMapper;
+    private final StructuredOutputInvoker structuredOutputInvoker;
     private final PromptSanitizer promptSanitizer;
 
     // Date formatters
@@ -63,31 +65,31 @@ public class InterviewParseService {
     // Round number pattern
     private static final Pattern ROUND_NUMBER_PATTERN = Pattern.compile("[一二三四五六七八九十]|\\d");
 
-    private static final String PARSE_PROMPT = """
-        你是一个专业的面试邀约信息提取助手。请仔细分析以下文本，提取面试相关信息。
+    private static final String PARSE_SYSTEM_PROMPT = """
+        你是一个专业的面试邀约信息提取助手。请仔细分析用户提供的文本，提取面试相关信息。
 
         **提取规则**：
-        1. companyName（公司名称）：提取面试公司的全称或简称，**必需字段**
-        2. position（岗位名称）：提取面试岗位的名称，**必需字段**
-        3. interviewTime（面试时间）：提取面试开始时间并转换为 ISO 8601 格式，**必需字段**
+        1. companyName（公司名称）：提取面试公司的全称或简称，必需字段
+        2. position（岗位名称）：提取面试岗位的名称，必需字段
+        3. interviewTime（面试时间）：提取面试开始时间并转换为 ISO 8601 格式，必需字段
            - 格式：YYYY-MM-DDTHH:MM:SS（例如：2026-04-10T14:00:00）
-           - 若只有相对时间（如"明天下午2点"），根据当前日期 %s 推算
+           - 若只有相对时间（如"明天下午2点"），根据用户消息中的当前日期推算
         4. interviewType（面试形式）：ONSITE（现场）/ VIDEO（视频）/ PHONE（电话）
         5. meetingLink（会议链接）：提取完整的会议链接或会议号+密码
         6. roundNumber（第几轮面试）：提取数字（1-10），如"二面"提取为2
-        7. notes（其他备注）：包含面试官姓名（如果不重要可忽略）、时长（**默认30分钟**）等。
+        7. notes（其他备注）：包含面试官姓名（如果不重要可忽略）、时长（默认30分钟）等。
 
         **重要提示**：
         - 面试官是谁不重要，只需在 notes 中提及。
         - 优先保证 companyName、position、interviewTime 的准确性。
         - 如果文本中没说时长，默认设置为 30 分钟。
+        """;
 
-        **待解析文本**：
+    private static final String PARSE_USER_PROMPT = """
+        当前日期：%s
+
+        待解析文本：
         %s
-
-        **返回格式**：
-        纯 JSON 格式，不要包含```json标记，示例：
-        {"companyName":"阿里巴巴","position":"Java工程师","interviewTime":"2026-04-10T14:00:00","interviewType":"VIDEO","meetingLink":"https://meeting.feishu.cn/xxx","roundNumber":2,"interviewer":"张三","notes":"技术面"}
         """;
 
     /**
@@ -296,100 +298,92 @@ public class InterviewParseService {
 
     // ========== AI Parsing ==========
 
-    private CreateInterviewRequest parseWithAI(String rawText, String provider) {
+    /**
+     * AI 解析中间 DTO：供 BeanOutputConverter 生成格式说明并反序列化。
+     * 包级可见以便单测构造。
+     */
+    record ParsedInterviewDTO(
+        String companyName,
+        String position,
+        String interviewTime,
+        String interviewType,
+        String meetingLink,
+        Integer roundNumber,
+        String interviewer,
+        String notes
+    ) {}
+
+    /**
+     * 统一走 StructuredOutputInvoker（含重试与严格 JSON 指令），
+     * 不再手写 ```json 提取与 Map 逐字段解析。
+     */
+    private CreateInterviewRequest parseWithAI(String rawText, String source) {
         try {
             String currentDate = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
             String safeRawText = promptSanitizer.sanitize(rawText);
-            String prompt = String.format(PARSE_PROMPT, currentDate,
+            String userPrompt = PARSE_USER_PROMPT.formatted(currentDate,
                 PromptSecurityConstants.DATA_BOUNDARY_INSTRUCTION + "\n" +
                 promptSanitizer.wrapWithDelimiters("parse-input", safeRawText));
 
-            ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(provider);
+            ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(source);
+            BeanOutputConverter<ParsedInterviewDTO> outputConverter =
+                new BeanOutputConverter<>(ParsedInterviewDTO.class);
+            String systemPrompt = PARSE_SYSTEM_PROMPT + "\n\n" + outputConverter.getFormat();
 
-            String content = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            ParsedInterviewDTO dto = structuredOutputInvoker.invoke(
+                chatClient, systemPrompt, userPrompt, outputConverter,
+                ErrorCode.INTERVIEW_SCHEDULE_PARSE_FAILED, "面试邀约 AI 解析失败：", "邀约解析", log);
 
-            if (content == null || content.trim().isEmpty()) {
-                log.error("AI 解析返回内容为空");
-                return null;
-            }
-
-            // Extract JSON from Markdown code blocks
-            String jsonContent = content.trim();
-            if (jsonContent.contains("```")) {
-                Pattern pattern = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)\\s*```");
-                Matcher matcher = pattern.matcher(jsonContent);
-                if (matcher.find()) {
-                    jsonContent = matcher.group(1).trim();
-                }
-            }
-
-            log.debug("提取到的 JSON 内容: {}", LogUtil.abbreviate(jsonContent));
-            Map<String, Object> result = objectMapper.readValue(jsonContent, new TypeReference<Map<String, Object>>() {});
-
-            if (result == null || result.isEmpty()) {
-                log.error("JSON 解析返回空结果");
-                return null;
-            }
-
-            CreateInterviewRequest request = new CreateInterviewRequest();
-
-            // Extract and validate fields
-            if (result.get("companyName") != null) {
-                request.setCompanyName(result.get("companyName").toString().trim());
-            }
-
-            if (result.get("position") != null) {
-                request.setPosition(result.get("position").toString().trim());
-            }
-
-            if (result.get("interviewTime") != null) {
-                try {
-                    String timeStr = result.get("interviewTime").toString().trim();
-                    if (timeStr.length() == 16) { // YYYY-MM-DDTHH:MM
-                        request.setInterviewTime(LocalDateTime.parse(timeStr + ":00"));
-                    } else {
-                        request.setInterviewTime(LocalDateTime.parse(timeStr));
-                    }
-                } catch (Exception e) {
-                    log.error("AI 返回的时间格式不正确: {}", result.get("interviewTime"));
-                }
-            }
-
-            if (result.get("interviewType") != null) {
-                request.setInterviewType(result.get("interviewType").toString().trim());
-            }
-
-            if (result.get("meetingLink") != null) {
-                request.setMeetingLink(result.get("meetingLink").toString().trim());
-            }
-
-            if (result.get("roundNumber") != null) {
-                try {
-                    String roundStr = result.get("roundNumber").toString().trim();
-                    request.setRoundNumber(Integer.parseInt(roundStr));
-                } catch (Exception e) {
-                    request.setRoundNumber(1);
-                }
-            }
-
-            if (result.get("interviewer") != null) {
-                request.setInterviewer(result.get("interviewer").toString().trim());
-            }
-
-            if (result.get("notes") != null) {
-                request.setNotes(result.get("notes").toString().trim());
-            }
-
+            CreateInterviewRequest request = toCreateRequest(dto);
             log.info("AI 解析成功: {}", request.getCompanyName());
             return request;
-
+        } catch (BusinessException e) {
+            // 保持原有降级语义：AI 解析失败不向外抛错，由 parse() 返回「解析失败」响应
+            log.warn("AI 解析失败: {}", e.getMessage());
+            return null;
         } catch (Exception e) {
             log.error("AI 解析异常: {}", e.getMessage(), e);
             return null;
         }
+    }
+
+    private CreateInterviewRequest toCreateRequest(ParsedInterviewDTO dto) {
+        CreateInterviewRequest request = new CreateInterviewRequest();
+
+        if (dto.companyName() != null) {
+            request.setCompanyName(dto.companyName().trim());
+        }
+        if (dto.position() != null) {
+            request.setPosition(dto.position().trim());
+        }
+        if (dto.interviewTime() != null) {
+            try {
+                String timeStr = dto.interviewTime().trim();
+                if (timeStr.length() == 16) { // YYYY-MM-DDTHH:MM
+                    request.setInterviewTime(LocalDateTime.parse(timeStr + ":00"));
+                } else {
+                    request.setInterviewTime(LocalDateTime.parse(timeStr));
+                }
+            } catch (Exception e) {
+                log.error("AI 返回的时间格式不正确: {}", dto.interviewTime());
+            }
+        }
+        if (dto.interviewType() != null) {
+            request.setInterviewType(dto.interviewType().trim());
+        }
+        if (dto.meetingLink() != null) {
+            request.setMeetingLink(dto.meetingLink().trim());
+        }
+        if (dto.roundNumber() != null) {
+            request.setRoundNumber(dto.roundNumber());
+        }
+        if (dto.interviewer() != null) {
+            request.setInterviewer(dto.interviewer().trim());
+        }
+        if (dto.notes() != null) {
+            request.setNotes(dto.notes().trim());
+        }
+        return request;
     }
 
     // ========== Helper Methods ==========
