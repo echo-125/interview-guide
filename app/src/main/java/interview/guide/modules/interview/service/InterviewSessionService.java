@@ -313,7 +313,8 @@ public class InterviewSessionService {
      */
     private CachedSession restoreSessionFromDatabase(String sessionId) {
         try {
-            Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionId(sessionId);
+            // 必须 WithResume：OSIV 关闭后事务外访问 LAZY 的 resume 关联会抛 LazyInitializationException
+            Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionIdWithResume(sessionId);
             return entityOpt.map(this::restoreSessionFromEntity).orElse(null);
         } catch (Exception e) {
             log.error("从数据库恢复会话失败: {}", e.getMessage(), e);
@@ -583,14 +584,21 @@ public class InterviewSessionService {
         // 更新 Redis 缓存
         sessionCache.updateSessionStatus(sessionId, SessionStatus.COMPLETED);
 
-        // 更新数据库状态
+        // 更新数据库状态。失败必须中止：评估消费者按 DB 状态 CAS 领取，
+        // 状态未落为 PENDING 时任务被 ACK 后会静默丢失，用户将永远等不到报告
         try {
             persistenceService.updateSessionStatus(sessionId,
                 InterviewSessionEntity.SessionStatus.COMPLETED);
             // 设置评估状态为 PENDING
             persistenceService.updateEvaluateStatus(sessionId, AsyncTaskStatus.PENDING, null);
+        } catch (BusinessException e) {
+            sessionCache.updateSessionStatus(sessionId, session.getStatus());
+            throw e;
         } catch (Exception e) {
-            log.warn("更新会话状态失败: {}", e.getMessage());
+            sessionCache.updateSessionStatus(sessionId, session.getStatus());
+            log.error("交卷时更新会话状态失败，不入队评估: sessionId={}", sessionId, e);
+            throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED,
+                "交卷失败，请稍后重试: " + e.getMessage());
         }
 
         // 发送评估任务到 Redis Stream
@@ -621,7 +629,9 @@ public class InterviewSessionService {
     }
 
     /**
-     * 生成评估报告
+     * 生成评估报告。
+     * 已评估的会话直接读库返回；首次评估在分布式锁内执行，
+     * 锁内先复查库中报告，避免并发请求重复执行全量 LLM 评估。
      */
     public InterviewReportDTO generateReport(String sessionId) {
         CachedSession session = getOrRestoreSession(sessionId);
@@ -630,36 +640,45 @@ public class InterviewSessionService {
             throw new BusinessException(ErrorCode.INTERVIEW_NOT_COMPLETED, "面试尚未完成，无法生成报告");
         }
 
-        log.info("生成面试报告: {}", sessionId);
+        return redisService.executeWithLock(
+            SESSION_OPERATION_LOCK_PREFIX + sessionId + ":report",
+            10, 300, TimeUnit.SECONDS,
+            () -> {
+                Optional<InterviewReportDTO> savedReport = persistenceService.readReport(sessionId);
+                if (savedReport.isPresent()) {
+                    log.info("会话 {} 报告已存在，直接返回（跳过重复评估）", sessionId);
+                    return savedReport.get();
+                }
 
-        List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
+                log.info("首次生成面试报告: {}", sessionId);
+                List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
 
-        // 获取 LLM 客户端
-        String provider = null;
-        Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionId(sessionId);
-        if (entityOpt.isPresent()) {
-            provider = entityOpt.get().getLlmProvider();
-        }
-        ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(provider);
+                // 获取 LLM 客户端
+                String provider = persistenceService.findBySessionId(sessionId)
+                    .map(InterviewSessionEntity::getLlmProvider)
+                    .orElse(null);
+                ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(provider);
 
-        InterviewReportDTO report = evaluationService.evaluateInterview(
-            chatClient,
-            sessionId,
-            session.getResumeText(),
-            questions
+                InterviewReportDTO report = evaluationService.evaluateInterview(
+                    chatClient,
+                    sessionId,
+                    session.getResumeText(),
+                    questions
+                );
+
+                // 更新 Redis 缓存状态
+                sessionCache.updateSessionStatus(sessionId, SessionStatus.EVALUATED);
+
+                // 保存报告到数据库
+                try {
+                    persistenceService.saveReport(sessionId, report);
+                } catch (Exception e) {
+                    log.warn("保存报告到数据库失败: {}", e.getMessage());
+                }
+
+                return report;
+            }
         );
-
-        // 更新 Redis 缓存状态
-        sessionCache.updateSessionStatus(sessionId, SessionStatus.EVALUATED);
-
-        // 保存报告到数据库
-        try {
-            persistenceService.saveReport(sessionId, report);
-        } catch (Exception e) {
-            log.warn("保存报告到数据库失败: {}", e.getMessage());
-        }
-
-        return report;
     }
 
     /**

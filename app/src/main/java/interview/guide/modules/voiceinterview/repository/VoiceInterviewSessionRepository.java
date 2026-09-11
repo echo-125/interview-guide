@@ -1,10 +1,12 @@
 package interview.guide.modules.voiceinterview.repository;
 
+import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity.InterviewPhase;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -61,4 +63,16 @@ public interface VoiceInterviewSessionRepository extends JpaRepository<VoiceInte
         interview.guide.common.model.AsyncTaskStatus evaluateStatus,
         LocalDateTime time
     );
+
+    /**
+     * 原子领取语音评估任务：仅当状态为 PENDING 或 FAILED 时才置为 PROCESSING。
+     * 返回 0 表示领取冲突（已被其他消费者处理），用于超时重投/手动重试与正常消费的重复去重。
+     */
+    @Modifying
+    @Query("UPDATE VoiceInterviewSessionEntity s SET s.evaluateStatus = :processing "
+        + "WHERE s.id = :sessionId AND s.evaluateStatus IN :allowedStatuses")
+    int claimEvaluation(
+        @Param("sessionId") Long sessionId,
+        @Param("processing") AsyncTaskStatus processing,
+        @Param("allowedStatuses") List<AsyncTaskStatus> allowedStatuses);
 }

@@ -2,7 +2,6 @@ package interview.guide.common.aspect;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.exception.RateLimitExceededException;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -172,7 +171,15 @@ public class RateLimitAspect {
         return switch (dimension) {
             case GLOBAL -> keyPrefix + ":global";
             case IP -> keyPrefix + ":ip:" + getClientIp();
-            case USER -> keyPrefix + ":user:" + getCurrentUserId();
+            case USER -> {
+                String userId = getCurrentUserId();
+                if (userId == null) {
+                    // 无认证体系下没有服务端身份，降级为 IP 维度，避免所有请求共享同一个桶
+                    log.debug("USER 维度限流缺少服务端身份，降级为 IP 维度: method={}", methodName);
+                    yield keyPrefix + ":ip:" + getClientIp();
+                }
+                yield keyPrefix + ":user:" + userId;
+            }
         };
     }
 
@@ -238,25 +245,19 @@ public class RateLimitAspect {
         return ip != null && !ip.isBlank() ? ip : "unknown";
     }
 
+    /**
+     * 仅信任服务端注入的身份标识（如过滤器写入的 attribute）。
+     * 请求头（如 X-User-Id）可被客户端任意伪造，不能作为限流身份——
+     * 否则可无限换头绕过自己的限流桶，或伪造他人身份灌满对方的桶。
+     */
     private String getCurrentUserId() {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes == null) {
-            return "anonymous";
+            return null;
         }
 
-        HttpServletRequest request = attributes.getRequest();
-
-        Object userId = request.getAttribute("userId");
-        if (userId != null) {
-            return userId.toString();
-        }
-
-        userId = request.getHeader("X-User-Id");
-        if (userId != null) {
-            return userId.toString();
-        }
-
-        return "anonymous";
+        Object userId = attributes.getRequest().getAttribute("userId");
+        return userId != null ? userId.toString() : null;
     }
 
     private record RateLimitContext(RateLimit rule, String key) {

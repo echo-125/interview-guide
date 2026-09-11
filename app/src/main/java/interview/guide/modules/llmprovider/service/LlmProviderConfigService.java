@@ -30,6 +30,8 @@ import org.springframework.boot.http.client.HttpClientSettings;
 import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -401,7 +403,7 @@ public class LlmProviderConfigService {
           .enabled(true)
           .builtin(false)
           .build());
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Created provider: id={}, baseUrl={}, model={}, apiFormat={}, rerankModel={}",
           providerId, baseUrl, model, apiFormat, rerankModel);
     } finally {
@@ -473,7 +475,7 @@ public class LlmProviderConfigService {
       }
 
       providerRepository.save(provider);
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Updated provider: id={}", id);
     } finally {
       rwLock.writeLock().unlock();
@@ -496,7 +498,7 @@ public class LlmProviderConfigService {
       getProviderEntityOrThrow(id);
 
       providerRepository.deleteById(id);
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Deleted provider: id={}", id);
     } finally {
       rwLock.writeLock().unlock();
@@ -523,7 +525,7 @@ public class LlmProviderConfigService {
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       setting.setDefaultChatProviderId(providerId);
       globalSettingRepository.save(setting);
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Updated default provider: {}", providerId);
     } finally {
       rwLock.writeLock().unlock();
@@ -552,7 +554,7 @@ public class LlmProviderConfigService {
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       setting.setDefaultEmbeddingProviderId(providerId);
       globalSettingRepository.save(setting);
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Updated default embedding provider: {}", providerId);
     } finally {
       rwLock.writeLock().unlock();
@@ -579,7 +581,7 @@ public class LlmProviderConfigService {
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       setting.setDefaultRerankProviderId(providerId);
       globalSettingRepository.save(setting);
-      registry.reload();
+      reloadRegistryAfterCommit();
       log.info("Updated default rerank provider: {}", providerId);
     } finally {
       rwLock.writeLock().unlock();
@@ -653,6 +655,25 @@ public class LlmProviderConfigService {
   }
 
   // ===== Internal helpers =====
+
+  /**
+   * Registry 缓存重建必须读到已提交数据：事务内写库后立即 reload，
+   * 会把未提交数据装进缓存，事务回滚后缓存将持续提供已回滚的配置。
+   * 有活动事务时挂起 afterCommit 回调，否则立即重建（legacy 轨/手动 reload）。
+   */
+  private void reloadRegistryAfterCommit() {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          registry.reload();
+        }
+      });
+      log.debug("Registry reload 已挂起至事务提交后执行");
+    } else {
+      registry.reload();
+    }
+  }
 
   private boolean isDatabaseBacked() {
     return providerRepository != null && globalSettingRepository != null && encryptionService != null;

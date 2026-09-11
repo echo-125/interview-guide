@@ -2,6 +2,7 @@ package interview.guide.modules.voiceinterview.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.evaluation.UnifiedEvaluationService;
+import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.modules.interview.skill.InterviewSkillService;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewEvaluationEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
 
@@ -48,6 +50,12 @@ class VoiceInterviewEvaluationServiceTest {
 
     @Mock
     private InterviewSkillService skillService;
+
+    /**
+     * 用真实实例脱离 Spring 执行：单测无代理，run() 即普通执行 Runnable
+     */
+    @Spy
+    private TransactionalExecutor transactionalExecutor = new TransactionalExecutor();
 
     @InjectMocks
     private VoiceInterviewEvaluationService evaluationService;

@@ -22,8 +22,11 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -295,6 +298,82 @@ public class InterviewPersistenceService {
      */
     public Optional<InterviewSessionEntity> findBySessionId(String sessionId) {
         return sessionRepository.findBySessionId(sessionId);
+    }
+
+    /**
+     * 从数据库重建已保存的评估报告（saveReport 的逆映射）。
+     * 仅当会话状态为 EVALUATED 时返回，供报告接口幂等直读，避免每次刷新重复执行全量 LLM 评估。
+     */
+    @Transactional(readOnly = true)
+    public Optional<InterviewReportDTO> readReport(String sessionId) {
+        return sessionRepository.findBySessionId(sessionId)
+            .filter(session -> session.getStatus() == InterviewSessionEntity.SessionStatus.EVALUATED)
+            .map(session -> {
+                List<InterviewAnswerEntity> answers =
+                    answerRepository.findBySession_SessionIdOrderByQuestionIndex(sessionId);
+
+                List<InterviewReportDTO.QuestionEvaluation> questionDetails = new ArrayList<>();
+                List<InterviewReportDTO.ReferenceAnswer> referenceAnswers = new ArrayList<>();
+                Map<String, List<Integer>> categoryScores = new HashMap<>();
+
+                for (InterviewAnswerEntity answer : answers) {
+                    int score = answer.getScore() != null ? answer.getScore() : 0;
+                    questionDetails.add(new InterviewReportDTO.QuestionEvaluation(
+                        answer.getQuestionIndex(),
+                        answer.getQuestion(),
+                        answer.getCategory(),
+                        answer.getUserAnswer(),
+                        score,
+                        answer.getFeedback() != null ? answer.getFeedback() : "该题未成功生成评估反馈。"
+                    ));
+                    referenceAnswers.add(new InterviewReportDTO.ReferenceAnswer(
+                        answer.getQuestionIndex(),
+                        answer.getQuestion(),
+                        answer.getReferenceAnswer() != null ? answer.getReferenceAnswer() : "",
+                        parseStringList(answer.getKeyPointsJson())
+                    ));
+                    categoryScores.computeIfAbsent(answer.getCategory(), k -> new ArrayList<>()).add(score);
+                }
+
+                List<InterviewReportDTO.CategoryScore> categoryScoreList = categoryScores.entrySet().stream()
+                    .map(e -> new InterviewReportDTO.CategoryScore(
+                        e.getKey(),
+                        (int) e.getValue().stream().mapToInt(Integer::intValue).average().orElse(0),
+                        e.getValue().size()
+                    ))
+                    .toList();
+
+                return new InterviewReportDTO(
+                    sessionId,
+                    answers.size(),
+                    session.getOverallScore() != null ? session.getOverallScore() : 0,
+                    categoryScoreList,
+                    questionDetails,
+                    session.getOverallFeedback(),
+                    parseStringList(session.getStrengthsJson()),
+                    parseStringList(session.getImprovementsJson()),
+                    referenceAnswers
+                );
+            });
+    }
+
+    private List<String> parseStringList(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JacksonException e) {
+            log.warn("解析报告 JSON 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 连同简历一起加载（join fetch），供事务外访问 resume 关联的场景使用
+     */
+    public Optional<InterviewSessionEntity> findBySessionIdWithResume(String sessionId) {
+        return sessionRepository.findBySessionIdWithResume(sessionId);
     }
 
     public Optional<InterviewSessionEntity> findByRequestId(String requestId) {

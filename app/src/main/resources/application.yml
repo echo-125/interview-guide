@@ -59,6 +59,9 @@ spring:
       minimum-idle: ${APP_HIKARI_MIN_IDLE:1}
 
   jpa:
+    # 关闭 OSIV：RAG/评估等请求在事务外调用 LLM 数十秒，
+    # OSIV 会把数据库连接占用到请求结束，3 个并发 AI 请求即可耗尽连接池
+    open-in-view: false
     hibernate:
       ddl-auto: validate
     show-sql: false

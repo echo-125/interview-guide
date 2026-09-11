@@ -15,11 +15,11 @@ import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewMessageRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewSessionRepository;
+import interview.guide.common.transaction.TransactionalExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,10 +44,11 @@ public class VoiceInterviewEvaluationService {
     private final VoiceInterviewSessionRepository sessionRepository;
     private final ObjectMapper objectMapper;
     private final InterviewSkillService skillService;
+    private final TransactionalExecutor transactionalExecutor;
 
     /**
      * 生成语音面试评估（由异步消费者调用）
-     * LLM 调用在事务外执行，仅 DB 写入在事务内
+     * LLM 调用在事务外执行，仅 DB 写入经 TransactionalExecutor 在事务内执行
      */
     public void generateEvaluation(Long sessionId) {
         try {
@@ -161,56 +162,65 @@ public class VoiceInterviewEvaluationService {
         return "技术问题";
     }
 
-    @Transactional
+    /**
+     * 保存评估结果。经 TransactionalExecutor 显式开启事务——
+     * 本类内部直接调用 @Transactional 方法会因自调用绕过代理而失效。
+     */
     public void saveEvaluationTransactional(Long sessionId, VoiceInterviewSessionEntity session,
-                                 EvaluationReport report) {
-        try {
-            List<EvaluationReport.QuestionEvaluation> questionItems = report.questionDetails();
-            List<EvaluationReport.ReferenceAnswer> refAnswerItems = report.referenceAnswers();
+                                            EvaluationReport report) {
+        transactionalExecutor.run(() -> {
+            try {
+                List<EvaluationReport.QuestionEvaluation> questionItems = report.questionDetails();
+                List<EvaluationReport.ReferenceAnswer> refAnswerItems = report.referenceAnswers();
 
-            VoiceInterviewEvaluationEntity entity = VoiceInterviewEvaluationEntity.builder()
-                .sessionId(sessionId)
-                .overallScore(report.overallScore())
-                .overallFeedback(report.overallFeedback())
-                .questionEvaluationsJson(objectMapper.writeValueAsString(questionItems))
-                .strengthsJson(objectMapper.writeValueAsString(report.strengths()))
-                .improvementsJson(objectMapper.writeValueAsString(report.improvements()))
-                .referenceAnswersJson(objectMapper.writeValueAsString(refAnswerItems))
-                .interviewerRole(session.getRoleType())
-                .interviewDate(session.getStartTime())
-                .build();
+                VoiceInterviewEvaluationEntity entity = VoiceInterviewEvaluationEntity.builder()
+                    .sessionId(sessionId)
+                    .overallScore(report.overallScore())
+                    .overallFeedback(report.overallFeedback())
+                    .questionEvaluationsJson(objectMapper.writeValueAsString(questionItems))
+                    .strengthsJson(objectMapper.writeValueAsString(report.strengths()))
+                    .improvementsJson(objectMapper.writeValueAsString(report.improvements()))
+                    .referenceAnswersJson(objectMapper.writeValueAsString(refAnswerItems))
+                    .interviewerRole(session.getRoleType())
+                    .interviewDate(session.getStartTime())
+                    .build();
 
-            evaluationRepository.save(entity);
-            log.info("评估结果已保存: sessionId={}, score={}", sessionId, entity.getOverallScore());
-        } catch (Exception e) {
-            log.error("保存评估结果失败: sessionId={}", sessionId, e);
-            throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,
-                "保存评估失败: " + e.getMessage());
-        }
+                evaluationRepository.save(entity);
+                log.info("评估结果已保存: sessionId={}, score={}", sessionId, entity.getOverallScore());
+            } catch (Exception e) {
+                log.error("保存评估结果失败: sessionId={}", sessionId, e);
+                throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,
+                    "保存评估失败: " + e.getMessage());
+            }
+        });
     }
 
-    @Transactional
+    /**
+     * 保存空评估结果。经 TransactionalExecutor 显式开启事务，理由同上。
+     */
     public void saveEmptyEvaluationTransactional(Long sessionId, VoiceInterviewSessionEntity session) {
-        try {
-            VoiceInterviewEvaluationEntity entity = evaluationRepository.findBySessionId(sessionId)
-                .orElseGet(() -> VoiceInterviewEvaluationEntity.builder().sessionId(sessionId).build());
+        transactionalExecutor.run(() -> {
+            try {
+                VoiceInterviewEvaluationEntity entity = evaluationRepository.findBySessionId(sessionId)
+                    .orElseGet(() -> VoiceInterviewEvaluationEntity.builder().sessionId(sessionId).build());
 
-            entity.setOverallScore(null);
-            entity.setOverallFeedback("本次语音面试未形成有效对话记录，暂无可评估内容。");
-            entity.setQuestionEvaluationsJson("[]");
-            entity.setStrengthsJson("[]");
-            entity.setImprovementsJson("[\"请先完成至少一轮有效问答后再生成评估。\"]");
-            entity.setReferenceAnswersJson("[]");
-            entity.setInterviewerRole(session.getRoleType());
-            entity.setInterviewDate(session.getStartTime());
+                entity.setOverallScore(null);
+                entity.setOverallFeedback("本次语音面试未形成有效对话记录，暂无可评估内容。");
+                entity.setQuestionEvaluationsJson("[]");
+                entity.setStrengthsJson("[]");
+                entity.setImprovementsJson("[\"请先完成至少一轮有效问答后再生成评估。\"]");
+                entity.setReferenceAnswersJson("[]");
+                entity.setInterviewerRole(session.getRoleType());
+                entity.setInterviewDate(session.getStartTime());
 
-            evaluationRepository.save(entity);
-            log.info("空评估结果已保存: sessionId={}", sessionId);
-        } catch (Exception e) {
-            log.error("保存空评估结果失败: sessionId={}", sessionId, e);
-            throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,
-                "保存空评估失败: " + e.getMessage());
-        }
+                evaluationRepository.save(entity);
+                log.info("空评估结果已保存: sessionId={}", sessionId);
+            } catch (Exception e) {
+                log.error("保存空评估结果失败: sessionId={}", sessionId, e);
+                throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,
+                    "保存空评估失败: " + e.getMessage());
+            }
+        });
     }
 
     private VoiceEvaluationDetailDTO buildDetailDTO(VoiceInterviewEvaluationEntity entity) {

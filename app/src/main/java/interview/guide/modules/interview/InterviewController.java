@@ -106,6 +106,8 @@ public class InterviewController {
     /**
      * 生成面试报告
      */
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 60)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 10)
     @GetMapping("/api/interview/sessions/{sessionId}/report")
     public Result<InterviewReportDTO> getReport(@PathVariable String sessionId) {
         log.info("生成面试报告: {}", sessionId);

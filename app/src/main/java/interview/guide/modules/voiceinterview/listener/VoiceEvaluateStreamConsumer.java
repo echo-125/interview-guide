@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.stream.StreamMessageId;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -87,8 +88,25 @@ public class VoiceEvaluateStreamConsumer extends AbstractStreamConsumer<VoiceEva
 
     @Override
     protected void markProcessing(VoiceEvaluatePayload payload) {
+        // 领取已由 tryMarkProcessing 的 CAS 完成，这里仅做幂等防御性更新
         voiceInterviewService.updateEvaluateStatus(
                 payload.sessionId(), AsyncTaskStatus.PROCESSING, null);
+    }
+
+    @Override
+    protected boolean tryMarkProcessing(VoiceEvaluatePayload payload) {
+        // CAS：仅当 PENDING/FAILED 时领取成功，避免超时重投/手动重试与正常消费并发双跑评估
+        int claimed = sessionRepository.claimEvaluation(
+            payload.sessionId(),
+            AsyncTaskStatus.PROCESSING,
+            List.of(AsyncTaskStatus.PENDING, AsyncTaskStatus.FAILED)
+        );
+        if (claimed > 0) {
+            log.debug("语音评估任务已领取: sessionId={}", payload.sessionId());
+            return true;
+        }
+        log.info("语音评估任务领取冲突，跳过: sessionId={}", payload.sessionId());
+        return false;
     }
 
     @Override
