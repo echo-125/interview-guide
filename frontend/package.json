@@ -14,12 +14,10 @@
     "test:interview-entry": "node --test src/pages/interviewEntry.test.ts"
   },
   "dependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
     "axios": "^1.7.7",
     "dayjs": "^1.11.20",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.468.0",
-    "onnxruntime-web": "1.24.3",
     "react": "^18.3.1",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^18.3.1",
@@ -33,6 +31,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/typography": "^0.5.15",
     "@types/node": "^25.5.2",
     "@types/react": "^18.3.12",

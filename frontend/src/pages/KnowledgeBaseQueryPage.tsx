@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import {useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -354,7 +355,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
       );
     } catch (err) {
       console.error('发起流式查询失败:', err);
-      updateAssistantMessage(err instanceof Error ? err.message : '回答失败，请重试');
+      updateAssistantMessage(getErrorMessage(err, '回答失败，请重试'));
       setLoading(false);
     }
   };

@@ -21,6 +21,8 @@ export default defineConfig(({ mode }) => {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'ui-vendor': ['framer-motion', 'lucide-react'],
             'syntax-highlighter': ['react-syntax-highlighter'],
+            'charts-vendor': ['recharts'],
+            'markdown-vendor': ['react-markdown', 'remark-gfm'],
           },
         },
       },

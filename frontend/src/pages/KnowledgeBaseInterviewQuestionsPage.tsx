@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
@@ -296,7 +297,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
       setGenerationStatus(result);
       setTrackedTaskId(result.questionGenTaskId);
     } catch (error) {
-      setGenerateError(error instanceof Error ? error.message : '生成失败，请稍后重试');
+      setGenerateError(getErrorMessage(error, '生成失败，请稍后重试'));
     } finally {
       setSubmitting(false);
     }
@@ -337,7 +338,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
       setFormOpen(false);
       await loadQuestions();
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : '保存失败');
+      setFormError(getErrorMessage(error, '保存失败'));
     } finally {
       setSaving(false);
     }
@@ -352,7 +353,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
       setDeleteQuestion(null);
       await loadQuestions();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '删除失败');
+      setActionError(getErrorMessage(error, '删除失败'));
     } finally {
       setDeleting(false);
     }
@@ -364,7 +365,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
       await knowledgeBaseApi.updateQuestionStatus(questionId, status);
       await loadQuestions();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '更新状态失败');
+      setActionError(getErrorMessage(error, '更新状态失败'));
     }
   };
 

@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Clock, PhoneOff, AlertCircle, Bot, Mic, ArrowLeft, SendHorizonal } from 'lucide-react';
@@ -524,7 +525,7 @@ export default function VoiceInterviewPage() {
       try {
         wsRef.current = connectWebSocket(sessionId, wsUrl, createWebSocketHandlers());
       } catch (error) {
-        setError('无法建立 WebSocket 连接: ' + (error instanceof Error ? error.message : '未知错误'));
+        setError('无法建立 WebSocket 连接: ' + getErrorMessage(error, '未知错误'));
         setConnectionStatus('disconnected');
         setIsAsrReady(false);
       }
@@ -572,7 +573,7 @@ export default function VoiceInterviewPage() {
       const wsUrl = session.webSocketUrl || buildWebSocketFallbackUrl(session.sessionId);
       connectWithHandlers(session.sessionId, wsUrl);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '创建面试会话失败，请重试';
+      const errorMessage = getErrorMessage(error, '创建面试会话失败，请重试');
       setError(errorMessage);
       setConnectionStatus('disconnected');
       setIsAsrReady(false);
@@ -633,7 +634,7 @@ export default function VoiceInterviewPage() {
       const wsUrl = session.webSocketUrl || buildWebSocketFallbackUrl(session.sessionId);
       connectWithHandlers(session.sessionId, wsUrl);
     } catch (error) {
-      setError(error instanceof Error ? error.message : '恢复会话失败');
+      setError(getErrorMessage(error, '恢复会话失败'));
       setConnectionStatus('disconnected');
       setIsAsrReady(false);
     }

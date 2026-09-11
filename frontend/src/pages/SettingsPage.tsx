@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -304,7 +305,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to create provider:', err);
-      showToast(err instanceof Error ? err.message : '创建失败', 'error');
+      showToast(getErrorMessage(err, '创建失败'), 'error');
     } finally {
       setSaving(false);
     }
@@ -360,7 +361,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to update provider:', err);
-      showToast(err instanceof Error ? err.message : '更新失败', 'error');
+      showToast(getErrorMessage(err, '更新失败'), 'error');
     } finally {
       setSaving(false);
     }
@@ -383,7 +384,7 @@ export default function SettingsPage() {
       showToast(models?.length ? `已获取 ${models.length} 个模型` : '该端点未返回模型列表');
     } catch (err) {
       console.error('Failed to fetch models:', err);
-      showToast(err instanceof Error ? err.message : '获取模型列表失败', 'error');
+      showToast(getErrorMessage(err, '获取模型列表失败'), 'error');
     } finally {
       setFetchingModels(false);
     }
@@ -399,7 +400,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to delete provider:', err);
-      showToast(err instanceof Error ? err.message : '删除失败', 'error');
+      showToast(getErrorMessage(err, '删除失败'), 'error');
     } finally {
       setDeleting(false);
     }
@@ -421,7 +422,7 @@ export default function SettingsPage() {
         ...prev,
         [id]: {
           success: false,
-          message: err instanceof Error ? err.message : '连接测试失败',
+          message: getErrorMessage(err, '连接测试失败'),
           model: '',
         },
       }));
@@ -449,7 +450,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to set default:', err);
-      showToast(err instanceof Error ? err.message : '设置默认模型失败', 'error');
+      showToast(getErrorMessage(err, '设置默认模型失败'), 'error');
     } finally {
       setSettingDefault(false);
     }
@@ -478,7 +479,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to set embedding default:', err);
-      showToast(err instanceof Error ? err.message : '设置默认向量模型失败', 'error');
+      showToast(getErrorMessage(err, '设置默认向量模型失败'), 'error');
     } finally {
       setSettingEmbeddingDefault(false);
     }
@@ -508,7 +509,7 @@ export default function SettingsPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to set rerank default:', err);
-      showToast(err instanceof Error ? err.message : '设置默认重排模型失败', 'error');
+      showToast(getErrorMessage(err, '设置默认重排模型失败'), 'error');
     } finally {
       setSettingRerankDefault(false);
     }
@@ -562,7 +563,7 @@ export default function SettingsPage() {
       setShowVoiceModal(null);
       await loadData();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '更新失败', 'error');
+      showToast(getErrorMessage(err, '更新失败'), 'error');
     } finally {
       setVoiceSaving(false);
     }
@@ -576,7 +577,7 @@ export default function SettingsPage() {
       setShowVoiceModal(null);
       await loadData();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '更新失败', 'error');
+      showToast(getErrorMessage(err, '更新失败'), 'error');
     } finally {
       setVoiceSaving(false);
     }
@@ -591,7 +592,7 @@ export default function SettingsPage() {
     } catch (err) {
       setAsrTestResult({
         success: false,
-        message: err instanceof Error ? err.message : '连接测试失败',
+        message: getErrorMessage(err, '连接测试失败'),
         model: '',
       });
     } finally {

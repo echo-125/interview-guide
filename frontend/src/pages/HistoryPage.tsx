@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import {useCallback, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
@@ -94,7 +95,7 @@ export default function HistoryList({onSelectResume}: HistoryListProps) {
       await loadResumes();
       setDeleteConfirm(null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '删除失败，请稍后重试', 'error');
+      showToast(getErrorMessage(err, '删除失败，请稍后重试'), 'error');
     } finally {
       setDeletingId(null);
     }

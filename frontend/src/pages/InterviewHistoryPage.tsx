@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
@@ -259,11 +260,20 @@ export default function InterviewHistoryPage({
         skillsLoadedRef.current = true;
       }
       const loadedSkills = skillsRef.current;
-      const textInterviews = await loadTextInterviews(loadedSkills);
+      // 单类加载失败不吞错：toast 提示并降级为空列表，另一类数据仍可展示（轮询时静默）
+      const textInterviews = await loadTextInterviews(loadedSkills).catch((err) => {
+        console.error('加载面试记录失败', err);
+        if (!isPolling) showToast(getErrorMessage(err, '面试记录加载失败，请稍后重试'), 'error');
+        return [] as UnifiedInterviewItem[];
+      });
       const scopedTextInterviews = isKnowledgeBaseView
         ? textInterviews.filter(item => item.knowledgeBaseId === knowledgeBaseFilterId)
         : textInterviews.filter(item => item.sourceType !== 'KNOWLEDGE_BASE');
-      const voiceSessions = isKnowledgeBaseView ? [] : await loadVoiceInterviews();
+      const voiceSessions = isKnowledgeBaseView ? [] : await loadVoiceInterviews().catch((err) => {
+        console.error('加载语音面试记录失败', err);
+        if (!isPolling) showToast(getErrorMessage(err, '语音面试记录加载失败，请稍后重试'), 'error');
+        return [] as UnifiedInterviewItem[];
+      });
 
       const voiceWithNames = voiceSessions.map(item => {
         const skillName = getTemplateName(item.title, loadedSkills);
@@ -281,59 +291,53 @@ export default function InterviewHistoryPage({
       });
     } catch (err) {
       console.error('加载面试记录失败', err);
+      if (!isPolling) showToast(getErrorMessage(err, '加载面试记录失败'), 'error');
     } finally {
       if (!isPolling) setLoading(false);
     }
   }, [isKnowledgeBaseView, knowledgeBaseFilterId]);
 
   // Load text interviews from dedicated API
+  // 错误由 loadAll 的 .catch 统一提示，这里不再吞错
   async function loadTextInterviews(skills: SkillDTO[]): Promise<UnifiedInterviewItem[]> {
-    try {
-      const sessions = await interviewApi.listSessions();
-      return sessions.map((session: TextSessionMeta) => ({
-        id: session.sessionId,
-        type: 'text' as const,
-        sourceType: session.sourceType,
-        title: session.sourceType === 'KNOWLEDGE_BASE'
-          ? `${getTemplateName(session.skillId, skills)} · 知识库面试`
-          : getTemplateName(session.skillId, skills),
-        sessionId: session.sessionId,
-        status: session.status,
-        evaluateStatus: session.evaluateStatus ?? undefined,
-        evaluateError: session.evaluateError ?? undefined,
-        overallScore: session.overallScore,
-        totalQuestions: session.totalQuestions,
-        createdAt: session.createdAt,
-        resumeId: session.resumeId ?? undefined,
-        knowledgeBaseId: session.knowledgeBaseId ?? undefined,
-        interviewCategory: session.interviewCategory ?? null,
-      }));
-    } catch {
-      return [];
-    }
+    const sessions = await interviewApi.listSessions();
+    return sessions.map((session: TextSessionMeta) => ({
+      id: session.sessionId,
+      type: 'text' as const,
+      sourceType: session.sourceType,
+      title: session.sourceType === 'KNOWLEDGE_BASE'
+        ? `${getTemplateName(session.skillId, skills)} · 知识库面试`
+        : getTemplateName(session.skillId, skills),
+      sessionId: session.sessionId,
+      status: session.status,
+      evaluateStatus: session.evaluateStatus ?? undefined,
+      evaluateError: session.evaluateError ?? undefined,
+      overallScore: session.overallScore,
+      totalQuestions: session.totalQuestions,
+      createdAt: session.createdAt,
+      resumeId: session.resumeId ?? undefined,
+      knowledgeBaseId: session.knowledgeBaseId ?? undefined,
+      interviewCategory: session.interviewCategory ?? null,
+    }));
   }
 
   // Load voice interviews from voice API
   async function loadVoiceInterviews(): Promise<UnifiedInterviewItem[]> {
-    try {
-      const sessions = await voiceInterviewApi.getAllSessions();
-      return sessions.map((session: SessionMeta) => ({
-        id: `voice-${session.sessionId}`,
-        type: 'voice' as const,
-        title: session.roleType,
-        sessionId: String(session.sessionId),
-        status: session.status,
-        evaluateStatus: session.evaluateStatus,
-        evaluateError: session.evaluateError,
-        evaluateStatusUpdatedAt: session.updatedAt,
-        overallScore: null,
-        actualDuration: session.actualDuration,
-        createdAt: session.createdAt,
-        voiceSessionId: session.sessionId,
-      }));
-    } catch {
-      return [];
-    }
+    const sessions = await voiceInterviewApi.getAllSessions();
+    return sessions.map((session: SessionMeta) => ({
+      id: `voice-${session.sessionId}`,
+      type: 'voice' as const,
+      title: session.roleType,
+      sessionId: String(session.sessionId),
+      status: session.status,
+      evaluateStatus: session.evaluateStatus,
+      evaluateError: session.evaluateError,
+      evaluateStatusUpdatedAt: session.updatedAt,
+      overallScore: null,
+      actualDuration: session.actualDuration,
+      createdAt: session.createdAt,
+      voiceSessionId: session.sessionId,
+    }));
   }
 
   useEffect(() => {
@@ -389,7 +393,7 @@ export default function InterviewHistoryPage({
       await loadAll();
       setDeleteItem(null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '删除失败，请稍后重试', 'error');
+      showToast(getErrorMessage(err, '删除失败，请稍后重试'), 'error');
     } finally {
       setDeletingSessionId(null);
     }

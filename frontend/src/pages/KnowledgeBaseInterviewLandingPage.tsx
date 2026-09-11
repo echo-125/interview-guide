@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -146,7 +147,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         state: { knowledgeBaseId: kbId },
       });
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : '创建知识库面试失败');
+      setStartError(getErrorMessage(error, '创建知识库面试失败'));
     } finally {
       setStarting(false);
     }
@@ -172,7 +173,7 @@ export default function KnowledgeBaseInterviewLandingPage() {
         },
       });
     } catch (error) {
-      setGenerateError(error instanceof Error ? error.message : '生成失败，请稍后重试');
+      setGenerateError(getErrorMessage(error, '生成失败，请稍后重试'));
     } finally {
       setSubmitting(false);
     }

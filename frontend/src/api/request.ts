@@ -219,12 +219,14 @@ export const request = {
 
 /**
  * 获取错误信息
+ *
+ * @param fallback 非 Error 时的兜底文案，可传入业务上下文（如「删除失败」）
  */
-export function getErrorMessage(error: unknown): string {
+export function getErrorMessage(error: unknown, fallback = '未知错误'): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return '未知错误';
+  return fallback;
 }
 
 export default request;

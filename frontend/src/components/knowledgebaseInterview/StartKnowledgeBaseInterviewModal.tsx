@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../../api/request';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Loader2, Play, X } from 'lucide-react';
@@ -89,7 +90,7 @@ export default function StartKnowledgeBaseInterviewModal({
       })
       .catch(err => {
         if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : '加载面试容量失败');
+          setLoadError(getErrorMessage(err, '加载面试容量失败'));
         }
       })
       .finally(() => {

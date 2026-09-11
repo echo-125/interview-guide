@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import {useMemo, useState} from 'react';
 import {motion} from 'framer-motion';
 import {CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
@@ -50,7 +51,7 @@ export default function InterviewPanel({
       onDeleteInterview(sessionId);
       setDeleteConfirm(null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '删除失败，请稍后重试', 'error');
+      showToast(getErrorMessage(err, '删除失败，请稍后重试'), 'error');
     } finally {
       setDeletingSessionId(null);
     }

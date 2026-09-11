@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../api/request';
 import { useRef, useState, useEffect } from 'react';
 import { useToast } from './Toast';
 // @ts-ignore - vad is loaded via script tag
@@ -269,7 +270,7 @@ export default function AudioRecorder({
         return;
       }
       console.error('Error accessing microphone:', error);
-      const message = error instanceof Error ? error.message : '无法访问麦克风，请检查权限设置';
+      const message = getErrorMessage(error, '无法访问麦克风，请检查权限设置');
       showToast(message, 'error');
     }
   };
