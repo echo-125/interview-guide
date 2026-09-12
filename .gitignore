@@ -31,5 +31,6 @@ skills-lock.json
 
 # 本地临时文件
 bootrun.log
+logs/
 test-connectivity.ps1
 .zcode/

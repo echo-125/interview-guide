@@ -9,6 +9,9 @@ cd "$(dirname "$0")" || exit 1
 #   -XX:+UseSerialGC           smallest-footprint GC for 1-core / low-RAM hosts
 # To give the app more memory, raise -Xmx / -XX:MaxMetaspaceSize first.
 
+# File logs go to ./logs (console output stays visible).
+mkdir -p logs
+
 # Load .env (KEY=VALUE, '#' comments) so the jar sees POSTGRES_*/REDIS_*/AI_* vars.
 # Strip CR to tolerate CRLF files, and strip a wrapping pair of quotes.
 set -a
@@ -24,4 +27,4 @@ else
 fi
 set +a
 
-exec java -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -jar app/build/libs/app.jar
+exec java -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -Dlogging.file.name=logs/app.log -jar app/build/libs/app.jar

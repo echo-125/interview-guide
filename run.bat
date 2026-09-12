@@ -23,8 +23,21 @@ rem   -XX:MaxMetaspaceSize=256m  class metadata cap
 rem   -Xss256k                   smaller thread stacks
 rem   -XX:+UseSerialGC           smallest-footprint GC for 1-core / low-RAM hosts
 rem To give the app more memory, raise -Xmx / -XX:MaxMetaspaceSize first.
+rem
+rem The packaged jar targets Java 25 (class file 69). Use the local JDK 25
+rem install explicitly because PATH may point to an older Java. Falls back
+rem to PATH java only if the JDK 25 path does not exist.
+rem Logs: file appender writes to logs/app.log (created relative to this
+rem directory); console output stays visible.
 
-java -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -jar app\build\libs\app.jar
+set "JAVA_EXE=C:\Program Files\Java\jdk-25.0.4.101-hotspot\bin\java.exe"
+if not exist "%JAVA_EXE%" (
+  echo [WARN] JDK 25 not found at "%JAVA_EXE%", falling back to PATH java.
+  set "JAVA_EXE=java"
+)
+if not exist logs mkdir logs
+
+"%JAVA_EXE%" -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -Dlogging.file.name=logs/app.log -jar app\build\libs\app.jar
 pause
 goto :eof
 
