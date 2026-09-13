@@ -121,4 +121,18 @@ public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEnti
     List<KnowledgeBaseEntity> findStaleQuestionGenerationTasks(
         @Param("status") QuestionGenStatus status,
         @Param("threshold") LocalDateTime threshold);
+
+    /**
+     * 题目生成存活心跳：仅当任务仍处于指定状态且 taskId 匹配时刷新 updatedAt。
+     * 直接走 update 语句，不加载实体、不与生成主流程争抢悲观锁。
+     */
+    @Modifying
+    @Query("UPDATE KnowledgeBaseEntity k SET k.questionGenUpdatedAt = :now "
+        + "WHERE k.id = :kbId AND k.questionGenTaskId = :taskId "
+        + "AND k.questionGenStatus = :status")
+    int touchQuestionGenHeartbeat(
+        @Param("kbId") Long kbId,
+        @Param("taskId") String taskId,
+        @Param("status") QuestionGenStatus status,
+        @Param("now") LocalDateTime now);
 }

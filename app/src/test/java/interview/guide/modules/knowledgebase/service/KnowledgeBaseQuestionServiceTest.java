@@ -78,6 +78,19 @@ class KnowledgeBaseQuestionServiceTest {
     }
 
     @Test
+    @DisplayName("keyword 在 Java 侧构造为小写模糊模式后下推查询")
+    void shouldPushLowercasedLikePattern() {
+      KnowledgeBaseQuestionEntity redis = entity("Redis 主问题", "Redis");
+      when(questionRepository.findFiltered(1L, null, null, "%redis%"))
+          .thenReturn(List.of(redis));
+
+      List<KnowledgeBaseQuestionDTO> result =
+          service.listQuestions(1L, null, null, null, "  ReDis  ");
+
+      assertThat(result).hasSize(1);
+    }
+
+    @Test
     @DisplayName("兼容字符串数组格式的历史追问")
     void shouldReadLegacyStringFollowUps() throws Exception {
       KnowledgeBaseQuestionEntity question = entity("Q1", "JVM");

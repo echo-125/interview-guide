@@ -51,6 +51,11 @@ public class KnowledgeBaseQuestionGenerationService {
   private static final int RETRIEVAL_TOP_K = 12;
   private static final int RETRIEVAL_QUERY_TOP_K = 4;
   private static final int MAX_CONTEXT_CHARS = 5000;
+  /**
+   * 生成存活心跳间隔：LLM 长调用可能远超 PROCESSING_STALE_MINUTES（实测有 10 分钟+ 的调用），
+   * 心跳持续刷新 updatedAt，让恢复调度器的 stale 判定只对真正死掉的消费者生效。
+   */
+  private static final long HEARTBEAT_INTERVAL_MS = 60_000;
 
   private final KnowledgeBaseRepository knowledgeBaseRepository;
   private final KnowledgeBaseQuestionRepository questionRepository;
@@ -115,10 +120,16 @@ public class KnowledgeBaseQuestionGenerationService {
     // 1. 检索上下文（不在事务中）
     String context = buildGenerationContext(kb);
 
-    // 2. 调用 LLM（不在事务中）
+    // 2. 调用 LLM（不在事务中），期间由心跳线程维持 PROCESSING 存活标记
     ChatClient chatClient = llmProviderRegistry.getPlainChatClient(config.llmProvider());
-    QuestionListDTO generated = callLlm(kb, chatClient, normalizedDifficulty,
-        Math.max(1, config.questionCount()), normalizedFollowUp, normalizedCategoryLimit, context);
+    Thread heartbeat = startGenerationHeartbeat(kbId, taskId);
+    QuestionListDTO generated;
+    try {
+      generated = callLlm(kb, chatClient, normalizedDifficulty,
+          Math.max(1, config.questionCount()), normalizedFollowUp, normalizedCategoryLimit, context);
+    } finally {
+      heartbeat.interrupt();
+    }
 
     // 3. 校验生成结果
     if (generated == null || generated.questions() == null || generated.questions().isEmpty()) {
@@ -142,6 +153,34 @@ public class KnowledgeBaseQuestionGenerationService {
 
     log.info("知识库问题异步生成完成: kbId={}, taskId={}, count={}",
         kbId, taskId, batch.questions().size());
+  }
+
+  /**
+   * 启动生成存活心跳线程：定期刷新任务的 updatedAt。
+   * 任务被替换/终结（touch 返回 false）时线程自行退出；主流程结束时通过 interrupt 终止。
+   */
+  private Thread startGenerationHeartbeat(Long kbId, String taskId) {
+    Thread heartbeat = new Thread(() -> {
+      while (true) {
+        try {
+          Thread.sleep(HEARTBEAT_INTERVAL_MS);
+        } catch (InterruptedException e) {
+          return;
+        }
+        try {
+          if (!stateService.touchProcessingHeartbeat(kbId, taskId)) {
+            log.info("题目生成任务已失效，心跳停止: kbId={}, taskId={}", kbId, taskId);
+            return;
+          }
+        } catch (Exception e) {
+          // 单次心跳失败不影响生成主流程，下一周期继续尝试
+          log.warn("题目生成心跳更新失败: kbId={}, taskId={}, error={}", kbId, taskId, e.getMessage());
+        }
+      }
+    }, "question-gen-heartbeat-" + taskId);
+    heartbeat.setDaemon(true);
+    heartbeat.start();
+    return heartbeat;
   }
 
   private QuestionListDTO callLlm(

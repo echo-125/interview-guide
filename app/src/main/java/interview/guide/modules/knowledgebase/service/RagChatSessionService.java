@@ -84,9 +84,10 @@ public class RagChatSessionService {
 
     /**
      * 获取会话列表
+     * 使用 fetch join 预加载 knowledgeBases：列表 DTO 映射在事务外读取该懒加载集合
      */
     public List<SessionListItemDTO> listSessions() {
-        return sessionRepository.findAllOrderByPinnedAndUpdatedAtDesc()
+        return sessionRepository.findAllWithKnowledgeBasesOrderByPinnedAndUpdatedAtDesc()
             .stream()
             .map(ragChatMapper::toSessionListItemDTO)
             .toList();

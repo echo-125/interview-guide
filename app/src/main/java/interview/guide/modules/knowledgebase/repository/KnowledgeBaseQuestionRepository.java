@@ -18,44 +18,46 @@ public interface KnowledgeBaseQuestionRepository extends JpaRepository<Knowledge
 
   /**
    * 列表查询过滤下推（评审 2026-09-12 P8）：category/difficulty/keyword 不再全量拉回内存过滤。
-   * keyword 与 containsKeyword 语义对齐：匹配 question/referenceAnswer/scoringRubric/topicSummary/category，
-   * NULL 列 LIKE 结果为 NULL（视为不匹配），与原 null→false 一致。
+   * keywordPattern 由调用方预构造为 `%小写keyword%`：Hibernate 7 下 concat+参数+is null 的组合
+   * 会把参数按 bytea 绑定（PG 报 lower(bytea) 不存在），故模糊串不在 JPQL 内拼接；
+   * like 上下文可稳定推断 String 类型。
+   * NULL 列 LIKE 结果为 NULL（视为不匹配）。
    * status 为枚举参数，Postgres 下 `:status is null` 类型推断不稳，故保留两个入口而非可空参数。
    */
   @Query("select q from KnowledgeBaseQuestionEntity q "
       + "where q.knowledgeBase.id = :kbId "
       + "and (:category is null or q.category = :category) "
       + "and (:difficulty is null or q.difficulty = :difficulty) "
-      + "and (:keyword is null "
-      + "or lower(q.question) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.referenceAnswer) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.scoringRubric) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.topicSummary) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.category) like lower(concat('%', :keyword, '%'))) "
+      + "and (:keywordPattern is null "
+      + "or lower(q.question) like :keywordPattern "
+      + "or lower(q.referenceAnswer) like :keywordPattern "
+      + "or lower(q.scoringRubric) like :keywordPattern "
+      + "or lower(q.topicSummary) like :keywordPattern "
+      + "or lower(q.category) like :keywordPattern) "
       + "order by q.updatedAt desc")
   List<KnowledgeBaseQuestionEntity> findFiltered(
       @Param("kbId") Long knowledgeBaseId,
       @Param("category") String category,
       @Param("difficulty") String difficulty,
-      @Param("keyword") String keyword);
+      @Param("keywordPattern") String keywordPattern);
 
   @Query("select q from KnowledgeBaseQuestionEntity q "
       + "where q.knowledgeBase.id = :kbId and q.status = :status "
       + "and (:category is null or q.category = :category) "
       + "and (:difficulty is null or q.difficulty = :difficulty) "
-      + "and (:keyword is null "
-      + "or lower(q.question) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.referenceAnswer) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.scoringRubric) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.topicSummary) like lower(concat('%', :keyword, '%')) "
-      + "or lower(q.category) like lower(concat('%', :keyword, '%'))) "
+      + "and (:keywordPattern is null "
+      + "or lower(q.question) like :keywordPattern "
+      + "or lower(q.referenceAnswer) like :keywordPattern "
+      + "or lower(q.scoringRubric) like :keywordPattern "
+      + "or lower(q.topicSummary) like :keywordPattern "
+      + "or lower(q.category) like :keywordPattern) "
       + "order by q.updatedAt desc")
   List<KnowledgeBaseQuestionEntity> findFilteredWithStatus(
       @Param("kbId") Long knowledgeBaseId,
       @Param("status") KnowledgeBaseQuestionStatus status,
       @Param("category") String category,
       @Param("difficulty") String difficulty,
-      @Param("keyword") String keyword);
+      @Param("keywordPattern") String keywordPattern);
 
   List<KnowledgeBaseQuestionEntity> findTop50ByKnowledgeBase_IdAndSkillIdAndDifficultyOrderByUpdatedAtDesc(
       Long knowledgeBaseId, String skillId, String difficulty);

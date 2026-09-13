@@ -27,10 +27,12 @@ public interface RagChatSessionRepository extends JpaRepository<RagChatSessionEn
     List<RagChatSessionEntity> findAllByOrderByUpdatedAtDesc();
 
     /**
-     * 获取所有会话（按置顶状态和更新时间排序：置顶的在前，然后按更新时间倒序）
+     * 获取所有会话并预加载关联知识库（按置顶状态和更新时间排序）
+     * 列表 DTO 需要读取 knowledgeBases 集合，懒加载在事务外会抛 LazyInitializationException
      */
-    @Query("SELECT s FROM RagChatSessionEntity s ORDER BY s.isPinned DESC, s.updatedAt DESC")
-    List<RagChatSessionEntity> findAllOrderByPinnedAndUpdatedAtDesc();
+    @Query("SELECT DISTINCT s FROM RagChatSessionEntity s LEFT JOIN FETCH s.knowledgeBases "
+        + "ORDER BY s.isPinned DESC, s.updatedAt DESC")
+    List<RagChatSessionEntity> findAllWithKnowledgeBasesOrderByPinnedAndUpdatedAtDesc();
 
     /**
      * 根据知识库ID查找相关会话

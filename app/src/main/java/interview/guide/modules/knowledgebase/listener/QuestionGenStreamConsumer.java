@@ -83,6 +83,15 @@ public class QuestionGenStreamConsumer
     return "kbId=" + payload.kbId() + ", taskId=" + payload.taskId();
   }
 
+  /**
+   * 恢复调度器会对同一 taskId 重复投递，任务终结（完成/失败/被替换）后
+   * 剩余消息若不 ACK 会被 pending 回收机制每 5 分钟无限重捞，故在此跳过并 ACK。
+   */
+  @Override
+  protected boolean shouldSkip(QuestionGenPayload payload) {
+    return stateService.isTaskFinished(payload.kbId(), payload.taskId());
+  }
+
   @Override
   protected void markProcessing(QuestionGenPayload payload) {
     // 题目生成使用 tryMarkProcessing 原子领取。

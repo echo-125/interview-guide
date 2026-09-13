@@ -92,6 +92,29 @@ public class QuestionGenerationStateService {
     return true;
   }
 
+  /**
+   * 任务是否已终结（完成/失败，或 taskId 已被新任务替换/清除）。
+   * 消费者据此 ACK 重复投递的历史消息，避免已完结任务的消息被 pending 回收机制无限重捞。
+   */
+  @Transactional(readOnly = true)
+  public boolean isTaskFinished(Long knowledgeBaseId, String taskId) {
+    return knowledgeBaseRepository.findById(knowledgeBaseId)
+        .map(kb -> !taskId.equals(kb.getQuestionGenTaskId())
+            || kb.getQuestionGenStatus() == QuestionGenStatus.COMPLETED
+            || kb.getQuestionGenStatus() == QuestionGenStatus.FAILED)
+        .orElse(true);
+  }
+
+  /**
+   * 生成过程中的存活心跳：仅当任务仍处于 PROCESSING 且 taskId 匹配时刷新 updatedAt。
+   * 返回 false 表示任务已终结或被替换，心跳线程应停止。
+   */
+  @Transactional(rollbackFor = Exception.class)
+  public boolean touchProcessingHeartbeat(Long knowledgeBaseId, String taskId) {
+    return knowledgeBaseRepository.touchQuestionGenHeartbeat(
+        knowledgeBaseId, taskId, QuestionGenStatus.PROCESSING, LocalDateTime.now()) > 0;
+  }
+
   @Transactional(rollbackFor = Exception.class)
   public boolean resetForRetry(Long knowledgeBaseId, String taskId) {
     KnowledgeBaseEntity kb = lockKnowledgeBaseOrNull(knowledgeBaseId);

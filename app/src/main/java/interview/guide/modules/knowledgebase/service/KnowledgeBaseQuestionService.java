@@ -26,6 +26,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -55,11 +56,15 @@ public class KnowledgeBaseQuestionService {
     String categoryFilter = TextUtil.trimToNull(category);
     String difficultyFilter = TextUtil.trimToNull(difficulty);
     String keywordFilter = TextUtil.trimToNull(keyword);
+    // 模糊串在 Java 侧拼好并小写化，JPQL 只用 like :keywordPattern（避免 Hibernate 按字节类型绑定参数）
+    String keywordPattern = keywordFilter == null
+        ? null
+        : "%" + keywordFilter.toLowerCase(Locale.ROOT) + "%";
     // 过滤条件下推到查询（见 findFiltered 的 Javadoc），避免全量拉回内存过滤
     List<KnowledgeBaseQuestionEntity> questions = status == null
-        ? questionRepository.findFiltered(knowledgeBaseId, categoryFilter, difficultyFilter, keywordFilter)
+        ? questionRepository.findFiltered(knowledgeBaseId, categoryFilter, difficultyFilter, keywordPattern)
         : questionRepository.findFilteredWithStatus(
-            knowledgeBaseId, status, categoryFilter, difficultyFilter, keywordFilter);
+            knowledgeBaseId, status, categoryFilter, difficultyFilter, keywordPattern);
     return questions.stream()
         .map(this::toDTO)
         .toList();
