@@ -2,11 +2,18 @@ package interview.guide.modules.resume.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.TextUtil;
 import interview.guide.infrastructure.export.PdfExportService;
+import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.InterviewMapper;
 import interview.guide.infrastructure.mapper.ResumeMapper;
 import interview.guide.modules.interview.model.InterviewHistoryItemDTO;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse.BulletAudit;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse.DimensionExplanation;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse.RecruiterView;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse.TermIssue;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse.TopAction;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.resume.model.ResumeAnalysisEntity;
 import interview.guide.modules.resume.model.ResumeDetailDTO;
@@ -38,6 +45,7 @@ public class ResumeHistoryService {
     private final ResumePersistenceService resumePersistenceService;
     private final InterviewPersistenceService interviewPersistenceService;
     private final PdfExportService pdfExportService;
+    private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper;
     private final ResumeMapper resumeMapper;
     private final InterviewMapper interviewMapper;
@@ -106,7 +114,13 @@ public class ResumeHistoryService {
         List<ResumeDetailDTO.AnalysisHistoryDTO> analysisHistory = resumeMapper.toAnalysisHistoryDTOList(
             analyses,
             this::extractStrengths,
-            this::extractSuggestions
+            this::extractSuggestions,
+            this::extractBulletAudits,
+            this::extractTermIssues,
+            this::extractDimensionExplanations,
+            this::extractTopActions,
+            this::extractRisks,
+            this::extractRecruiterView
         );
 
         // 使用 InterviewMapper 转换面试历史
@@ -127,6 +141,35 @@ public class ResumeHistoryService {
             resume.getAnalyzeError(),
             analysisHistory,
             interviewHistory
+        );
+    }
+
+    /**
+     * 简历原文件（用于网页预览）
+     */
+    public record ResumeFile(byte[] content, String contentType, String filename) {
+    }
+
+    /**
+     * 获取简历原文件内容
+     *
+     * @param id 简历ID
+     * @return 文件字节、内容类型与原始文件名
+     */
+    public ResumeFile getResumeFile(Long id) {
+        ResumeEntity resume = resumePersistenceService.findById(id)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND));
+
+        if (!TextUtil.hasText(resume.getStorageKey())) {
+            throw new BusinessException(ErrorCode.STORAGE_DOWNLOAD_FAILED, "简历原文件不可用");
+        }
+
+        byte[] content = fileStorageService.downloadFile(resume.getStorageKey());
+        String contentType = TextUtil.trimToNull(resume.getContentType());
+        return new ResumeFile(
+            content,
+            contentType != null ? contentType : "application/octet-stream",
+            resume.getOriginalFilename()
         );
     }
 
@@ -164,6 +207,110 @@ public class ResumeHistoryService {
             log.error("解析 suggestions JSON 失败", e);
         }
         return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 bulletAudits（旧数据无此字段时返回空列表）
+     */
+    private List<BulletAudit> extractBulletAudits(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getBulletAuditsJson() != null) {
+                return objectMapper.readValue(
+                    entity.getBulletAuditsJson(),
+                        new TypeReference<>() {
+                        }
+                );
+            }
+        } catch (JacksonException e) {
+            log.error("解析 bulletAudits JSON 失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 termIssues（旧数据无此字段时返回空列表）
+     */
+    private List<TermIssue> extractTermIssues(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getTermIssuesJson() != null) {
+                return objectMapper.readValue(
+                    entity.getTermIssuesJson(),
+                        new TypeReference<>() {
+                        }
+                );
+            }
+        } catch (JacksonException e) {
+            log.error("解析 termIssues JSON 失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 dimensionExplanations（旧数据无此字段时返回空列表）
+     */
+    private List<DimensionExplanation> extractDimensionExplanations(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getDimensionExplanationsJson() != null) {
+                return objectMapper.readValue(
+                    entity.getDimensionExplanationsJson(),
+                        new TypeReference<>() {
+                        }
+                );
+            }
+        } catch (JacksonException e) {
+            log.error("解析 dimensionExplanations JSON 失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 topActions（旧数据无此字段时返回空列表）
+     */
+    private List<TopAction> extractTopActions(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getTopActionsJson() != null) {
+                return objectMapper.readValue(
+                    entity.getTopActionsJson(),
+                        new TypeReference<>() {
+                        }
+                );
+            }
+        } catch (JacksonException e) {
+            log.error("解析 topActions JSON 失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 risks（旧数据无此字段时返回空列表）
+     */
+    private List<String> extractRisks(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getRisksJson() != null) {
+                return objectMapper.readValue(
+                    entity.getRisksJson(),
+                        new TypeReference<>() {
+                        }
+                );
+            }
+        } catch (JacksonException e) {
+            log.error("解析 risks JSON 失败", e);
+        }
+        return List.of();
+    }
+
+    /**
+     * 从 JSON 提取 recruiterView（旧数据无此字段时返回 null）
+     */
+    private RecruiterView extractRecruiterView(ResumeAnalysisEntity entity) {
+        try {
+            if (entity.getRecruiterViewJson() != null) {
+                return objectMapper.readValue(entity.getRecruiterViewJson(), RecruiterView.class);
+            }
+        } catch (JacksonException e) {
+            log.error("解析 recruiterView JSON 失败", e);
+        }
+        return null;
     }
 
     /**

@@ -12,6 +12,21 @@ cd "$(dirname "$0")" || exit 1
 # File logs go to ./logs (console output stays visible).
 mkdir -p logs
 
+# Rebuild app.jar before every start so it always carries fresh frontend and
+# backend artifacts (bootJar triggers pnpm build + static sync + jar pack).
+# Gradle skips the pnpm build automatically when frontend sources unchanged.
+# JDK 25 is exported as JAVA_HOME for the Gradle build when present; on build
+# failure the start is aborted instead of silently serving a stale jar.
+if [ -d "/c/Program Files/Java/jdk-25.0.4.101-hotspot" ]; then
+  export JAVA_HOME="/c/Program Files/Java/jdk-25.0.4.101-hotspot"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+echo "Building fresh app.jar (frontend + backend), this may take a moment..."
+if ! ./gradlew :app:bootJar --console=plain -q --no-daemon; then
+  echo "[ERROR] Build failed, refusing to start with a stale app.jar."
+  exit 1
+fi
+
 # Load .env (KEY=VALUE, '#' comments) so the jar sees POSTGRES_*/REDIS_*/AI_* vars.
 # Strip CR to tolerate CRLF files, and strip a wrapping pair of quotes.
 set -a

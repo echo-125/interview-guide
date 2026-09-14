@@ -8,15 +8,18 @@ import interview.guide.modules.resume.model.ResumeDetailDTO;
 import interview.guide.modules.resume.model.ResumeJdAnalysisRequest;
 import interview.guide.modules.resume.model.ResumeJdAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
+import interview.guide.modules.resume.model.ResumeRewriteResponse;
 import interview.guide.modules.resume.service.ResumeDeleteService;
 import interview.guide.modules.resume.service.ResumeHistoryService;
 import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
+import interview.guide.modules.resume.service.ResumeRewriteService;
 import interview.guide.modules.resume.service.ResumeUploadService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -47,6 +50,7 @@ public class ResumeController {
     private final ResumeDeleteService deleteService;
     private final ResumeHistoryService historyService;
     private final ResumeJdAnalysisQueryService jdAnalysisQueryService;
+    private final ResumeRewriteService rewriteService;
 
     /**
      * 上传简历并获取分析结果
@@ -84,6 +88,28 @@ public class ResumeController {
     public Result<ResumeDetailDTO> getResumeDetail(@PathVariable Long id) {
         ResumeDetailDTO detail = historyService.getResumeDetail(id);
         return Result.success(detail);
+    }
+
+    /**
+     * 获取简历原文件（inline，用于网页预览）
+     */
+    @GetMapping("/api/resumes/{id}/file")
+    public ResponseEntity<byte[]> getResumeFile(@PathVariable Long id) {
+        var file = historyService.getResumeFile(id);
+        String filename = URLEncoder.encode(file.filename(), StandardCharsets.UTF_8);
+
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(file.contentType());
+        } catch (InvalidMediaTypeException e) {
+            log.warn("简历存储的内容类型无效，按二进制流返回: resumeId={}, contentType={}", id, file.contentType());
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + filename)
+            .contentType(mediaType)
+            .body(file.content());
     }
 
     /**
@@ -132,6 +158,23 @@ public class ResumeController {
             @RequestParam(value = "llmProvider", required = false) String llmProvider) {
         uploadService.reanalyze(id, llmProvider);
         return Result.success(null);
+    }
+
+    /**
+     * AI 整篇重写简历（同步，按需调用）
+     * 基于原文与最新诊断结果生成优化后全文，不落库
+     *
+     * @param id 简历ID
+     * @param llmProvider 使用的 Provider（空 = 跟随系统默认）
+     * @return 重写结果
+     */
+    @PostMapping("/api/resumes/{id}/rewrite")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 2)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 2)
+    public Result<ResumeRewriteResponse> rewriteResume(
+            @PathVariable Long id,
+            @RequestParam(value = "llmProvider", required = false) String llmProvider) {
+        return Result.success(rewriteService.rewrite(id, llmProvider));
     }
 
     /**

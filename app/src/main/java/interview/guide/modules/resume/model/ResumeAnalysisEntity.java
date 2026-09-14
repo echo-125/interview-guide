@@ -42,7 +42,35 @@ public class ResumeAnalysisEntity {
     // 改进建议列表 (JSON格式)
     @Column(columnDefinition = "TEXT")
     private String suggestionsJson;
-    
+
+    // 逐条经历体检 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String bulletAuditsJson;
+
+    // 名词规范性检查结果 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String termIssuesJson;
+
+    // AI 一句话结论
+    @Column(columnDefinition = "TEXT")
+    private String headline;
+
+    // 可解释评分 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String dimensionExplanationsJson;
+
+    // 最值得修改的优先行动 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String topActionsJson;
+
+    // 最大风险 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String risksJson;
+
+    // 招聘方视角 (JSON格式，可为空)
+    @Column(columnDefinition = "TEXT")
+    private String recruiterViewJson;
+
     // 评测时间
     @Column(nullable = false)
     private LocalDateTime analyzedAt;
@@ -136,11 +164,67 @@ public class ResumeAnalysisEntity {
     public String getSuggestionsJson() {
         return suggestionsJson;
     }
-    
+
     public void setSuggestionsJson(String suggestionsJson) {
         this.suggestionsJson = suggestionsJson;
     }
-    
+
+    public String getBulletAuditsJson() {
+        return bulletAuditsJson;
+    }
+
+    public void setBulletAuditsJson(String bulletAuditsJson) {
+        this.bulletAuditsJson = bulletAuditsJson;
+    }
+
+    public String getTermIssuesJson() {
+        return termIssuesJson;
+    }
+
+    public void setTermIssuesJson(String termIssuesJson) {
+        this.termIssuesJson = termIssuesJson;
+    }
+
+    public String getHeadline() {
+        return headline;
+    }
+
+    public void setHeadline(String headline) {
+        this.headline = headline;
+    }
+
+    public String getDimensionExplanationsJson() {
+        return dimensionExplanationsJson;
+    }
+
+    public void setDimensionExplanationsJson(String dimensionExplanationsJson) {
+        this.dimensionExplanationsJson = dimensionExplanationsJson;
+    }
+
+    public String getTopActionsJson() {
+        return topActionsJson;
+    }
+
+    public void setTopActionsJson(String topActionsJson) {
+        this.topActionsJson = topActionsJson;
+    }
+
+    public String getRisksJson() {
+        return risksJson;
+    }
+
+    public void setRisksJson(String risksJson) {
+        this.risksJson = risksJson;
+    }
+
+    public String getRecruiterViewJson() {
+        return recruiterViewJson;
+    }
+
+    public void setRecruiterViewJson(String recruiterViewJson) {
+        this.recruiterViewJson = recruiterViewJson;
+    }
+
     public LocalDateTime getAnalyzedAt() {
         return analyzedAt;
     }

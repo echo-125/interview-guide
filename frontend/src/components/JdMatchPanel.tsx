@@ -29,6 +29,22 @@ function severityBadge(severity: string | null | undefined) {
   );
 }
 
+const CONFIDENCE_STYLES: Record<string, { cls: string; icon: string }> = {
+  已确认: { cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', icon: '✓' },
+  推测: { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', icon: '?' },
+  缺失: { cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', icon: '✕' },
+};
+
+function confidenceBadge(status: string | null | undefined) {
+  if (!status) return null;
+  const style = CONFIDENCE_STYLES[status] || CONFIDENCE_STYLES['缺失'];
+  return (
+    <span className={`px-2 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${style.cls}`}>
+      {style.icon} {status}
+    </span>
+  );
+}
+
 function statusBadge(record: JdAnalysisRecord) {
   if (record.analysisStatus === 'PENDING' || record.analysisStatus === 'PROCESSING') {
     return (
@@ -290,9 +306,10 @@ export default function JdMatchPanel({ resumeId }: { resumeId: number }) {
                     <div className="space-y-2">
                       {selected.skillGaps.map((gap, i) => (
                         <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-slate-800 dark:text-white">{gap.gapSkill}</span>
                             {severityBadge(gap.severity)}
+                            {confidenceBadge(gap.status)}
                           </div>
                           {gap.jdRequirement && (
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">岗位要求：{gap.jdRequirement}</p>

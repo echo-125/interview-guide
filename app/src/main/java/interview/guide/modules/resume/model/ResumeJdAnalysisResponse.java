@@ -29,7 +29,8 @@ public record ResumeJdAnalysisResponse(
         String gapSkill,
         String jdRequirement,
         String resumeEvidence,
-        String severity
+        String severity,
+        String status
     ) {
     }
 

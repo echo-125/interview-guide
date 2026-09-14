@@ -75,7 +75,7 @@ class ResumeJdAnalysisStreamConsumerTest {
     when(jdAnalysisService.analyze(eq("候选人简历文本"), eq("目标岗位 JD 文本"), eq("provider-1")))
         .thenReturn(new ResumeJdAnalysisResponse(
             null, null, null, 66, "匹配一般",
-            List.of(new ResumeJdAnalysisResponse.SkillGap("Kafka", "JD 要求", "简历未提及", "高")),
+            List.of(new ResumeJdAnalysisResponse.SkillGap("Kafka", "JD 要求", "简历未提及", "高", "缺失")),
             List.of(), List.of("Kafka 入门"),
             AsyncTaskStatus.COMPLETED, null, null));
 

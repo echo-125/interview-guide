@@ -129,6 +129,9 @@ public class PdfExportService {
         // 总分
         document.add(new Paragraph("\n"));
         document.add(createSectionTitle("综合评分"));
+        if (analysis.headline() != null) {
+            document.add(new Paragraph("AI 结论: " + sanitizeText(analysis.headline())).setBold());
+        }
         Paragraph scoreP = new Paragraph("总分: " + analysis.overallScore() + " / 100")
             .setFontSize(18)
             .setBold()
@@ -174,11 +177,67 @@ public class PdfExportService {
                 document.add(new Paragraph("【" + suggestion.priority() + "】" + sanitizeText(suggestion.category()))
                     .setBold());
                 document.add(new Paragraph("问题: " + sanitizeText(suggestion.issue())));
+                if (suggestion.quote() != null && !suggestion.quote().isBlank()) {
+                    document.add(new Paragraph("证据(原文): " + sanitizeText(suggestion.quote())));
+                }
+                if (suggestion.impact() != null && !suggestion.impact().isBlank()) {
+                    document.add(new Paragraph("影响: " + sanitizeText(suggestion.impact())));
+                }
                 document.add(new Paragraph("建议: " + sanitizeText(suggestion.recommendation())));
+                if (suggestion.rewrite() != null && !suggestion.rewrite().isBlank()) {
+                    document.add(new Paragraph("优化改写: " + sanitizeText(suggestion.rewrite())));
+                }
                 document.add(new Paragraph("\n"));
             }
         }
-        
+
+        // 最值得修改的行动项
+        if (analysis.topActions() != null && !analysis.topActions().isEmpty()) {
+            document.add(new Paragraph("\n"));
+            document.add(createSectionTitle("最值得修改的行动项"));
+            for (ResumeAnalysisResponse.TopAction action : analysis.topActions()) {
+                document.add(new Paragraph(action.rank() + ". " + sanitizeText(action.title())
+                    + "（预计提升 +" + action.estimatedGain() + " 分）").setBold());
+                document.add(new Paragraph("理由: " + sanitizeText(action.reason())));
+                document.add(new Paragraph("\n"));
+            }
+        }
+
+        // 逐条体检
+        if (analysis.bulletAudits() != null && !analysis.bulletAudits().isEmpty()) {
+            document.add(new Paragraph("\n"));
+            document.add(createSectionTitle("逐条体检"));
+            for (ResumeAnalysisResponse.BulletAudit audit : analysis.bulletAudits()) {
+                document.add(new Paragraph("原文: " + sanitizeText(audit.quote())));
+                document.add(new Paragraph("问题: " + sanitizeText(String.join("、", audit.problems()))));
+                document.add(new Paragraph("优化: " + sanitizeText(audit.rewrite())));
+                document.add(new Paragraph("\n"));
+            }
+        }
+
+        // 名词规范检查
+        if (analysis.termIssues() != null && !analysis.termIssues().isEmpty()) {
+            document.add(new Paragraph("\n"));
+            document.add(createSectionTitle("名词规范检查"));
+            for (ResumeAnalysisResponse.TermIssue issue : analysis.termIssues()) {
+                document.add(new Paragraph("• 第 " + issue.line() + " 行: "
+                    + sanitizeText(issue.wrongForm()) + " → " + sanitizeText(issue.correctForm())));
+            }
+        }
+
+        // 招聘方视角
+        if (analysis.recruiterView() != null) {
+            document.add(new Paragraph("\n"));
+            document.add(createSectionTitle("招聘方视角（AI 模拟）"));
+            document.add(new Paragraph("第一印象: " + sanitizeText(analysis.recruiterView().firstImpression())));
+            document.add(new Paragraph("筛选预判: " + sanitizeText(analysis.recruiterView().verdict())).setBold());
+            if (analysis.recruiterView().concerns() != null) {
+                for (String concern : analysis.recruiterView().concerns()) {
+                    document.add(new Paragraph("• 顾虑: " + sanitizeText(concern)));
+                }
+            }
+        }
+
             document.close();
             return baos.toByteArray();
         }

@@ -150,7 +150,37 @@ tasks.named('bootRun') {
     }
 }
 
+// 前端产物：bootJar 前用 pnpm 重新构建 frontend/dist，并 Sync 到 static（旧 hash bundle 自动清除）。
+// buildFrontend 声明了 inputs/outputs，前端源码没变时 Gradle 会跳过重复的 pnpm build。
+def frontendDir = rootProject.file('frontend')
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
+tasks.register('buildFrontend', Exec) {
+    workingDir = frontendDir
+    if (isWindows) {
+        commandLine 'cmd.exe', '/c', 'pnpm.cmd', 'run', 'build'
+    } else {
+        commandLine 'pnpm', 'run', 'build'
+    }
+    inputs.dir new File(frontendDir, 'src')
+    inputs.files new File(frontendDir, 'package.json'), new File(frontendDir, 'pnpm-lock.yaml'),
+        new File(frontendDir, 'vite.config.ts'), new File(frontendDir, 'tsconfig.json')
+    outputs.dir new File(frontendDir, 'dist')
+}
+
+tasks.register('syncFrontendStatic', Sync) {
+    dependsOn 'buildFrontend'
+    from new File(frontendDir, 'dist')
+    into layout.projectDirectory.dir('src/main/resources/static')
+}
+
+// bootJar 同时依赖 processResources 与 syncFrontendStatic，强制先同步再拷贝资源，避免并行竞态
+tasks.named('processResources') {
+    mustRunAfter 'syncFrontendStatic'
+}
+
 // 生产打包：固定可执行 Jar 名称，便于一键启动脚本引用（app/build/libs/app.jar）
 tasks.named('bootJar') {
+    dependsOn 'syncFrontendStatic'
     archiveFileName = 'app.jar'
 }

@@ -49,7 +49,8 @@ public class ResumeJdAnalysisService {
         String gapSkill,
         String jdRequirement,
         String resumeEvidence,
-        String severity
+        String severity,
+        String status
     ) {}
 
     record WeaknessDTO(
@@ -129,7 +130,7 @@ public class ResumeJdAnalysisService {
 
     private ResumeJdAnalysisResponse convertToResponse(JdAnalysisResponseDTO dto) {
         List<SkillGap> skillGaps = dto.skillGaps() == null ? List.of() : dto.skillGaps().stream()
-            .map(g -> new SkillGap(g.gapSkill(), g.jdRequirement(), g.resumeEvidence(), g.severity()))
+            .map(g -> new SkillGap(g.gapSkill(), g.jdRequirement(), g.resumeEvidence(), g.severity(), g.status()))
             .toList();
 
         List<Weakness> weaknesses = dto.weaknesses() == null ? List.of() : dto.weaknesses().stream()

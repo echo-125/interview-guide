@@ -1,4 +1,7 @@
-import { request } from './request';
+import { request, API_BASE_URL } from './request';
+import type {
+  BulletAudit, DimensionExplanation, RecruiterView, Suggestion, TermIssue, TopAction,
+} from '../types/resume';
 
 export type AnalyzeStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type EvaluateStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -34,7 +37,14 @@ export interface AnalysisItem {
   summary: string;
   analyzedAt: string;
   strengths: string[];
-  suggestions: unknown[];
+  suggestions: Suggestion[];
+  bulletAudits?: BulletAudit[];
+  termIssues?: TermIssue[];
+  headline?: string;
+  dimensionExplanations?: DimensionExplanation[];
+  topActions?: TopAction[];
+  risks?: string[];
+  recruiterView?: RecruiterView;
 }
 
 export interface InterviewItem {
@@ -88,6 +98,13 @@ export interface InterviewDetail extends InterviewItem {
 }
 
 export const historyApi = {
+  /**
+   * 获取简历原文件地址（inline，供 iframe 预览 / 新窗口打开）
+   */
+  getResumeFileUrl(resumeId: number): string {
+    return `${API_BASE_URL}/api/resumes/${resumeId}/file`;
+  },
+
   /**
    * 获取所有简历列表
    */

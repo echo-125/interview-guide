@@ -1,5 +1,5 @@
 import { request } from './request';
-import type { UploadResponse, JdAnalysisRecord } from '../types/resume';
+import type { UploadResponse, JdAnalysisRecord, ResumeRewriteResponse } from '../types/resume';
 
 export const resumeApi = {
   /**
@@ -22,6 +22,15 @@ export const resumeApi = {
   async reanalyze(resumeId: number | string, llmProvider?: string): Promise<void> {
     const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
     return request.post(`/api/resumes/${resumeId}/reanalyze${query}`);
+  },
+
+  /**
+   * AI 整篇重写简历（同步，按需调用）
+   * @param llmProvider 使用的 Provider（空 = 跟随系统默认）
+   */
+  async rewriteResume(resumeId: number | string, llmProvider?: string): Promise<ResumeRewriteResponse> {
+    const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
+    return request.post<ResumeRewriteResponse>(`/api/resumes/${resumeId}/rewrite${query}`);
   },
 
   /**

@@ -2,6 +2,7 @@ package interview.guide.modules.resume.repository;
 
 import interview.guide.modules.resume.model.ResumeAnalysisEntity;
 import interview.guide.modules.resume.model.ResumeEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,6 +24,7 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysisEn
     /**
      * 根据简历ID查找最新评测记录
      */
+    @EntityGraph(attributePaths = {"resume"})
     ResumeAnalysisEntity findFirstByResumeIdOrderByAnalyzedAtDesc(Long resumeId);
     
     /**

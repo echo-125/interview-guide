@@ -85,14 +85,27 @@ public interface ResumeMapper {
 
     /**
      * ResumeAnalysisEntity 转换为 AnalysisHistoryDTO
-     * 注意：strengths 和 suggestions 需要在 Service 层从 JSON 解析后传入
+     * 注意：strengths、suggestions、bulletAudits、termIssues、dimensionExplanations、
+     * topActions、risks、recruiterView 需要在 Service 层从 JSON 解析后传入
      */
     @Mapping(target = "strengths", source = "strengths")
     @Mapping(target = "suggestions", source = "suggestions")
+    @Mapping(target = "bulletAudits", source = "bulletAudits")
+    @Mapping(target = "termIssues", source = "termIssues")
+    @Mapping(target = "dimensionExplanations", source = "dimensionExplanations")
+    @Mapping(target = "topActions", source = "topActions")
+    @Mapping(target = "risks", source = "risks")
+    @Mapping(target = "recruiterView", source = "recruiterView")
     ResumeDetailDTO.AnalysisHistoryDTO toAnalysisHistoryDTO(
         ResumeAnalysisEntity entity,
         List<String> strengths,
-        List<Object> suggestions
+        List<Object> suggestions,
+        List<ResumeAnalysisResponse.BulletAudit> bulletAudits,
+        List<ResumeAnalysisResponse.TermIssue> termIssues,
+        List<ResumeAnalysisResponse.DimensionExplanation> dimensionExplanations,
+        List<ResumeAnalysisResponse.TopAction> topActions,
+        List<String> risks,
+        ResumeAnalysisResponse.RecruiterView recruiterView
     );
 
     /**
@@ -101,10 +114,19 @@ public interface ResumeMapper {
     default List<ResumeDetailDTO.AnalysisHistoryDTO> toAnalysisHistoryDTOList(
         List<ResumeAnalysisEntity> entities,
         Function<ResumeAnalysisEntity, List<String>> strengthsExtractor,
-        Function<ResumeAnalysisEntity, List<Object>> suggestionsExtractor
+        Function<ResumeAnalysisEntity, List<Object>> suggestionsExtractor,
+        Function<ResumeAnalysisEntity, List<ResumeAnalysisResponse.BulletAudit>> bulletAuditsExtractor,
+        Function<ResumeAnalysisEntity, List<ResumeAnalysisResponse.TermIssue>> termIssuesExtractor,
+        Function<ResumeAnalysisEntity, List<ResumeAnalysisResponse.DimensionExplanation>> dimensionExplanationsExtractor,
+        Function<ResumeAnalysisEntity, List<ResumeAnalysisResponse.TopAction>> topActionsExtractor,
+        Function<ResumeAnalysisEntity, List<String>> risksExtractor,
+        Function<ResumeAnalysisEntity, ResumeAnalysisResponse.RecruiterView> recruiterViewExtractor
     ) {
         return entities.stream()
-            .map(e -> toAnalysisHistoryDTO(e, strengthsExtractor.apply(e), suggestionsExtractor.apply(e)))
+            .map(e -> toAnalysisHistoryDTO(e, strengthsExtractor.apply(e), suggestionsExtractor.apply(e),
+                bulletAuditsExtractor.apply(e), termIssuesExtractor.apply(e),
+                dimensionExplanationsExtractor.apply(e), topActionsExtractor.apply(e),
+                risksExtractor.apply(e), recruiterViewExtractor.apply(e)))
             .toList();
     }
 
@@ -112,12 +134,18 @@ public interface ResumeMapper {
 
     /**
      * 从 ResumeAnalysisResponse 创建 ResumeAnalysisEntity
-     * 注意：JSON 字段和 Resume 关联需要在 Service 层设置
+     * 注意：JSON 字段和 Resume 关联需要在 Service 层设置（headline 同名字段自动映射）
      */
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "resume", ignore = true)
     @Mapping(target = "strengthsJson", ignore = true)
     @Mapping(target = "suggestionsJson", ignore = true)
+    @Mapping(target = "bulletAuditsJson", ignore = true)
+    @Mapping(target = "termIssuesJson", ignore = true)
+    @Mapping(target = "dimensionExplanationsJson", ignore = true)
+    @Mapping(target = "topActionsJson", ignore = true)
+    @Mapping(target = "risksJson", ignore = true)
+    @Mapping(target = "recruiterViewJson", ignore = true)
     @Mapping(target = "analyzedAt", ignore = true)
     @Mapping(target = "contentScore", source = "scoreDetail.contentScore")
     @Mapping(target = "structureScore", source = "scoreDetail.structureScore")
@@ -133,6 +161,12 @@ public interface ResumeMapper {
     @Mapping(target = "resume", ignore = true)
     @Mapping(target = "strengthsJson", ignore = true)
     @Mapping(target = "suggestionsJson", ignore = true)
+    @Mapping(target = "bulletAuditsJson", ignore = true)
+    @Mapping(target = "termIssuesJson", ignore = true)
+    @Mapping(target = "dimensionExplanationsJson", ignore = true)
+    @Mapping(target = "topActionsJson", ignore = true)
+    @Mapping(target = "risksJson", ignore = true)
+    @Mapping(target = "recruiterViewJson", ignore = true)
     @Mapping(target = "analyzedAt", ignore = true)
     @Mapping(target = "contentScore", source = "scoreDetail.contentScore")
     @Mapping(target = "structureScore", source = "scoreDetail.structureScore")

@@ -2,13 +2,20 @@ import {useCallback, useEffect, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
+import {resumeApi} from '../api/resume';
+import {getErrorMessage} from '../api/request';
 import AnalysisPanel from '../components/AnalysisPanel';
 import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
 import JdMatchPanel from '../components/JdMatchPanel';
+import ResumePreviewPanel from '../components/ResumePreviewPanel';
+import ApplyRewritesDialog from '../components/ApplyRewritesDialog';
+import RewriteResultDialog from '../components/RewriteResultDialog';
 import {useToast} from '../components/Toast';
 import {formatDateOnly} from '../utils/date';
-import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic, Target} from 'lucide-react';
+import {collectRewritePairs, type RewritePair} from '../utils/rewriteApply';
+import type {ResumeRewriteResponse} from '../types/resume';
+import {CheckSquare, ChevronLeft, Clock, Download, Eye, MessageSquare, Mic, Target} from 'lucide-react';
 
 interface ResumeDetailPageProps {
   resumeId: number;
@@ -16,8 +23,15 @@ interface ResumeDetailPageProps {
   onStartInterview: (resumeId: number) => void;
 }
 
-type TabType = 'analysis' | 'jd' | 'interview';
+type TabType = 'analysis' | 'preview' | 'jd' | 'interview';
 type DetailViewType = 'list' | 'interviewDetail';
+
+const TAB_PAGE_INDEX: Record<TabType, number> = {
+  analysis: 0,
+  preview: 1,
+  jd: 2,
+  interview: 3,
+};
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
   const location = useLocation();
@@ -31,6 +45,10 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
   const [loadingInterview, setLoadingInterview] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [applyDialogPairs, setApplyDialogPairs] = useState<RewritePair[] | null>(null);
+  const [rewriteOpen, setRewriteOpen] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
+  const [rewriteResult, setRewriteResult] = useState<ResumeRewriteResponse | null>(null);
 
   // 静默加载数据（用于轮询）
   const loadResumeDetailSilent = useCallback(async () => {
@@ -86,6 +104,41 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       console.error('重新分析失败', err);
     } finally {
       setReanalyzing(false);
+    }
+  };
+
+  // 应用单条改写（按 quote 定位对应改写句）
+  const handleApplySingle = (quote: string) => {
+    const pairs = collectRewritePairs(resume?.analyses?.[0]);
+    const match = pairs.find((p) => p.quote === quote);
+    if (!match) {
+      showToast('未找到该条对应的改写内容', 'error');
+      return;
+    }
+    setApplyDialogPairs([match]);
+  };
+
+  // 一键应用全部改写
+  const handleApplyAll = () => {
+    const pairs = collectRewritePairs(resume?.analyses?.[0]);
+    if (pairs.length === 0) {
+      showToast('当前分析结果没有可应用的改写', 'error');
+      return;
+    }
+    setApplyDialogPairs(pairs);
+  };
+
+  // AI 整篇重写（同步调用）
+  const handleAiRewrite = async () => {
+    setRewriting(true);
+    try {
+      const result = await resumeApi.rewriteResume(resumeId);
+      setRewriteResult(result);
+      setRewriteOpen(true);
+    } catch (err) {
+      showToast(getErrorMessage(err), 'error');
+    } finally {
+      setRewriting(false);
     }
   };
 
@@ -179,7 +232,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   };
 
   const handleTabChange = (tab: TabType) => {
-    const newPage = tab === 'analysis' ? 0 : tab === 'jd' ? 1 : 2;
+    const newPage = TAB_PAGE_INDEX[tab];
     setPage([newPage, newPage > page ? 1 : -1]);
     setActiveTab(tab);
     setDetailView('list');
@@ -225,6 +278,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const latestAnalysis = resume.analyses?.[0];
   const tabs = [
     { id: 'analysis' as const, label: '简历分析', icon: CheckSquare },
+    { id: 'preview' as const, label: '简历预览', icon: Eye },
     { id: 'jd' as const, label: 'JD 匹配', icon: Target },
     { id: 'interview' as const, label: '面试记录', icon: MessageSquare, count: resume.interviews?.length || 0 },
   ];
@@ -343,7 +397,13 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
                   exporting={exporting === 'analysis'}
                   onReanalyze={handleReanalyze}
                   reanalyzing={reanalyzing}
+                  onApplySingle={handleApplySingle}
+                  onApplyAll={handleApplyAll}
+                  onAiRewrite={handleAiRewrite}
+                  rewriting={rewriting}
                 />
+              ) : activeTab === 'preview' ? (
+                <ResumePreviewPanel resume={resume} />
               ) : activeTab === 'jd' ? (
                 <JdMatchPanel resumeId={resumeId} />
               ) : (
@@ -361,6 +421,23 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
           </AnimatePresence>
         )}
       </div>
+
+      {/* 一键修改预览（确定性应用改写） */}
+      <ApplyRewritesDialog
+        open={!!applyDialogPairs}
+        originalText={resume.resumeText || ''}
+        pairs={applyDialogPairs || []}
+        filename={resume.filename || 'resume'}
+        onClose={() => setApplyDialogPairs(null)}
+      />
+
+      {/* AI 整篇重写结果 */}
+      <RewriteResultDialog
+        open={rewriteOpen}
+        result={rewriteResult}
+        filename={resume.filename || 'resume'}
+        onClose={() => setRewriteOpen(false)}
+      />
     </motion.div>
   );
 }

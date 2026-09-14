@@ -37,6 +37,24 @@ if not exist "%JAVA_EXE%" (
 )
 if not exist logs mkdir logs
 
+rem ---------------------------------------------------------------------------
+rem Rebuild app.jar before every start so it always carries fresh frontend and
+rem backend artifacts (bootJar triggers pnpm build + static sync + jar pack).
+rem Gradle skips the pnpm build automatically when frontend sources unchanged.
+rem JDK 25 is exported as JAVA_HOME for the Gradle build; on failure the start
+rem is aborted instead of silently serving a stale jar.
+rem ---------------------------------------------------------------------------
+if exist "C:\Program Files\Java\jdk-25.0.4.101-hotspot" set "JAVA_HOME=C:\Program Files\Java\jdk-25.0.4.101-hotspot"
+rem single-line ifs on purpose: %VAR% inside a parenthesized block expands at parse time
+if defined JAVA_HOME set "PATH=%JAVA_HOME%\bin;%PATH%"
+echo Building fresh app.jar (frontend + backend), this may take a moment...
+call gradlew.bat :app:bootJar --console=plain -q --no-daemon
+if errorlevel 1 (
+  echo [ERROR] Build failed, refusing to start with a stale app.jar.
+  pause
+  exit /b 1
+)
+
 "%JAVA_EXE%" -server -Xms128m -Xmx384m -XX:MaxMetaspaceSize=256m -Xss256k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -Dlogging.file.name=logs/app.log -jar app\build\libs\app.jar
 pause
 goto :eof

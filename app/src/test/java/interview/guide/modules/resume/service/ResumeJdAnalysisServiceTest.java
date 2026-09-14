@@ -58,7 +58,7 @@ class ResumeJdAnalysisServiceTest {
             72,
             "整体匹配良好，存在两处技能缺口",
             List.of(new ResumeJdAnalysisService.SkillGapDTO(
-                "Kafka", "熟悉 Kafka 高吞吐消息架构", "简历未提及", "高")),
+                "Kafka", "熟悉 Kafka 高吞吐消息架构", "简历未提及", "高", "缺失")),
             List.of(new ResumeJdAnalysisService.WeaknessDTO(
                 "JVM 调优", "JD 要求生产调优经验，简历仅提及基础参数", "结合 GC 日志分析做专项复习")),
             List.of("JVM GC 调优实战", "Kafka 消息可靠性")

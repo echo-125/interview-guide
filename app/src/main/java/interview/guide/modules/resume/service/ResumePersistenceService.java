@@ -104,13 +104,27 @@ public class ResumePersistenceService {
             ResumeAnalysisEntity entity = resumeMapper.toAnalysisEntity(analysis);
             entity.setResume(resume);
 
-            // JSON 字段需要手动序列化
+            // JSON 字段需要手动序列化（headline 由 MapStruct 同名映射）
             entity.setStrengthsJson(objectMapper.writeValueAsString(analysis.strengths()));
             entity.setSuggestionsJson(objectMapper.writeValueAsString(analysis.suggestions()));
+            entity.setBulletAuditsJson(
+                analysis.bulletAudits() == null ? null : objectMapper.writeValueAsString(analysis.bulletAudits()));
+            entity.setTermIssuesJson(
+                analysis.termIssues() == null ? null : objectMapper.writeValueAsString(analysis.termIssues()));
+            entity.setDimensionExplanationsJson(analysis.dimensionExplanations() == null
+                ? null : objectMapper.writeValueAsString(analysis.dimensionExplanations()));
+            entity.setTopActionsJson(
+                analysis.topActions() == null ? null : objectMapper.writeValueAsString(analysis.topActions()));
+            entity.setRisksJson(
+                analysis.risks() == null ? null : objectMapper.writeValueAsString(analysis.risks()));
+            entity.setRecruiterViewJson(
+                analysis.recruiterView() == null ? null : objectMapper.writeValueAsString(analysis.recruiterView()));
 
             ResumeAnalysisEntity saved = analysisRepository.save(entity);
-            log.info("简历评测结果已保存: analysisId={}, resumeId={}, score={}",
-                    saved.getId(), resume.getId(), analysis.overallScore());
+            log.info("简历评测结果已保存: analysisId={}, resumeId={}, score={}, bulletAudits={}, termIssues={}",
+                    saved.getId(), resume.getId(), analysis.overallScore(),
+                    analysis.bulletAudits() == null ? 0 : analysis.bulletAudits().size(),
+                    analysis.termIssues() == null ? 0 : analysis.termIssues().size());
 
             return saved;
         } catch (JacksonException e) {
@@ -122,6 +136,7 @@ public class ResumePersistenceService {
     /**
      * 获取简历的最新评测结果
      */
+    @Transactional(readOnly = true)
     public Optional<ResumeAnalysisEntity> getLatestAnalysis(Long resumeId) {
         return Optional.ofNullable(analysisRepository.findFirstByResumeIdOrderByAnalyzedAtDesc(resumeId));
     }
@@ -129,16 +144,18 @@ public class ResumePersistenceService {
     /**
      * 批量获取多个简历各自最新的评测结果（避免 N+1）
      */
+    @Transactional(readOnly = true)
     public List<ResumeAnalysisEntity> findLatestAnalyses(List<Long> resumeIds) {
         if (resumeIds == null || resumeIds.isEmpty()) {
             return List.of();
         }
         return analysisRepository.findLatestByResumeIds(resumeIds);
     }
-    
+
     /**
      * 获取简历的最新评测结果（返回DTO）
      */
+    @Transactional(readOnly = true)
     public Optional<ResumeAnalysisResponse> getLatestAnalysisAsDTO(Long resumeId) {
         return getLatestAnalysis(resumeId).map(this::entityToDTO);
     }
@@ -167,20 +184,68 @@ public class ResumePersistenceService {
                     new TypeReference<>() {
                     }
             );
-            
+
             List<ResumeAnalysisResponse.Suggestion> suggestions = objectMapper.readValue(
                 entity.getSuggestionsJson() != null ? entity.getSuggestionsJson() : "[]",
                     new TypeReference<>() {
                     }
             );
-            
+
+            List<ResumeAnalysisResponse.BulletAudit> bulletAudits = entity.getBulletAuditsJson() == null
+                ? List.of()
+                : objectMapper.readValue(entity.getBulletAuditsJson(), new TypeReference<>() {
+                });
+
+            List<ResumeAnalysisResponse.TermIssue> termIssues = entity.getTermIssuesJson() == null
+                ? List.of()
+                : objectMapper.readValue(entity.getTermIssuesJson(), new TypeReference<>() {
+                });
+
+            List<ResumeAnalysisResponse.DimensionExplanation> dimensionExplanations =
+                entity.getDimensionExplanationsJson() == null
+                    ? List.of()
+                    : objectMapper.readValue(entity.getDimensionExplanationsJson(), new TypeReference<>() {
+                    });
+
+            List<ResumeAnalysisResponse.TopAction> topActions = entity.getTopActionsJson() == null
+                ? List.of()
+                : objectMapper.readValue(entity.getTopActionsJson(), new TypeReference<>() {
+                });
+
+            List<String> risks = entity.getRisksJson() == null
+                ? List.of()
+                : objectMapper.readValue(entity.getRisksJson(), new TypeReference<>() {
+                });
+
+            ResumeAnalysisResponse.RecruiterView recruiterView = entity.getRecruiterViewJson() == null
+                ? null
+                : objectMapper.readValue(entity.getRecruiterViewJson(),
+                    new TypeReference<ResumeAnalysisResponse.RecruiterView>() {
+                    });
+
+            String originalText = null;
+            try {
+                if (entity.getResume() != null) {
+                    originalText = entity.getResume().getResumeText();
+                }
+            } catch (Exception e) {
+                log.debug("获取简历原文失败或无活跃Session: {}", e.getMessage());
+            }
+
             return new ResumeAnalysisResponse(
                 entity.getOverallScore(),
                 resumeMapper.toScoreDetail(entity),  // 使用MapStruct自动映射
                 entity.getSummary(),
                 strengths,
                 suggestions,
-                entity.getResume().getResumeText()
+                bulletAudits,
+                termIssues,
+                entity.getHeadline(),
+                dimensionExplanations,
+                topActions,
+                risks,
+                recruiterView,
+                originalText
             );
         } catch (JacksonException e) {
             log.error("反序列化评测结果失败: {}", e.getMessage());

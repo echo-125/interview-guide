@@ -2,6 +2,7 @@ package interview.guide.modules.resume.model;
 
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.interview.model.InterviewHistoryItemDTO;
+import interview.guide.modules.interview.model.ResumeAnalysisResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,7 +38,14 @@ public record ResumeDetailDTO(
         String summary,
         LocalDateTime analyzedAt,
         List<String> strengths,
-        List<Object> suggestions
+        List<Object> suggestions,
+        List<ResumeAnalysisResponse.BulletAudit> bulletAudits,
+        List<ResumeAnalysisResponse.TermIssue> termIssues,
+        String headline,
+        List<ResumeAnalysisResponse.DimensionExplanation> dimensionExplanations,
+        List<ResumeAnalysisResponse.TopAction> topActions,
+        List<String> risks,
+        ResumeAnalysisResponse.RecruiterView recruiterView
     ) {}
 }
 
