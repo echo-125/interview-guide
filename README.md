@@ -84,6 +84,9 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - **稳定性保障**：内置分析失败自动重试机制（最多 3 次）与基于内容哈希的重复检测。
 - **分析报告导出**：支持将 AI 分析结果一键导出为结构化的 PDF 简历分析报告。
 - **JD 匹配诊断**：粘贴目标岗位 JD，AI 对比简历输出匹配度总分、技能缺口清单（含严重程度）、薄弱点与面试前补强建议；诊断结果保留历史可回看，并自动注入后续模拟面试出题。
+- **可解释性诊断与术语检查**：打分依据清晰透明，细化展示各维度扣分项归因与详细理由；内置专业术语规范性扫描（`ResumeTermChecker`），自动识别大小写、拼写或混淆术语并提供修改建议。
+- **逐条经历体检**：依据 STAR 原则对工作与项目经历展开逐条深度体检，诊断情境（Situation）、任务（Task）、行动（Action）、结果（Result）各要素完备度并给出量化优化点。
+- **整篇重写 Diff 闭环**：基于诊断结果一键生成整篇简历重写建议，提供直观的 Markdown Diff 对比视图，支持自由选择、单项/批量采纳重写内容，即时生成并预览新简历，支持直接导出 PDF 闭环交付。
 
 ### 模拟面试模块
 
@@ -164,6 +167,7 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - [x] 可重复注解 API 限流（Global/IP/User 维度）
 - [x] 打通知识库题库与模拟面试（异步出题、严格容量校验、统一评估与记录）
 - [x] JD vs 简历匹配度诊断 + 薄弱点自动注入出题
+- [x] 简历可解释性诊断、逐条经历体检与整篇重写 Diff 闭环
 - [ ] 语音面试接入 WebRTC 降低延迟
 - [ ] 语音面试支持更多 TTS 音色
 
@@ -253,6 +257,8 @@ interview-guide/
 │   │       └── voiceinterview/       # 语音面试模块
 │   └── src/main/resources/
 │       ├── application.yml           # 应用配置
+│       ├── db/migration/             # Flyway 数据库版本化迁移脚本
+│       ├── fonts/                    # PDF 导出中文字体文件
 │       ├── prompts/                  # AI 提示词模板（StringTemplate）
 │       ├── scripts/                  # Redis Lua 脚本
 │       ├── skills/                   # 面试 Skill 定义和参考题库
@@ -269,6 +275,9 @@ interview-guide/
 │   ├── package.json
 │   └── vite.config.ts
 │
+├── run.bat                           # Windows 低内存一键启动（整合构建前后端产物并以轻量 JVM 托管）
+├── run.sh                            # Linux/macOS 低内存一键启动脚本
+├── scripts/                          # 运维辅助与单体托管脚本（如 run-backend.ps1）
 ├── docker-compose.yml                # 完整部署：前端 + 后端 + PostgreSQL + Redis + MinIO
 ├── docker-compose.dev.yml            # 本地开发依赖：PostgreSQL + Redis + RustFS
 ├── docs/                             # 架构设计与改造记录
@@ -371,6 +380,17 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
 
 ### 4. 启动应用
 
+#### 方式 A：一键轻量启动（推荐，单进程低内存，适合日常使用）
+
+项目根目录提供了自动构建并以低内存模式运行的脚本（自动读取 `.env`，自动编译前端与后端产物，并由单个 JVM 托管前端静态资源，常驻仅 ~400MB 内存）：
+
+- **Windows**：双击或在终端运行 `run.bat`
+- **Linux / macOS**：运行 `./run.sh`（需先赋予执行权限：`chmod +x run.sh`）
+
+启动成功后，直接在浏览器中打开 **`http://localhost:8080`** 即可使用完整功能。
+
+#### 方式 B：前后端独立开发模式（适合修改代码、享受前端 HMR 热更新）
+
 **后端：**
 
 ```bash
@@ -388,7 +408,7 @@ pnpm install
 pnpm dev
 ```
 
-前端服务启动于 `http://localhost:5173`
+前端服务启动于 `http://localhost:5173`（会自动反向代理 `/api` 和 `/ws` 请求到 `:8080` 后端）
 
 **最后一步：配置模型服务**
 

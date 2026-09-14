@@ -104,10 +104,11 @@ sequenceDiagram
 
     Note over U,DB: 5. 结束会话
     U->>F: 点击结束
-    F->>S: PUT /api/voice-interview/sessions/{id}/end
-    S->>LLM: 生成评估报告
-    S->>DB: 更新Session状态
-    S-->>F: 返回评估结果
+    F->>S: POST /api/voice-interview/sessions/{id}/end
+    S->>MQ: 投递异步评估任务 (Redis Stream)
+    S->>DB: 更新Session状态为已完成
+    S-->>F: 返回成功
+    Note over S,DB: 消费者异步执行评估，前端轮询 /evaluation 获取结果
 ```
 
 ## 🎯 模块详解
@@ -149,14 +150,15 @@ sequenceDiagram
 
 #### VoiceInterviewController (REST)
 ```
-POST   /api/voice-interview/sessions           # 创建会话
-GET    /api/voice-interview/sessions/{id}      # 获取会话
-PUT    /api/voice-interview/sessions/{id}/end  # 结束会话
-PUT    /api/voice-interview/sessions/{id}/pause  # 暂停会话
-PUT    /api/voice-interview/sessions/{id}/resume # 恢复会话
-GET    /api/voice-interview/sessions           # 获取所有会话
-GET    /api/voice-interview/sessions/{id}/messages # 获取消息历史
-GET    /api/voice-interview/sessions/{id}/evaluation # 获取评估报告
+POST   /api/voice-interview/sessions                # 创建会话
+GET    /api/voice-interview/sessions/{id}           # 获取会话详情
+POST   /api/voice-interview/sessions/{id}/end       # 结束会话并触发异步评估
+PUT    /api/voice-interview/sessions/{id}/pause     # 暂停会话
+PUT    /api/voice-interview/sessions/{id}/resume    # 恢复会话
+GET    /api/voice-interview/sessions                # 获取所有会话列表
+DELETE /api/voice-interview/sessions/{id}           # 删除会话
+GET    /api/voice-interview/sessions/{id}/messages  # 获取消息历史
+GET    /api/voice-interview/sessions/{id}/evaluation # 获取评估状态与结果（轮询）
 ```
 
 #### VoiceInterviewWebSocketHandler
@@ -431,14 +433,15 @@ graph TB
 ## 🔧 配置说明
 
 ### 必需配置
-```yaml
-# 统一 API Key（LLM + ASR + TTS 共用）
-ai.bailian.api-key: ${AI_BAILIAN_API_KEY}
-spring.ai.openai.api-key: ${AI_BAILIAN_API_KEY}
 
-# AI 模型配置
-ai.model: qwen3.5-flash  # 可选: qwen3.5-plus, qwen-max 等
+语音面试模块的 ASR 与 TTS 服务依赖阿里云 DashScope 实时语音模型：
+
+```bash
+# 统一语音 API Key（DashScope ASR + TTS 共用，配置在 .env 或环境变量）
+AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+> **注意**：面试对话使用的 LLM 聊天模型已接入系统的**多模型管理中心**（`llmprovider` 模块），配置加密存储在数据库中，用户可在「设置 → 模型服务」页面自由配置（支持任意 OpenAI 兼容端点或 Anthropic 协议模型），并在语音面试发起时动态选择或走系统默认，不再依赖 `application.yml` 硬编码。
 
 ### 语音服务配置
 ```yaml

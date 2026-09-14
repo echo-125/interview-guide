@@ -13,7 +13,7 @@ paths:
 
 ## LLM Providers
 
-- Provider 配置来自 `app.ai.providers.{providerId}` 和默认 `app.ai.default-provider`。
+- Provider 配置按能力（聊天/向量/重排）拆分，加密存于 `llm_provider_config`；默认指针在 `llm_global_setting`，未显式设置时运行期自动回退到第一个启用且具备对应能力的 Provider，系统不内置预设模型，`application.yml` 不承载 Provider 定义。
 - ChatClient 获取统一使用 `LlmProviderRegistry.getChatClientOrDefault(provider)`。
 - Provider 连通性测试要限制超时，并防止访问内网或特殊地址。
 - Spring AI 2.0.0 代码优先使用非 deprecated API。
