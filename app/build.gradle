@@ -120,13 +120,19 @@ tasks.named('test') {
 // （Gradle 进程默认不读 .env）。AI 相关配置不在此列，全部在「设置」页内完成。
 // 同时确保 JVM 使用 UTF-8 编码
 tasks.named('bootRun') {
+    // 与 run.bat 对齐：工作目录设为仓库根、日志写相对路径 logs/app.log。
+    // bootRun 默认工作目录是 app/，若不改，相对路径会落到 app/logs/app.log。
+    workingDir = rootProject.projectDir
     // JVM 编码配置（stdout/stderr：JDK 18+，避免控制台 PrintStream 与 Logback UTF-8 不一致）
+    // 日志写入仓库根 logs/app.log，与 run.bat 的 -Dlogging.file.name=logs/app.log 保持一致。
+    // 不配置时 Spring Boot 只打印到控制台，手工重定向容易散落进系统临时目录。
     jvmArgs = [
             '-Dfile.encoding=UTF-8',
             '-Dconsole.encoding=UTF-8',
             '-Dstdout.encoding=UTF-8',
             '-Dstderr.encoding=UTF-8',
-            '--enable-native-access=ALL-UNNAMED'
+            '--enable-native-access=ALL-UNNAMED',
+            '-Dlogging.file.name=logs/app.log'
     ]
 
     // 加载 .env 文件
