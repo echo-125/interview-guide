@@ -43,6 +43,12 @@ interface ScoreExplanationCardProps {
 
 /**
  * 可解释评分卡：每个维度一行（得分/满分 + 对总分影响），点击展开证据链
+ *
+ * 【保留说明】本组件当前未被引用。简历分析页已改用 DimensionGapPanel，
+ * 后者把视觉语言从「−N 分」转为「主要缺口：XXX」，并复用同一个
+ * dimensionExplanations 数据源，避免两套组件重复渲染同一份证据链。
+ * 保留原因：本卡片以「对总分影响」为排序视角，与 DimensionGapPanel 的
+ * 「缺口归因」视角互补，可能用于后续的评分报表导出场景。props 契约未变。
  */
 export default function ScoreExplanationCard({ explanations }: ScoreExplanationCardProps) {
   const [openDimension, setOpenDimension] = useState<string | null>(null);

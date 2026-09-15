@@ -1,6 +1,7 @@
 import { getErrorMessage } from '../api/request';
 import { useRef, useState, useEffect } from 'react';
 import { useToast } from './Toast';
+import { loadVadRuntime } from '../utils/vadLoader';
 // @ts-ignore - vad is loaded via script tag
 import { Mic, MicOff } from 'lucide-react';
 
@@ -166,8 +167,13 @@ export default function AudioRecorder({
       mediaStreamRef.current = stream;
 
       // Step 2: Initialize VAD with shared stream
+      // VAD bundle 已改为按需加载（见 utils/vadLoader.ts），首次录音时才拉取，
+      // 因此这里先确保运行时就绪，而不是直接判定"未加载"。
       if (!window.vad || !window.vad.MicVAD) {
-        throw new Error('VAD library not loaded. Please refresh the page.');
+        await loadVadRuntime();
+      }
+      if (!window.vad || !window.vad.MicVAD) {
+        throw new Error('语音检测组件加载失败，请检查网络后重试');
       }
 
       const vadInstance = await window.vad.MicVAD.new({

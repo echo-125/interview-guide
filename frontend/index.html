@@ -5,10 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI智能面试官 - 简历分析</title>
-    <!-- Load ONNX Runtime WASM. 版本须与 AudioRecorder.tsx 的 onnxWASMBasePath 保持一致（不走 npm 包） -->
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js"></script>
-    <!-- Load VAD bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/bundle.min.js"></script>
+    <!-- VAD / ONNX 运行时不在此处引入：改为语音面试录音时按需加载，
+         见 src/utils/vadLoader.ts（静态引入会因 bundle 内联的 web-vitals 报 startTime 错） -->
   </head>
   <body>
     <div id="root"></div>

@@ -22,6 +22,12 @@ interface RadarChartProps {
 
 /**
  * 雷达图组件（自动归一化到统一比例）
+ *
+ * 【保留说明】本组件当前未被引用。简历分析页已改用 DimensionGapPanel 与
+ * CapabilityGapCard —— 它们用「为什么是这个分数 + 具体缺口列表」直接表达问题，
+ * 相比雷达图数值更可执行，且不占据 320px 的固定高度。
+ * 保留原因：多维度对比的可视化在其他场景（如面试能力评估、多份简历横向对比）
+ * 仍有价值，暂不删除。恢复使用时无需改动，props 契约未变。
  */
 export default function RadarChart({ data, height = 320, className = '' }: RadarChartProps) {
   // 归一化数据：将所有维度归一化到最大满分

@@ -135,14 +135,17 @@ instance.interceptors.response.use(
   async (error) => {
     // 有响应的情况：后端返回了结果（即使是错误）
     if (error.response) {
-      const { data } = error.response;
+      const { data, status } = error.response;
       // 尝试解析 Result 格式
       const responseError = await getErrorFromResponseData(data);
       if (responseError) {
         return Promise.reject(responseError);
       }
-      // 响应格式不对
-      return Promise.reject(new Error('请求失败，请重试'));
+      // 响应体不是 Result 契约（常见于后端未启动/网关返回 HTML 错误页、
+      // 或代理返回的非 JSON 页面）。带上 HTTP 状态码，让调用方能区分
+      // 502（服务不可达）与 500（服务异常），而不是统一显示一句无信息量的话。
+      // 注意：只暴露状态码，不回显响应体，避免泄露服务端内部信息。
+      return Promise.reject(new Error(`请求失败（HTTP ${status}），请重试`));
     }
 
     // 没有响应的情况：真正的网络错误或连接被重置

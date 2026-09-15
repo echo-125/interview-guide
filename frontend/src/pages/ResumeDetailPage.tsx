@@ -100,8 +100,11 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       setReanalyzing(true);
       await historyApi.reanalyze(resumeId);
       await loadResumeDetailSilent();
+      showToast('已提交重新分析，正在处理中', 'success');
     } catch (err) {
-      console.error('重新分析失败', err);
+      // 必须给出可见反馈：历史上这里只 console.error，
+      // 导致失败时按钮转一圈就没动静，用户以为"点击无反应"。
+      showToast(getErrorMessage(err, '重新分析失败'), 'error');
     } finally {
       setReanalyzing(false);
     }
@@ -123,6 +126,15 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
     const pairs = collectRewritePairs(resume?.analyses?.[0]);
     if (pairs.length === 0) {
       showToast('当前分析结果没有可应用的改写', 'error');
+      return;
+    }
+    setApplyDialogPairs(pairs);
+  };
+
+  // 应用 Agent 闭环中用户已确认采纳的修改（复用同一个确定性与预览通路）
+  const handleApplyAgentRewrites = (pairs: RewritePair[]) => {
+    if (pairs.length === 0) {
+      showToast('已采用的项暂无可精确替换的原句', 'error');
       return;
     }
     setApplyDialogPairs(pairs);
@@ -399,6 +411,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
                   reanalyzing={reanalyzing}
                   onApplySingle={handleApplySingle}
                   onApplyAll={handleApplyAll}
+                  onApplyAgentRewrites={handleApplyAgentRewrites}
                   onAiRewrite={handleAiRewrite}
                   rewriting={rewriting}
                 />

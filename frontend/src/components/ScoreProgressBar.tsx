@@ -12,6 +12,12 @@ interface ScoreProgressBarProps {
 
 /**
  * 分数进度条组件
+ *
+ * 【保留说明】本组件当前未被引用。简历分析页的分项评分已改用
+ * DimensionGapPanel，后者把进度条与「主要缺口」文案合并到同一行，
+ * 信息密度更高；且不再需要外部逐条传入 color/delay。
+ * 保留原因：单条分数的独立展示（如面试 evaluatedimension、导出报告）
+ * 仍可能复用。props 契约未变。
  */
 export default function ScoreProgressBar({
   label,
