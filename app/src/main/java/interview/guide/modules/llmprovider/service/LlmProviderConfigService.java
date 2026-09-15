@@ -24,7 +24,6 @@ import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.HttpClientSettings;
@@ -37,14 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.time.Duration;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -52,9 +46,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -64,9 +55,6 @@ public class LlmProviderConfigService {
   private final LlmProviderRegistry registry;
   private final LlmProviderRepository providerRepository;
   private final LlmGlobalSettingRepository globalSettingRepository;
-  private final ApiKeyEncryptionService encryptionService;
-  private final String yamlPath;
-  private final String envPath;
   private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
   private final VoiceInterviewProperties voiceProperties;
   private final QwenAsrService asrService;
@@ -93,7 +81,6 @@ public class LlmProviderConfigService {
       LlmProviderRegistry registry,
       LlmProviderRepository providerRepository,
       LlmGlobalSettingRepository globalSettingRepository,
-      ApiKeyEncryptionService encryptionService,
       VoiceInterviewProperties voiceProperties,
       QwenAsrService asrService,
       QwenTtsService ttsService) {
@@ -101,9 +88,6 @@ public class LlmProviderConfigService {
     this.registry = registry;
     this.providerRepository = providerRepository;
     this.globalSettingRepository = globalSettingRepository;
-    this.encryptionService = encryptionService;
-    this.yamlPath = properties.getConfigYamlPath();
-    this.envPath = properties.getConfigEnvPath();
     this.voiceProperties = voiceProperties;
     this.asrService = asrService;
     this.ttsService = ttsService;
@@ -115,35 +99,7 @@ public class LlmProviderConfigService {
       VoiceInterviewProperties voiceProperties,
       QwenAsrService asrService,
       QwenTtsService ttsService) {
-    this(properties, registry, null, null, null, voiceProperties, asrService, ttsService);
-  }
-
-  @PostConstruct
-  void validateWritablePaths() {
-    ensureParentWritable(yamlPath, "config-yaml-path");
-    ensureParentWritable(envPath, "config-env-path");
-  }
-
-  private void ensureParentWritable(String rawPath, String label) {
-    if (rawPath == null || rawPath.isBlank()) {
-      log.warn("{} is not configured; runtime Provider edits will be skipped", label);
-      return;
-    }
-    Path parent = Path.of(rawPath).toAbsolutePath().getParent();
-    if (parent == null) {
-      return;
-    }
-    try {
-      Files.createDirectories(parent);
-    } catch (IOException e) {
-      throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
-          label + " 的父目录不可创建: " + parent, e);
-    }
-    if (!Files.isWritable(parent)) {
-      throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
-          label + " 的父目录不可写: " + parent);
-    }
-    log.info("{} resolved to {} (parent writable)", label, rawPath);
+    this(properties, registry, null, null, voiceProperties, asrService, ttsService);
   }
 
   // ===== Read operations (read lock) =====
@@ -384,12 +340,10 @@ public class LlmProviderConfigService {
       String apiFormat = requireValidApiFormat(request.apiFormat());
       String rerankApiFormat = requireValidRerankApiFormat(request.rerankApiFormat());
 
-      ApiKeyEncryptionService.EncryptedValue encrypted = encryptionService.encrypt(apiKey);
       providerRepository.save(LlmProviderEntity.builder()
           .id(providerId)
           .baseUrl(baseUrl)
-          .apiKeyNonce(encrypted.nonce())
-          .apiKeyCiphertext(encrypted.ciphertext())
+          .apiKey(apiKey)
           .model(model)
           .apiFormat(apiFormat)
           .embeddingModel(embeddingModel)
@@ -469,9 +423,7 @@ public class LlmProviderConfigService {
         provider.setTemperature(request.temperature());
       }
       if (trimmedApiKey != null) {
-        ApiKeyEncryptionService.EncryptedValue encrypted = encryptionService.encrypt(trimmedApiKey);
-        provider.setApiKeyNonce(encrypted.nonce());
-        provider.setApiKeyCiphertext(encrypted.ciphertext());
+        provider.setApiKey(trimmedApiKey);
       }
 
       providerRepository.save(provider);
@@ -605,10 +557,8 @@ public class LlmProviderConfigService {
       if (request.apiKey() != null) {
         asr.setApiKey(request.apiKey());
         tts.setApiKey(request.apiKey());
-        updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
       }
 
-      writeAsrConfigToYaml(asr);
       asrService.reload(voiceProperties);
       if (request.apiKey() != null) {
         ttsService.reload(voiceProperties);
@@ -635,10 +585,8 @@ public class LlmProviderConfigService {
       if (request.apiKey() != null) {
         tts.setApiKey(request.apiKey());
         asr.setApiKey(request.apiKey());
-        updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
       }
 
-      writeTtsConfigToYaml(tts);
       ttsService.reload(voiceProperties);
       if (request.apiKey() != null) {
         asrService.reload(voiceProperties);
@@ -675,8 +623,15 @@ public class LlmProviderConfigService {
     }
   }
 
+  /**
+   * 是否走「数据库持久化」轨。
+   *
+   * <p>此前还要求 encryptionService 非空，取消加密后若不移除该条件，
+   * 判定会恒为 false，导致设置页所有 Provider 操作静默退化到不持久化的
+   * legacy 内存轨（配置重启即丢）。
+   */
   private boolean isDatabaseBacked() {
-    return providerRepository != null && globalSettingRepository != null && encryptionService != null;
+    return providerRepository != null && globalSettingRepository != null;
   }
 
   private Map<String, ProviderConfig> getLegacyProvidersOrThrow() {
@@ -728,9 +683,6 @@ public class LlmProviderConfigService {
     config.setTemperature(request.temperature());
     providers.put(request.id(), config);
 
-    String envKey = toEnvKey(request.id());
-    writeProviderToYaml(request.id(), config, envKey);
-    writeEnvValue(envKey, request.apiKey());
     registry.reload();
   }
 
@@ -778,10 +730,8 @@ public class LlmProviderConfigService {
         TextUtil.trimToNull(config.getEmbeddingModel()) != null, TextUtil.trimToNull(config.getRerankModel()));
     if (trimmedApiKey != null) {
       config.setApiKey(trimmedApiKey);
-      updateEnvValue(toEnvKey(id), trimmedApiKey);
     }
 
-    writeProviderToYaml(id, config, toEnvKey(id));
     registry.reload();
   }
 
@@ -792,9 +742,6 @@ public class LlmProviderConfigService {
     }
     getLegacyProviderConfigOrThrow(id);
     getLegacyProvidersOrThrow().remove(id);
-    String envKey = toEnvKey(id);
-    removeProviderFromYaml(id);
-    removeFromEnv(envKey);
     registry.reload();
   }
 
@@ -805,7 +752,6 @@ public class LlmProviderConfigService {
     }
     getLegacyProviderConfigOrThrow(providerId);
     properties.setDefaultProvider(providerId);
-    writeDefaultProviderToYaml(providerId);
     registry.reload();
   }
 
@@ -820,7 +766,6 @@ public class LlmProviderConfigService {
           "Provider '" + providerId + "' 未配置 Rerank 模型，不能设为默认重排服务");
     }
     properties.setDefaultRerankProvider(providerId);
-    writeDefaultProviderToYaml(properties.getDefaultProvider());
     registry.reload();
   }
 
@@ -868,7 +813,7 @@ public class LlmProviderConfigService {
   }
 
   private String decryptApiKey(LlmProviderEntity provider) {
-    return encryptionService.decrypt(provider.getApiKeyNonce(), provider.getApiKeyCiphertext());
+    return provider.getApiKey();
   }
 
   String maskApiKey(String apiKey) {
@@ -1069,10 +1014,6 @@ public class LlmProviderConfigService {
         || lower.startsWith("ernie");
   }
 
-  private String toEnvKey(String providerId) {
-    return "PROVIDER_" + providerId.toUpperCase().replace("-", "_") + "_API_KEY";
-  }
-
   // ===== Provider test logic (called under read lock) =====
 
   private ProviderTestResult doTestProvider(ProviderRuntimeConfig config, String id) {
@@ -1223,332 +1164,12 @@ public class LlmProviderConfigService {
   private record ConnectivityOutcome(boolean success, String detail) {
   }
 
-  // ===== YAML text editing (preserves comments & formatting) =====
-
-  private void writeProviderToYaml(String id, ProviderConfig config, String envKey) {
-    mutateYamlText(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED, "写入 YAML 配置失败", editor -> {
-      LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-      values.put("base-url", config.getBaseUrl());
-      values.put("api-key", "${" + envKey + "}");
-      if (config.getModel() != null) {
-        values.put("model", config.getModel());
-      } else {
-        editor.removeKey(new String[]{"app", "ai", "providers"}, id, "model");
-      }
-      if (config.getApiFormat() != null) {
-        values.put("api-format", config.getApiFormat());
-      }
-      if (config.getEmbeddingModel() != null) {
-        values.put("embedding-model", config.getEmbeddingModel());
-      }
-      if (config.getRerankModel() != null) {
-        values.put("rerank-model", config.getRerankModel());
-      }
-      if (config.getRerankApiFormat() != null) {
-        values.put("rerank-api-format", config.getRerankApiFormat());
-      }
-      if (config.getEmbeddingDimensions() != null) {
-        values.put("embedding-dimensions", config.getEmbeddingDimensions());
-      }
-      if (config.getMaxTokens() != null) {
-        values.put("max-tokens", config.getMaxTokens());
-      }
-      if (config.getTopP() != null) {
-        values.put("top-p", config.getTopP());
-      }
-      if (config.getTemperature() != null) {
-        values.put("temperature", config.getTemperature());
-      }
-      editor.setBlock(new String[]{"app", "ai", "providers"}, id, values);
-    });
-  }
-
-  private void removeProviderFromYaml(String id) {
-    mutateYamlText(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED, "删除 YAML 配置失败", editor -> {
-      editor.removeSection(new String[]{"app", "ai", "providers"}, id);
-    });
-  }
-
-  private void writeDefaultProviderToYaml(String defaultProvider) {
-    mutateYamlText(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED, "写入默认 Provider 配置失败", editor -> {
-      editor.setScalar(new String[]{"app", "ai", "default-provider"}, defaultProvider);
-      if (properties.getDefaultRerankProvider() != null) {
-        editor.setScalar(new String[]{"app", "ai", "default-rerank-provider"}, properties.getDefaultRerankProvider());
-      }
-      editor.removeSection(new String[]{"app", "ai"}, "module-defaults");
-    });
-  }
-
-  private void writeAsrConfigToYaml(VoiceInterviewProperties.AsrConfig asr) {
-    mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入 ASR 配置失败", editor -> {
-      LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-      values.put("url", asr.getUrl());
-      values.put("model", asr.getModel());
-      values.put("api-key", "${AI_BAILIAN_API_KEY}");
-      values.put("language", asr.getLanguage());
-      values.put("format", asr.getFormat());
-      values.put("sample-rate", asr.getSampleRate());
-      values.put("enable-turn-detection", asr.isEnableTurnDetection());
-      values.put("turn-detection-type", asr.getTurnDetectionType());
-      values.put("turn-detection-threshold", asr.getTurnDetectionThreshold());
-      values.put("turn-detection-silence-duration-ms", asr.getTurnDetectionSilenceDurationMs());
-      editor.setBlock(new String[]{"app", "voice-interview", "qwen"}, "asr", values);
-    });
-  }
-
-  private void writeTtsConfigToYaml(VoiceInterviewProperties.QwenTtsConfig tts) {
-    mutateYamlText(ErrorCode.VOICE_CONFIG_WRITE_FAILED, "写入 TTS 配置失败", editor -> {
-      LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-      values.put("model", tts.getModel());
-      values.put("api-key", "${AI_BAILIAN_API_KEY}");
-      values.put("voice", tts.getVoice());
-      values.put("format", tts.getFormat());
-      values.put("sample-rate", tts.getSampleRate());
-      values.put("mode", tts.getMode());
-      values.put("language-type", tts.getLanguageType());
-      values.put("speech-rate", tts.getSpeechRate());
-      values.put("volume", tts.getVolume());
-      editor.setBlock(new String[]{"app", "voice-interview", "qwen"}, "tts", values);
-    });
-  }
-
-  private void mutateYamlText(ErrorCode errorCode, String errorMessage, Consumer<YamlTextEditor> mutator) {
-    if (yamlPath == null || yamlPath.isBlank()) {
-      log.warn("YAML path not configured, skip writing");
-      return;
-    }
-    try {
-      Path path = Path.of(yamlPath);
-      List<String> lines;
-      if (Files.exists(path)) {
-        lines = new ArrayList<>(Files.readAllLines(path, StandardCharsets.UTF_8));
-      } else {
-        lines = new ArrayList<>();
-      }
-
-      YamlTextEditor editor = new YamlTextEditor(lines);
-      mutator.accept(editor);
-
-      String content = String.join("\n", editor.getLines());
-      if (!content.endsWith("\n")) {
-        content += "\n";
-      }
-      Files.writeString(path, content, StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new BusinessException(errorCode, errorMessage + ": " + e.getMessage());
-    }
-  }
-
-  // ===== .env file operations =====
-
-  private void writeEnvValue(String key, String value) {
-    if (envPath == null || envPath.isBlank()) return;
-    try {
-      Path path = Path.of(envPath);
-      if (!Files.exists(path)) {
-        Files.writeString(path, key + "=" + value + "\n", StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        return;
-      }
-      String content = Files.readString(path, StandardCharsets.UTF_8);
-      if (content.contains(key + "=")) {
-        content = content.replaceAll("(?m)^" + Pattern.quote(key) + "=.*",
-            Matcher.quoteReplacement(key + "=" + value));
-      } else {
-        if (!content.endsWith("\n")) {
-          content += "\n";
-        }
-        content += key + "=" + value + "\n";
-      }
-      Files.writeString(path, content, StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      log.warn("写入 .env 失败: {}", e.getMessage());
-    }
-  }
-
-  private void updateEnvValue(String key, String value) {
-    writeEnvValue(key, value);
-  }
-
-  private void removeFromEnv(String key) {
-    if (envPath == null || envPath.isBlank()) return;
-    try {
-      Path path = Path.of(envPath);
-      if (!Files.exists(path)) return;
-      String content = Files.readString(path, StandardCharsets.UTF_8);
-      content = content.replaceAll("(?m)^" + Pattern.quote(key) + "=.*\\R?", "");
-      Files.writeString(path, content, StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      log.warn("删除 .env 条目失败: {}", e.getMessage());
-    }
-  }
-
-  // ===== YamlTextEditor: text-based YAML editing that preserves comments & formatting =====
-
-  static class YamlTextEditor {
-    private final List<String> lines;
-
-    YamlTextEditor(List<String> lines) {
-      this.lines = new ArrayList<>(lines);
-    }
-
-    List<String> getLines() {
-      return lines;
-    }
-
-    void setScalar(String[] path, String value) {
-      int searchFrom = path.length > 1
-          ? ensureParents(Arrays.copyOf(path, path.length - 1))
-          : 0;
-      int indent = (path.length - 1) * 2;
-      String key = path[path.length - 1];
-      String newLine = " ".repeat(indent) + key + ": " + value;
-
-      int found = findKey(key, indent, searchFrom);
-      if (found >= 0) {
-        lines.set(found, newLine);
-      } else {
-        int parentIndent = indent >= 2 ? indent - 2 : -1;
-        int insertPos = findSectionEnd(searchFrom, parentIndent);
-        lines.add(insertPos, newLine);
-      }
-    }
-
-    void setBlock(String[] parentPath, String blockKey, LinkedHashMap<String, Object> values) {
-      int parentSearchFrom = ensureParents(parentPath);
-      int blockIndent = parentPath.length * 2;
-      int valueIndent = blockIndent + 2;
-
-      int blockLine = findKey(blockKey, blockIndent, parentSearchFrom);
-      if (blockLine < 0) {
-        int parentEnd = parentPath.length >= 1 ? blockIndent - 2 : -1;
-        int insertPos = findSectionEnd(parentSearchFrom, parentEnd);
-        lines.add(insertPos, " ".repeat(blockIndent) + blockKey + ":");
-        blockLine = insertPos;
-      }
-
-      int blockEnd = findSectionEnd(blockLine + 1, blockIndent);
-
-      for (Map.Entry<String, Object> entry : values.entrySet()) {
-        String valueLine = " ".repeat(valueIndent) + entry.getKey() + ": " + formatValue(entry.getValue());
-        int existing = findKeyInRange(entry.getKey(), valueIndent, blockLine + 1, blockEnd);
-        if (existing >= 0) {
-          lines.set(existing, valueLine);
-        } else {
-          lines.add(blockEnd, valueLine);
-          blockEnd++;
-        }
-      }
-    }
-
-    void removeKey(String[] parentPath, String blockKey, String key) {
-      int parentSearchFrom = navigateTo(parentPath);
-      if (parentSearchFrom < 0) return;
-
-      int blockIndent = parentPath.length * 2;
-      int blockLine = findKey(blockKey, blockIndent, parentSearchFrom);
-      if (blockLine < 0) return;
-
-      int blockEnd = findSectionEnd(blockLine + 1, blockIndent);
-      int valueIndent = blockIndent + 2;
-      int existing = findKeyInRange(key, valueIndent, blockLine + 1, blockEnd);
-      if (existing >= 0) {
-        lines.remove(existing);
-      }
-    }
-
-    void removeSection(String[] parentPath, String sectionKey) {
-      int parentSearchFrom = navigateTo(parentPath);
-      if (parentSearchFrom < 0) return;
-
-      int sectionIndent = parentPath.length * 2;
-      int sectionLine = findKey(sectionKey, sectionIndent, parentSearchFrom);
-      if (sectionLine < 0) return;
-
-      int endLine = sectionLine + 1;
-      while (endLine < lines.size()) {
-        String line = lines.get(endLine);
-        if (line.isBlank()) { endLine++; continue; }
-        if (indentOf(line) <= sectionIndent) break;
-        endLine++;
-      }
-
-      for (int i = endLine - 1; i >= sectionLine; i--) {
-        lines.remove(i);
-      }
-    }
-
-    private int ensureParents(String[] path) {
-      int searchFrom = 0;
-      for (int i = 0; i < path.length; i++) {
-        int indent = i * 2;
-        int found = findKey(path[i], indent, searchFrom);
-        if (found < 0) {
-          int parentIndent = i > 0 ? indent - 2 : -1;
-          int insertPos = findSectionEnd(searchFrom, parentIndent);
-          lines.add(insertPos, " ".repeat(indent) + path[i] + ":");
-          searchFrom = insertPos + 1;
-        } else {
-          searchFrom = found + 1;
-        }
-      }
-      return searchFrom;
-    }
-
-    private int navigateTo(String[] path) {
-      int searchFrom = 0;
-      for (int i = 0; i < path.length; i++) {
-        int indent = i * 2;
-        int found = findKey(path[i], indent, searchFrom);
-        if (found < 0) return -1;
-        searchFrom = found + 1;
-      }
-      return searchFrom;
-    }
-
-    private int findKey(String key, int indent, int searchFrom) {
-      String prefix = " ".repeat(indent) + key + ":";
-      for (int i = searchFrom; i < lines.size(); i++) {
-        String line = lines.get(i);
-        if (line.isBlank() || line.trim().startsWith("#")) continue;
-        if (line.startsWith(prefix)) return i;
-        if (indentOf(line) < indent) break;
-      }
-      return -1;
-    }
-
-    private int findKeyInRange(String key, int indent, int start, int end) {
-      String prefix = " ".repeat(indent) + key + ":";
-      for (int i = start; i < end && i < lines.size(); i++) {
-        String line = lines.get(i);
-        if (line.isBlank() || line.trim().startsWith("#")) continue;
-        if (line.startsWith(prefix)) return i;
-        if (indentOf(line) < indent) break;
-      }
-      return -1;
-    }
-
-    private int findSectionEnd(int searchFrom, int parentIndent) {
-      for (int i = searchFrom; i < lines.size(); i++) {
-        String line = lines.get(i);
-        if (line.isBlank() || line.trim().startsWith("#")) continue;
-        if (indentOf(line) <= parentIndent) return i;
-      }
-      return lines.size();
-    }
-
-    private int indentOf(String line) {
-      int count = 0;
-      while (count < line.length() && line.charAt(count) == ' ') count++;
-      return count;
-    }
-
-    private String formatValue(Object value) {
-      if (value instanceof Boolean b) return b.toString();
-      if (value instanceof Number n) return n.toString();
-      return value.toString();
-    }
-  }
+  // ===== YAML/env 写入逻辑已移除 =====
+  // Provider 与语音配置的唯一持久化来源是数据库（llm_provider_config /
+  // llm_global_setting）与运行时内存（VoiceInterviewProperties）。
+  // 历史实现会把配置镜像写到 ~/.interview-guide/llm-providers.yml 与
+  // llm-providers.env，但全仓没有任何加载入口（无 spring.config.import、
+  // 无 EnvironmentPostProcessor），属于只写不读的副作用，故整体删除。
 
   private record ProviderRuntimeConfig(
       String baseUrl,

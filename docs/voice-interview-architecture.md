@@ -11,7 +11,7 @@ AI语音面试系统是一个实时语音交互的智能面试平台，集成了
 - **ASR 准确率**: ~95%+（提升 5%+）
 - **ASR 断句延迟**: 400ms（减少 50%）
 - **TTS 首包延迟**: 200ms（减少 60%）
-- **配置简化**: 从 9 个环境变量减少到 2 个（统一使用 `AI_BAILIAN_API_KEY`）
+- **配置简化**: 语音服务不再使用环境变量，统一在「设置 → 语音服务」页配置（ASR + TTS 共用一个 DashScope Key）
 
 ## 🏗️ 系统架构图
 
@@ -434,44 +434,48 @@ graph TB
 
 ### 必需配置
 
-语音面试模块的 ASR 与 TTS 服务依赖阿里云 DashScope 实时语音模型：
+语音面试模块的 ASR 与 TTS 服务依赖阿里云 DashScope 实时语音模型。
+**不再通过环境变量配置**：启动应用后在「设置 → 语音服务」页填写统一的
+DashScope API Key（ASR + TTS 共用一个密钥）、模型与音色。
 
-```bash
-# 统一语音 API Key（DashScope ASR + TTS 共用，配置在 .env 或环境变量）
-AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-```
+> ⚠️ 语音 Key 保存在运行内存中，**应用重启后需重新填写**。
 
-> **注意**：面试对话使用的 LLM 聊天模型已接入系统的**多模型管理中心**（`llmprovider` 模块），配置加密存储在数据库中，用户可在「设置 → 模型服务」页面自由配置（支持任意 OpenAI 兼容端点或 Anthropic 协议模型），并在语音面试发起时动态选择或走系统默认，不再依赖 `application.yml` 硬编码。
+> **注意**：面试对话使用的 LLM 聊天模型已接入系统的**多模型管理中心**（`llmprovider` 模块），
+> 配置存储在数据库中，用户可在「设置 → 模型服务」页面自由配置（支持任意 OpenAI 兼容端点
+> 或 Anthropic 协议模型），并在语音面试发起时动态选择或走系统默认，不再依赖 `application.yml` 硬编码。
+>
+> ⚠️ Provider Key 当前为**明文存储**（加密功能已移除）。
 
 ### 语音服务配置
+
+以下为 `application.yml` 中的默认值，运行时会被「设置 → 语音服务」页的配置覆盖：
+
 ```yaml
 app:
   voice-interview:
-    # LLM 提供商（默认: dashscope）
-    llm-provider: dashscope
-
     # Qwen3 ASR 配置
     qwen:
       asr:
         url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
         model: qwen3-asr-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        # 空串默认值：未配置 Key 不阻断启动，语音功能使用时由服务内校验报可操作错误
+        api-key: ${AI_BAILIAN_API_KEY:}
         language: zh
         format: pcm
         sample-rate: 16000
         enable-turn-detection: true
         turn-detection-type: server_vad
-        turn-detection-silence-duration-ms: 400
+        turn-detection-silence-duration-ms: 2000
 
       # Qwen3 TTS 配置
       tts:
-        url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
         model: qwen3-tts-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        api-key: ${AI_BAILIAN_API_KEY:}
         voice: Cherry
         format: pcm
-        sample-rate: 16000
+        sample-rate: 24000
 ```
+
 
 ### 可选配置
 ```yaml

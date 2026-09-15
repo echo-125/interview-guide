@@ -1,15 +1,16 @@
 # 🔑 API 密钥配置指南
 
-语音面试功能需要配置以下 API 密钥才能正常工作。
+所有 AI 相关密钥（模型服务与语音服务）均在**应用内**配置，不需要环境变量，
+也不依赖 `.env` 文件。
 
-## 📋 必需的 API 服务
+## 📋 需要配置的 API 服务
 
 ### 阿里云百炼 AI (DashScope)
 
 **用途**:
 - **ASR 语音识别**: 将用户语音实时转换为文本（qwen3-asr-flash-realtime）
 - **TTS 语音合成**: 将 AI 回答实时转换为语音（qwen3-tts-flash-realtime）
-- **聊天/向量/重排模型**（可选）: 也可在应用「设置 → 模型服务」页用同一个百炼 Key 配置模型服务
+- **聊天/向量/重排模型**（可选）: 也可在「设置 → 模型服务」页用同一个百炼 Key 配置模型服务
 
 **统一 API Key**: 语音功能一个密钥即可，无需分别申请！
 
@@ -19,11 +20,6 @@
 3. 开通 DashScope 服务（有免费额度）
 4. 创建 API Key
 5. 复制 API Key
-
-**配置变量**:
-```bash
-AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-```
 
 **费用**:
 - 新用户有免费额度
@@ -35,41 +31,22 @@ AI_BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 
 ## ⚙️ 配置步骤
 
-### 方式 1: 使用 .env 文件（推荐）
+### 模型服务（聊天 / 向量 / 重排）
 
-1. 复制示例配置文件：
-```bash
-cp .env.example .env
-```
+1. 启动应用，进入「设置 → 模型服务」
+2. 新增 Provider：填写 Base URL、API Key、模型名，并勾选它支持的能力
+   （聊天 / 向量 / 重排，一个 Provider 可同时支持多种）
+3. 分别指定默认的聊天、向量、重排服务
+4. 配置加密存储在数据库中，重启后保留
 
-2. 编辑 `.env` 文件，填入您的实际密钥：
-```bash
-# 使用您自己的密钥替换以下占位符
-AI_BAILIAN_API_KEY=sk-your-actual-key-here
-```
+### 语音服务（ASR / TTS）
 
-3. 启动应用时会自动读取 `.env` 文件
+1. 进入「设置 → 语音服务」
+2. 分别填写 ASR 与 TTS 的 API Key（同一个 DashScope Key 即可）、模型与音色
+3. 保存后即时生效
 
-### 方式 2: 使用环境变量
-
-```bash
-# Linux/Mac
-export AI_BAILIAN_API_KEY=sk-your-key
-
-# Windows PowerShell
-$env:AI_BAILIAN_API_KEY="sk-your-key"
-```
-
-### 方式 3: 在 IDE 中配置
-
-**IDEA**:
-1. Run → Edit Configurations
-2. 选择 Spring Boot 配置
-3. Environment variables 中添加上述变量
-
-**VS Code**:
-1. 创建 `.vscode/launch.json`
-2. 添加 env 配置
+> ⚠️ **注意**：语音服务的 Key 目前保存在运行内存中，**应用重启后需要重新填写**。
+> 模型服务的配置不受影响（已落库）。
 
 ---
 
@@ -104,13 +81,21 @@ WebSocket failed: Expected HTTP 101 response but was '401 Unauthorized'
 
 A: 语音服务使用的是 Qwen3 实时语音模型，需要阿里云 DashScope API Key。聊天/向量/重排模型支持任意 OpenAI 兼容或 Anthropic 协议的服务，在「设置 → 模型服务」页配置。
 
+**Q: 密钥存在哪里？**
+
+A: 模型服务的 Provider Key 存储在数据库 `llm_provider_config` 表中。
+> ⚠️ 当前为**明文存储**（加密功能已移除）。请确保数据库访问受控，
+> 不要把生产数据库暴露在公网。
+
+**Q: 重启后语音服务要不要重新配置？**
+
+A: 需要。语音 ASR/TTS 的 Key 保存在运行内存，重启后请在「设置 → 语音服务」重新填写。
+模型服务的配置已落库，不受影响。
+
 **Q: 如何降低成本？**
 
 A: 1) 在「设置 → 模型服务」中选择更便宜的模型；2) 限制面试时长；3) 添加用户配额限制
 
-**Q: API 密钥会泄露吗？**
-
-A: `.env` 文件已加入 `.gitignore`，不会提交到 Git。请妥善保管您的密钥。
 
 **Q: 测试时需要付费吗？**
 

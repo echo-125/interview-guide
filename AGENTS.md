@@ -59,7 +59,8 @@ docker compose -f docker-compose.dev.yml up -d
 ## AI And Async Rules
 
 - 获取聊天模型统一走 `LlmProviderRegistry.getChatClientOrDefault(provider)`。
-- Provider 配置按能力（聊天/向量/重排）拆分，加密存于 `llm_provider_config`；默认指针在 `llm_global_setting`，未显式设置时运行期自动回退到第一个启用且具备对应能力的 Provider，一个可用 Provider 都没有才抛 `BusinessException`。
+- AI 配置的唯一来源是「设置 → 模型服务 / 语音服务」页与数据库，**不要新增 AI 相关环境变量或 `.env` 条目**，也不要往源码目录/用户主目录写配置镜像文件（历史实现曾把配置写到 `~/.interview-guide/`，但没有加载入口，已删除）。
+- Provider 配置按能力（聊天/向量/重排）拆分，存于 `llm_provider_config`（**明文**，加密已移除）；默认指针在 `llm_global_setting`，未显式设置时运行期自动回退到第一个启用且具备对应能力的 Provider，一个可用 Provider 都没有才抛 `BusinessException`。
 - 系统不内置预设模型，`application.yml` 不承载 Provider 定义（legacy YAML 轨仅供无数据库场景与测试使用）。
 - 结构化输出统一走 `StructuredOutputInvoker`，不要在业务代码里复制重试逻辑。
 - Prompt 模板放在 `resources/prompts/`，使用 StringTemplate `.st`。

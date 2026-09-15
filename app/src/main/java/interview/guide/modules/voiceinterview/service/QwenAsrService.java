@@ -9,6 +9,8 @@ import com.alibaba.dashscope.audio.omni.OmniRealtimeTranscriptionParam;
 import com.alibaba.dashscope.exception.NoApiKeyException;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -112,14 +114,29 @@ public class QwenAsrService {
      * This method is automatically called by Spring after the service is constructed
      * and all configuration values have been loaded from VoiceInterviewProperties.
      *
-     * @throws IllegalStateException if apiKey is not configured
+     * <p>API Key 未配置时只告警、不抛异常：语音 Key 由「设置 → 语音服务」页在
+     * 运行期填写，若此处 fail-fast 会导致应用无法启动，用户也就进不了设置页，
+     * 形成死锁。真正需要 Key 时由 {@link #requireApiKey()} 报可操作错误。
      */
     @PostConstruct
     public void init() {
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("API key must be configured before initializing QwenAsrService");
+        if (!hasApiKey()) {
+            log.warn("QwenAsrService 未配置 API Key，语音识别不可用；请在「设置 → 语音服务」页填写");
+            return;
         }
         log.info("QwenAsrService initialized with model: {}, url: {}", model, url);
+    }
+
+    private boolean hasApiKey() {
+        return apiKey != null && !apiKey.trim().isEmpty();
+    }
+
+    /** 使用前校验：未配置 Key 时给出可操作提示，而非让底层报难懂的握手错误 */
+    private void requireApiKey() {
+        if (!hasApiKey()) {
+            throw new BusinessException(ErrorCode.VOICE_CONFIG_READ_FAILED,
+                "语音识别服务未配置 API Key，请在「设置 → 语音服务」页填写后重试");
+        }
     }
 
     /**
@@ -161,6 +178,7 @@ public class QwenAsrService {
             Consumer<String> onPartial,
             Runnable onReady,
             Consumer<Throwable> onError) {
+        requireApiKey();
         synchronized (lockForSession(sessionId)) {
             startTranscriptionLocked(sessionId, onFinal, onPartial, onReady, onError);
         }

@@ -10,7 +10,6 @@ import interview.guide.modules.llmprovider.model.LlmGlobalSettingEntity;
 import interview.guide.modules.llmprovider.model.LlmProviderEntity;
 import interview.guide.modules.llmprovider.repository.LlmGlobalSettingRepository;
 import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
-import interview.guide.modules.llmprovider.service.ApiKeyEncryptionService;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -56,7 +55,6 @@ public class LlmProviderRegistry {
     private final Map<String, Long> embeddingModelCacheVersion = new ConcurrentHashMap<>();
     private final LlmProviderRepository providerRepository;
     private final LlmGlobalSettingRepository globalSettingRepository;
-    private final ApiKeyEncryptionService encryptionService;
 
     /**
      * 配置版本号：每次 reload() 自增，缓存访问时比对版本，配置变更后自动重建。
@@ -83,14 +81,12 @@ public class LlmProviderRegistry {
             LlmProviderProperties properties,
             LlmProviderRepository providerRepository,
             LlmGlobalSettingRepository globalSettingRepository,
-            ApiKeyEncryptionService encryptionService,
             @Autowired(required = false) ToolCallingManager toolCallingManager,
             @Autowired(required = false) ObservationRegistry observationRegistry,
             @Autowired(required = false) @Qualifier("interviewSkillsToolCallback") ToolCallback interviewSkillsToolCallback) {
         this.properties = properties;
         this.providerRepository = providerRepository;
         this.globalSettingRepository = globalSettingRepository;
-        this.encryptionService = encryptionService;
         this.toolCallingManager = toolCallingManager;
         this.observationRegistry = observationRegistry;
         this.interviewSkillsToolCallback = interviewSkillsToolCallback;
@@ -101,7 +97,7 @@ public class LlmProviderRegistry {
             ToolCallingManager toolCallingManager,
             ObservationRegistry observationRegistry,
             ToolCallback interviewSkillsToolCallback) {
-        this(properties, null, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback);
+        this(properties, null, null, toolCallingManager, observationRegistry, interviewSkillsToolCallback);
     }
 
     /**
@@ -543,7 +539,7 @@ public class LlmProviderRegistry {
         return new ProviderSnapshot(
             entity.getId(),
             entity.getBaseUrl(),
-            encryptionService.decrypt(entity.getApiKeyNonce(), entity.getApiKeyCiphertext()),
+            entity.getApiKey(),
             entity.getModel(),
             entity.getApiFormat(),
             entity.getEmbeddingModel(),

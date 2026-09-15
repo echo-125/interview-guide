@@ -26,11 +26,8 @@ public class LlmProviderEntity {
   @Column(name = "base_url", nullable = false, length = 512)
   private String baseUrl;
 
-  @Column(name = "api_key_ciphertext", nullable = false, length = 4096)
-  private String apiKeyCiphertext;
-
-  @Column(name = "api_key_nonce", nullable = false, length = 64)
-  private String apiKeyNonce;
+  @Column(name = "api_key", nullable = false, length = 4096)
+  private String apiKey;
 
   @Column(length = 128)
   private String model;

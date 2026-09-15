@@ -159,11 +159,9 @@ services:
       APP_STORAGE_BUCKET: interview-guide
       APP_STORAGE_REGION: us-east-1
       
-      # === AI 模型配置 (必须配置) ===
-      # 这里的变量值来自宿主机的环境变量或 .env 文件
-      AI_BAILIAN_API_KEY: ${AI_BAILIAN_API_KEY}
-      AI_MODEL: ${AI_MODEL:-qwen3.5-flash}
-      APP_AI_CONFIG_ENCRYPTION_KEY: ${APP_AI_CONFIG_ENCRYPTION_KEY}
+      # === AI 配置 ===
+      # 不再通过环境变量下发：聊天/向量/重排模型与语音 ASR/TTS 的地址和密钥
+      # 全部在应用启动后于「设置 → 模型服务 / 语音服务」页配置（落库）
 
       # === 面试参数配置 ===
       APP_INTERVIEW_FOLLOW_UP_COUNT: ${APP_INTERVIEW_FOLLOW_UP_COUNT:-1}

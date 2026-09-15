@@ -143,7 +143,7 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - **RAG 检索重排**：配置默认重排模型后，知识库问答在向量召回后自动对候选片段重排（支持 Cohere 兼容与百炼原生两种格式），重排失败自动回退向量排序。
 - **向量维度可配置**：通过 `APP_VECTOR_DIMENSIONS` 配置 pgvector 向量维度（默认 1024），启动时自动对齐表结构；表中已有数据且维度不一致时拒绝启动并给出处理指引。
 - **语音服务配置**：ASR/TTS 配置可视化管理，支持语音服务连通性测试。
-- **配置安全落盘**：模型 API Key 加密存储于数据库，语音等运行时配置写入用户目录 `~/.interview-guide/`，支持 API Key 加密配置。
+- **配置集中管理**：模型服务（聊天/向量/重排）配置落库 `llm_provider_config`，语音 ASR/TTS 配置在设置页运行时生效；不依赖任何 AI 相关环境变量。
 
 ### TODO
 
@@ -305,32 +305,20 @@ git clone https://github.com/Snailclimb/interview-guide.git
 cd interview-guide
 ```
 
-### 2. 配置环境变量
+### 2. 配置 AI 服务
 
-推荐复制 `.env.example` 为 `.env`，后端 `bootRun` 会自动读取根目录 `.env`。最少需要填写：
+**无需配置任何环境变量**。所有 AI 相关配置都在应用启动后于页面内完成：
 
-- `AI_BAILIAN_API_KEY`：语音面试的 ASR/TTS 使用；聊天 / 向量 / 重排模型**不再依赖 .env**，启动后在「设置 → 模型服务」页配置
-- `APP_AI_CONFIG_ENCRYPTION_KEY`：模型 API Key 的加密密钥，请改为随机长字符串并保持不变
+- **模型服务**（聊天 / 向量 / 重排）：「设置 → 模型服务」新增 Provider，
+  填写 Base URL、API Key、模型名并勾选其支持的能力。配置落库，重启后保留。
+- **语音服务**（ASR / TTS）：「设置 → 语音服务」填写 DashScope API Key、模型与音色。
 
-```bash
-cp .env.example .env
+> ⚠️ 语音服务的 Key 保存在运行内存，**应用重启后需重新填写**。
+>
+> ⚠️ 模型服务的 Provider Key 目前为**明文存储**在数据库中，
+> 请确保数据库访问受控。详见 [SETUP_API_KEYS.md](SETUP_API_KEYS.md)。
 
-# 编辑 .env
-# AI_BAILIAN_API_KEY=your_dashscope_api_key
-# APP_AI_CONFIG_ENCRYPTION_KEY=your_random_long_secret
-```
-
-如果你更习惯通过 shell 环境变量注入，也可以这样设置：
-
-```bash
-# macOS / Linux（zsh）
-echo 'export AI_BAILIAN_API_KEY=your_api_key' >> ~/.zshrc
-source ~/.zshrc
-
-# Linux（bash）
-echo 'export AI_BAILIAN_API_KEY=your_api_key' >> ~/.bashrc
-source ~/.bashrc
-```
+`.env` 仅用于数据库、Redis、S3 等基础设施连接信息（见 `.env.example`）。
 
 ### 3. 启动依赖服务（可选）
 
@@ -430,18 +418,14 @@ Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO�
 
 在项目根目录下执行：
 
-`.env.example` 中的 PostgreSQL、Redis、MinIO 已与 `docker-compose.yml` 对齐（数据库用户 `postgres` / 密码 `password`，MinIO `minioadmin` / `minioadmin`）。复制为 `.env` 后主要填写 `AI_BAILIAN_API_KEY`；若你曾在旧版本中使用过不同的库密码或对象存储密钥，请同步修改 `.env`，必要时重建 Postgres 卷以免旧数据与密码不一致。
+`.env.example` 中的 PostgreSQL、Redis、MinIO 已与 `docker-compose.yml` 对齐（数据库用户 `postgres` / 密码 `password`，MinIO `minioadmin` / `minioadmin`）。`.env` 只承载基础设施连接信息，**不含任何 AI 配置**；若你曾在旧版本中使用过不同的库密码或对象存储密钥，请同步修改 `.env`，必要时重建 Postgres 卷以免旧数据与密码不一致。
 
 ```bash
 # 1. 复制环境变量配置文件
 cp .env.example .env
 
-# 2. 编辑 .env 文件，填入 AI 配置
+# 2. 按需编辑 .env（仅基础设施连接信息）
 # vim .env
-# 必填：AI_BAILIAN_API_KEY=your_key_here        # 语音面试 ASR/TTS 使用
-# 必填：APP_AI_CONFIG_ENCRYPTION_KEY=your_random_long_secret
-# 聊天/向量/重排模型不内置预设，启动后在「设置 → 模型服务」页添加并设为默认
-#
 # 面试参数配置（可选）：
 # APP_INTERVIEW_FOLLOW_UP_COUNT=1         # 每个主问题生成追问数量（默认 1）
 # APP_INTERVIEW_EVALUATION_BATCH_SIZE=8   # 回答评估分批大小（默认 8）
@@ -450,7 +434,9 @@ cp .env.example .env
 docker-compose up -d --build
 ```
 
-> **仅启动依赖服务**：如果只想本地开发调试（用 `./gradlew :app:bootRun` 启动后端），可以只启动基础设施：`docker compose up -d postgres redis minio createbuckets`。将 `.env.example` 复制为 `.env` 并填写 `AI_BAILIAN_API_KEY` 即可，默认账号与 `docker-compose.yml` 一致；Bucket 会由初始化任务或应用启动检查自动创建。
+> AI 模型与语音服务不内置预设，启动后在「设置 → 模型服务 / 语音服务」页添加。
+
+> **仅启动依赖服务**：如果只想本地开发调试（用 `./gradlew :app:bootRun` 启动后端），可以只启动基础设施：`docker compose up -d postgres redis minio createbuckets`。默认账号与 `docker-compose.yml` 一致；Bucket 会由初始化任务或应用启动检查自动创建。
 
 ### 3. 服务访问
 
@@ -563,11 +549,11 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
 
 ### Q: 设置页新增/切换模型后不生效？
 
-模型的增删改和默认设置保存在数据库（`llm_provider_config` / `llm_global_setting`），保存后立即生效，无需重启。遇到连接问题时点击卡片上的「测试」按钮按能力逐项排查；后端日志中的业务异常信息会给出具体原因。语音 ASR/TTS 等运行时配置写入 `~/.interview-guide/` 目录，Docker 部署时如需持久化语音配置，建议为该目录挂载卷。
+模型的增删改和默认设置保存在数据库（`llm_provider_config` / `llm_global_setting`），保存后立即生效，无需重启。遇到连接问题时点击卡片上的「测试」按钮按能力逐项排查；后端日志中的业务异常信息会给出具体原因。
 
 ### Q: 语音面试无法识别或没有声音？
 
-语音面试的 ASR/TTS 默认也使用 `AI_BAILIAN_API_KEY`。请检查浏览器麦克风权限、后端日志中的 DashScope WebSocket 连接状态，以及设置页里的 ASR/TTS 测试结果。无耳机时可能触发回声录入，建议先使用手动提交模式或佩戴耳机测试。
+语音面试的 ASR/TTS Key 需要在「设置 → 语音服务」页填写（同一个 DashScope Key 即可），且**应用重启后需重新填写**——该 Key 保存在运行内存中，不落库。请检查浏览器麦克风权限、后端日志中的 DashScope WebSocket 连接状态，以及设置页里的 ASR/TTS 测试结果。无耳机时可能触发回声录入，建议先使用手动提交模式或佩戴耳机测试。
 
 ### Q: 简历分析一直显示"分析中"？
 

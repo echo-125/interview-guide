@@ -17,9 +17,6 @@ public class LlmProviderProperties {
     private Integer embeddingDimensions = 1024;
     private Map<String, ProviderConfig> providers;
     private AdvisorConfig advisors = new AdvisorConfig();
-    private String configYamlPath;
-    private String configEnvPath;
-    private SecurityConfig security = new SecurityConfig();
 
     @Data
     public static class ProviderConfig {
@@ -35,13 +32,6 @@ public class LlmProviderProperties {
         private Integer maxTokens;
         private Double topP;
         private Double temperature;
-    }
-
-    @Data
-    public static class SecurityConfig {
-        private String apiKeyEncryptionKey;
-        private boolean requireEncryptionKey = true;
-        private boolean allowFallbackEncryptionKey = false;
     }
 
     @Data

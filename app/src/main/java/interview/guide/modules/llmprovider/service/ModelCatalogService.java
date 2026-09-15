@@ -34,7 +34,6 @@ public class ModelCatalogService {
   private static final int MAX_PAGE_FETCHES = 10;
 
   private final LlmProviderRepository providerRepository;
-  private final ApiKeyEncryptionService encryptionService;
 
   public List<String> fetchModels(FetchModelsRequest request) {
     String providerId = TextUtil.trimToNull(request.providerId());
@@ -50,7 +49,7 @@ public class ModelCatalogService {
         baseUrl = provider.getBaseUrl();
       }
       if (apiKey == null) {
-        apiKey = encryptionService.decrypt(provider.getApiKeyNonce(), provider.getApiKeyCiphertext());
+        apiKey = provider.getApiKey();
       }
       if (apiFormat == null) {
         apiFormat = provider.getApiFormat();
