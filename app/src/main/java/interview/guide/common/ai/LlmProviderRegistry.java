@@ -307,8 +307,13 @@ public class LlmProviderRegistry {
         OpenAIClient openAiClient = ApiPathResolver.buildOpenAiClient(config.baseUrl(), config.apiKey());
 
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                .model(config.model())
-                .temperature(config.temperature() != null ? config.temperature() : 0.2);
+                .model(config.model());
+        // 只在用户显式配置时才下发 temperature：部分模型（如 kimi-k3）只接受固定值（1），
+        // 兜底一个 0.2 会被服务端以 400 "field Temperature invalid" 拒绝。
+        // 留空则不下发该字段，由模型服务端决定默认行为（Spring AI 仅在非 null 时写入请求体）。
+        if (config.temperature() != null) {
+            optionsBuilder.temperature(config.temperature());
+        }
         if (config.maxTokens() != null) {
             optionsBuilder.maxTokens(config.maxTokens());
         }
@@ -337,8 +342,11 @@ public class LlmProviderRegistry {
                 .apiKey(config.apiKey())
                 .baseUrl(baseUrl)
                 // Anthropic Messages API 强制要求 max_tokens
-                .maxTokens(config.maxTokens() != null ? config.maxTokens() : DEFAULT_ANTHROPIC_MAX_TOKENS)
-                .temperature(config.temperature() != null ? config.temperature() : 0.2);
+                .maxTokens(config.maxTokens() != null ? config.maxTokens() : DEFAULT_ANTHROPIC_MAX_TOKENS);
+        // 同 OpenAI 分支：temperature 未显式配置时不下发，避免被只接受固定值的模型拒绝
+        if (config.temperature() != null) {
+            optionsBuilder.temperature(config.temperature());
+        }
         if (config.topP() != null) {
             optionsBuilder.topP(config.topP());
         }

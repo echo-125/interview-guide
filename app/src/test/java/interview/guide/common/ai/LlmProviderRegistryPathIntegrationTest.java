@@ -29,12 +29,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>真实场景下：UI 上点 "测试连接" 走的是 {@link interview.guide.modules.llmprovider
  * .service.LlmProviderConfigService#testProvider}（自己拼路径，所以 OK），但模拟面试
  * 调用走 {@link LlmProviderRegistry} → Spring AI {@code OpenAiApi}，之前会 404。
+ *
+ * <p>同时守住 temperature 下发行为：用户未配置时**不得**下发该字段。部分模型
+ * （如 kimi-k3）只接受固定值，被塞入兜底值会直接 400。
  */
-@DisplayName("LlmProviderRegistry 真实 HTTP 路径回归")
+@DisplayName("LlmProviderRegistry 真实 HTTP 请求回归")
 class LlmProviderRegistryPathIntegrationTest {
 
   private HttpServer server;
   private final List<String> receivedPaths = new CopyOnWriteArrayList<>();
+  private final List<String> receivedBodies = new CopyOnWriteArrayList<>();
   private int port;
 
   @BeforeEach
@@ -42,6 +46,7 @@ class LlmProviderRegistryPathIntegrationTest {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
       receivedPaths.add(exchange.getRequestURI().getPath());
+      receivedBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
       String body = """
           {
             "id": "chatcmpl-test",
@@ -123,5 +128,53 @@ class LlmProviderRegistryPathIntegrationTest {
 
     assertThat(receivedPaths).hasSize(1);
     assertThat(receivedPaths.get(0)).isEqualTo("/api/v3/chat/completions");
+  }
+
+  @Test
+  @DisplayName("未配置 temperature 时请求体不得包含该字段（kimi-k3 只接受固定值）")
+  void temperatureNotConfigured_fieldOmitted() {
+    LlmProviderProperties properties = new LlmProviderProperties();
+    ProviderConfig config = new ProviderConfig();
+    config.setBaseUrl("http://127.0.0.1:" + port);
+    config.setApiKey("test-key");
+    config.setModel("kimi-k3");
+    config.setTemperature(null);
+    Map<String, ProviderConfig> providers = new HashMap<>();
+    providers.put("probe", config);
+    properties.setProviders(providers);
+    properties.setDefaultProvider("probe");
+    LlmProviderRegistry registry = new LlmProviderRegistry(
+        properties, DefaultToolCallingManager.builder().build(), null, null);
+
+    registry.getChatClient("probe").prompt("hi").call().content();
+
+    assertThat(receivedBodies).hasSize(1);
+    assertThat(receivedBodies.get(0))
+        .as("未配置 temperature 时不应下发该字段，否则只接受固定值的模型会返回 400")
+        .doesNotContain("temperature");
+  }
+
+  @Test
+  @DisplayName("显式配置 temperature 时应原样下发")
+  void temperatureConfigured_fieldSent() {
+    LlmProviderProperties properties = new LlmProviderProperties();
+    ProviderConfig config = new ProviderConfig();
+    config.setBaseUrl("http://127.0.0.1:" + port);
+    config.setApiKey("test-key");
+    config.setModel("test-model");
+    config.setTemperature(0.7);
+    Map<String, ProviderConfig> providers = new HashMap<>();
+    providers.put("probe", config);
+    properties.setProviders(providers);
+    properties.setDefaultProvider("probe");
+    LlmProviderRegistry registry = new LlmProviderRegistry(
+        properties, DefaultToolCallingManager.builder().build(), null, null);
+
+    registry.getChatClient("probe").prompt("hi").call().content();
+
+    assertThat(receivedBodies).hasSize(1);
+    assertThat(receivedBodies.get(0))
+        .as("显式配置的 temperature 应原样下发")
+        .contains("0.7");
   }
 }

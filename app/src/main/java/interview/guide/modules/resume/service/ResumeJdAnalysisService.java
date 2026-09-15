@@ -110,6 +110,11 @@ public class ResumeJdAnalysisService {
                     log
                 );
                 log.debug("AI响应解析成功: matchScore={}", dto.matchScore());
+            } catch (BusinessException e) {
+                // 业务异常原样抛出：StructuredOutputInvoker 已加过「JD 匹配分析失败：」前缀，
+                // 此处再包一层会出现「JD 匹配分析失败：JD 匹配分析失败：...」的重复前缀。
+                log.error("JD 匹配分析AI调用失败: {}", e.getMessage(), e);
+                throw e;
             } catch (Exception e) {
                 log.error("JD 匹配分析AI调用失败: {}", e.getMessage(), e);
                 throw new BusinessException(ErrorCode.RESUME_JD_ANALYSIS_FAILED, "JD 匹配分析失败：" + e.getMessage());

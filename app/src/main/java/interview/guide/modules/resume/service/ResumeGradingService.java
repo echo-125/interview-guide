@@ -179,17 +179,26 @@ public class ResumeGradingService {
                     log
                 );
                 log.debug("AI响应解析成功: overallScore={}", dto.overallScore());
+            } catch (BusinessException e) {
+                // 业务异常原样抛出：StructuredOutputInvoker 已加过「简历分析失败：」前缀，
+                // 此处再包一层会让用户看到「简历分析失败：简历分析失败：...」的重复前缀。
+                log.error("简历分析AI调用失败: {}", e.getMessage(), e);
+                throw e;
             } catch (Exception e) {
                 log.error("简历分析AI调用失败: {}", e.getMessage(), e);
                 throw new BusinessException(ErrorCode.RESUME_ANALYSIS_FAILED, "简历分析失败：" + e.getMessage());
             }
-            
+
             // 转换为业务对象
             ResumeAnalysisResponse result = convertToResponse(dto, resumeText);
             log.info("简历分析完成，总分: {}", result.overallScore());
-            
+
             return result;
-            
+
+        } catch (BusinessException e) {
+            // 同上：保留原异常，避免第三层重复前缀
+            log.error("简历分析失败: {}", e.getMessage(), e);
+            throw e;
         } catch (Exception e) {
             log.error("简历分析失败: {}", e.getMessage(), e);
             // 失败必须显式抛出，让 Stream 消费者走 markFailed，避免 0 分结果被当作成功入库

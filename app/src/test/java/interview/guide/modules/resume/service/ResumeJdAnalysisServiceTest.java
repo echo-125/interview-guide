@@ -114,4 +114,20 @@ class ResumeJdAnalysisServiceTest {
         .hasMessageContaining("JD 匹配分析失败")
         .hasMessageContaining("模型超时");
   }
+
+  @Test
+  @DisplayName("StructuredOutputInvoker 抛业务异常时不再叠加失败前缀")
+  void shouldNotDuplicatePrefixWhenInvokerThrowsBusinessException() {
+    when(llmProviderRegistry.getPlainChatClient("provider-1")).thenReturn(mock(ChatClient.class));
+    // Invoker 内部已拼好「JD 匹配分析失败：」前缀，Service 不得再包一层
+    when(structuredOutputInvoker.invoke(
+        any(ChatClient.class), anyString(), anyString(), any(), eq(ErrorCode.RESUME_JD_ANALYSIS_FAILED),
+        anyString(), anyString(), any(Logger.class)
+    )).thenThrow(new BusinessException(
+        ErrorCode.RESUME_JD_ANALYSIS_FAILED, "JD 匹配分析失败：400: field Temperature invalid"));
+
+    assertThatThrownBy(() -> service.analyze("简历文本", "JD 文本", "provider-1"))
+        .isInstanceOf(BusinessException.class)
+        .hasMessage("JD 匹配分析失败：400: field Temperature invalid");
+  }
 }
