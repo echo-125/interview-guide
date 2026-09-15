@@ -29,11 +29,18 @@ function loadScript(src: string): Promise<void> {
         resolve();
         return;
       }
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error(`脚本加载失败: ${src}`)), {
-        once: true,
-      });
-      return;
+      // 该节点若已加载失败，其网络生命周期已结束，再挂 load/error 监听永远不会触发，
+      // Promise 会永久 pending（表现为录音按钮一直转圈、无法重试）。
+      // 因此直接移除这个「死」节点，走下方逻辑重新注入。
+      if (existing.dataset.failed === 'true') {
+        existing.remove();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`脚本加载失败: ${src}`)), {
+          once: true,
+        });
+        return;
+      }
     }
 
     const script = document.createElement('script');
@@ -47,7 +54,16 @@ function loadScript(src: string): Promise<void> {
       },
       { once: true }
     );
-    script.addEventListener('error', () => reject(new Error(`脚本加载失败: ${src}`)), { once: true });
+    script.addEventListener(
+      'error',
+      () => {
+        // 标记并移除失败节点：既避免污染 DOM，也让下次重试能重新发起请求
+        script.dataset.failed = 'true';
+        script.remove();
+        reject(new Error(`脚本加载失败: ${src}`));
+      },
+      { once: true }
+    );
     document.head.appendChild(script);
   });
 }

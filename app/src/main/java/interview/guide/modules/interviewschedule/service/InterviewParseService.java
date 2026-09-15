@@ -115,7 +115,7 @@ public class InterviewParseService {
 
         // Step 2: Rule parsing failed, try AI parsing
         log.info("规则解析失败，尝试 AI 解析");
-        result = parseWithAI(rawText, source); // 使用source作为provider参数
+        result = parseWithAI(rawText);
         if (isValidResult(result)) {
             log.info("AI 解析成功");
             return new ParseResponse(true, result, 0.8, "ai", "AI 解析成功");
@@ -315,8 +315,13 @@ public class InterviewParseService {
     /**
      * 统一走 StructuredOutputInvoker（含重试与严格 JSON 指令），
      * 不再手写 ```json 提取与 Map 逐字段解析。
+     *
+     * <p>不接收 source（飞书/腾讯会议/Zoom 等来源平台）：那是文本格式线索，不是
+     * LLM Provider ID。历史上把它透传给 {@code getChatClientOrDefault} 会导致查不到
+     * 同名厂商而抛 PROVIDER_NOT_FOUND，AI 回退被 catch 吞掉后静默失效。
+     * 此处始终跟随系统默认 Provider。
      */
-    private CreateInterviewRequest parseWithAI(String rawText, String source) {
+    private CreateInterviewRequest parseWithAI(String rawText) {
         try {
             String currentDate = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
             String safeRawText = promptSanitizer.sanitize(rawText);
@@ -324,7 +329,7 @@ public class InterviewParseService {
                 PromptSecurityConstants.DATA_BOUNDARY_INSTRUCTION + "\n" +
                 promptSanitizer.wrapWithDelimiters("parse-input", safeRawText));
 
-            ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(source);
+            ChatClient chatClient = llmProviderRegistry.getPlainChatClient();
             BeanOutputConverter<ParsedInterviewDTO> outputConverter =
                 new BeanOutputConverter<>(ParsedInterviewDTO.class);
             String systemPrompt = PARSE_SYSTEM_PROMPT + "\n\n" + outputConverter.getFormat();

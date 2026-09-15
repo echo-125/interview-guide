@@ -136,6 +136,13 @@ public class VoiceEvaluateStreamConsumer extends AbstractStreamConsumer<VoiceEva
     protected void retryMessage(VoiceEvaluatePayload payload, int retryCount) {
         Long sessionId = payload.sessionId();
         try {
+            // 重投前必须把 DB 状态放回 FAILED：领取走 claimEvaluation 的 CAS，只接受
+            // PENDING/FAILED。若仍停留在 PROCESSING，重投的消息永远领取失败、既不处理
+            // 也不 ack，会被回收机制反复捞起形成死循环。
+            voiceInterviewService.updateEvaluateStatus(
+                    sessionId, AsyncTaskStatus.FAILED,
+                    truncateError("评估失败，准备第 " + retryCount + " 次重试"));
+
             Map<String, String> message = Map.of(
                 AsyncTaskStreamConstants.FIELD_VOICE_SESSION_ID, sessionId.toString(),
                 AsyncTaskStreamConstants.FIELD_RETRY_COUNT, String.valueOf(retryCount)

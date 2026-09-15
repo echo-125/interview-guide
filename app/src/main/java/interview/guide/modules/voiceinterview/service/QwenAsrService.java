@@ -203,7 +203,10 @@ public class QwenAsrService {
             Consumer<Throwable> onError) {
         synchronized (lockForSession(sessionId)) {
             log.info("[Session: {}] Restarting DashScope ASR (stop + start)", sessionId);
-            stopTranscription(sessionId);
+            // 复用当前锁对象完成 stop→start：若走 stopTranscription 会从 sessionLocks
+            // 移除本锁，并发线程随后 computeIfAbsent 出**新**锁对象并同时进入临界区，
+            // 导致同一 session 建立两个 WebSocket 会话。
+            stopTranscriptionInternal(sessionId, false);
             try {
                 Thread.sleep(200);
             } catch (InterruptedException e) {
@@ -395,11 +398,24 @@ public class QwenAsrService {
      * @param sessionId Session identifier
      */
     public void stopTranscription(String sessionId) {
+        stopTranscriptionInternal(sessionId, true);
+    }
+
+    /**
+     * 停止识别并关闭会话。
+     *
+     * @param removeLock 是否顺带移除会话锁。仅在「不再重启」的终态停止时为 true；
+     *                   重连场景必须传 false，否则锁对象被移除后并发线程会拿到新锁，
+     *                   两个线程将同时进入 startTranscriptionLocked。
+     */
+    private void stopTranscriptionInternal(String sessionId, boolean removeLock) {
         AsrSession session;
         synchronized (lockForSession(sessionId)) {
             session = sessions.remove(sessionId);
-            // Clean up the session lock to prevent memory leak
-            sessionLocks.remove(sessionId);
+            if (removeLock) {
+                // Clean up the session lock to prevent memory leak
+                sessionLocks.remove(sessionId);
+            }
         }
         if (session == null) {
             log.warn("[Session: {}] Attempted to stop non-existent session", sessionId);
