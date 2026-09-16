@@ -1,6 +1,7 @@
 package interview.guide.modules.resume;
 
 import interview.guide.common.annotation.RateLimit;
+import interview.guide.common.annotation.RateLimit.TimeUnit;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
@@ -169,8 +170,11 @@ public class ResumeController {
      * @return 重写结果
      */
     @PostMapping("/api/resumes/{id}/rewrite")
-    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 2)
-    @RateLimit(dimension = RateLimit.Dimension.IP, count = 2)
+    // 整篇重写是一次完整简历出入参的重量级 LLM 调用。
+    // 时间单位必须显式写 MINUTES：注解默认 SECONDS，写成 count=2 会变成「全局每秒 2 次」，
+    // 多用户同时使用时互相误伤。GLOBAL 用于保护下游模型容量，IP 用于限制单用户刷调用。
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 30, interval = 1, timeUnit = TimeUnit.MINUTES)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 5, interval = 1, timeUnit = TimeUnit.MINUTES)
     public Result<ResumeRewriteResponse> rewriteResume(
             @PathVariable Long id,
             @RequestParam(value = "llmProvider", required = false) String llmProvider) {

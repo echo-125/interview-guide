@@ -36,6 +36,13 @@ public class ResumeGradingService {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeGradingService.class);
 
+    /** 各维度满分，与 prompts/resume-analysis-system.st 的 Scoring Rubrics 一致，合计 100 */
+    private static final int MAX_PROJECT = 40;
+    private static final int MAX_SKILL_MATCH = 20;
+    private static final int MAX_CONTENT = 15;
+    private static final int MAX_STRUCTURE = 15;
+    private static final int MAX_EXPRESSION = 10;
+
     private final LlmProviderRegistry llmProviderRegistry;
     private final PromptTemplate systemPromptTemplate;
     private final PromptTemplate userPromptTemplate;
@@ -210,12 +217,14 @@ public class ResumeGradingService {
      * 转换DTO为业务对象（叠加 Java 侧确定性名词检查）
      */
     private ResumeAnalysisResponse convertToResponse(ResumeAnalysisResponseDTO dto, String originalText) {
+        // 各维度先按评分细则收敛到合法区间：模型偶发给出超范围分数时，
+        // 越界的分数会让后续「总分 vs 维度之和」的对账失去意义
         ScoreDetail scoreDetail = new ScoreDetail(
-            dto.scoreDetail().contentScore(),
-            dto.scoreDetail().structureScore(),
-            dto.scoreDetail().skillMatchScore(),
-            dto.scoreDetail().expressionScore(),
-            dto.scoreDetail().projectScore()
+            clamp(dto.scoreDetail().contentScore(), MAX_CONTENT),
+            clamp(dto.scoreDetail().structureScore(), MAX_STRUCTURE),
+            clamp(dto.scoreDetail().skillMatchScore(), MAX_SKILL_MATCH),
+            clamp(dto.scoreDetail().expressionScore(), MAX_EXPRESSION),
+            clamp(dto.scoreDetail().projectScore(), MAX_PROJECT)
         );
 
         List<Suggestion> suggestions = dto.suggestions().stream()
@@ -230,16 +239,7 @@ public class ResumeGradingService {
         List<TermIssue> termIssues = termChecker.check(originalText);
 
         List<DimensionExplanation> dimensionExplanations =
-            dto.dimensionExplanations() == null ? List.of() : dto.dimensionExplanations().stream()
-                .map(d -> new DimensionExplanation(d.dimension(),
-                    d.score() == null ? 0 : d.score(),
-                    d.maxScore() == null ? 0 : d.maxScore(),
-                    d.impactOnTotal() == null ? 0 : d.impactOnTotal(),
-                    d.explanation(),
-                    d.evidences() == null ? List.of() : d.evidences().stream()
-                        .map(e -> new Evidence(e.item(), e.status(), e.note()))
-                        .toList()))
-                .toList();
+            reconcileDimensionExplanations(dto.dimensionExplanations(), scoreDetail);
 
         List<TopAction> topActions = dto.topActions() == null ? List.of() : dto.topActions().stream()
             .map(t -> new TopAction(t.rank() == null ? 0 : t.rank(), t.title(),
@@ -251,7 +251,7 @@ public class ResumeGradingService {
                 dto.recruiterView().concerns() == null ? List.of() : dto.recruiterView().concerns());
 
         return new ResumeAnalysisResponse(
-            dto.overallScore(),
+            reconcileOverallScore(dto.overallScore(), scoreDetail),
             scoreDetail,
             dto.summary(),
             dto.strengths(),
@@ -265,6 +265,83 @@ public class ResumeGradingService {
             recruiterView,
             originalText
         );
+    }
+
+    /**
+     * 以评分细则（scoreDetail）为准校正总分。
+     *
+     * 维度满分合计正好 100，总分本应等于维度之和。但 overallScore 与五个维度分是模型
+     * 分别输出的，模型自相矛盾的情况并不罕见；一旦不一致，页面顶部的总分与「优化后
+     * 评分」面板（按维度之和计算）会出现两个不同的当前分。细则是对账的权威来源。
+     */
+    private int reconcileOverallScore(int reported, ScoreDetail scoreDetail) {
+        int sum = scoreDetail.contentScore() + scoreDetail.structureScore()
+            + scoreDetail.skillMatchScore() + scoreDetail.expressionScore()
+            + scoreDetail.projectScore();
+        if (reported != sum) {
+            log.warn("AI 返回总分 {} 与维度之和 {} 不一致，以维度之和为准", reported, sum);
+        }
+        return clamp(sum, 100);
+    }
+
+    /**
+     * 以评分细则为准校正维度解释中的 score / maxScore / impactOnTotal。
+     *
+     * Prompt 只是"要求"模型让二者一致，没有强制力。解释是对细则的说明而非独立事实，
+     * 因此这里用细则覆盖解释，保证 impactOnTotal 恒等于「满分 − 得分」。
+     * 无法识别的维度（模型输出了细则之外的 dimension）原样保留，不凭空造分。
+     */
+    private List<DimensionExplanation> reconcileDimensionExplanations(
+        List<DimensionExplanationDTO> raw, ScoreDetail scoreDetail) {
+        if (raw == null) {
+            return List.of();
+        }
+        return raw.stream()
+            .map(d -> {
+                List<Evidence> evidences = d.evidences() == null ? List.of() : d.evidences().stream()
+                    .map(e -> new Evidence(e.item(), e.status(), e.note()))
+                    .toList();
+
+                int maxScore = maxScoreOf(d.dimension());
+                if (maxScore <= 0) {
+                    return new DimensionExplanation(d.dimension(),
+                        d.score() == null ? 0 : d.score(),
+                        d.maxScore() == null ? 0 : d.maxScore(),
+                        d.impactOnTotal() == null ? 0 : d.impactOnTotal(),
+                        d.explanation(), evidences);
+                }
+
+                int score = scoreOf(d.dimension(), scoreDetail);
+                return new DimensionExplanation(d.dimension(), score, maxScore,
+                    maxScore - score, d.explanation(), evidences);
+            })
+            .toList();
+    }
+
+    private static int maxScoreOf(String dimension) {
+        return switch (dimension == null ? "" : dimension) {
+            case "project" -> MAX_PROJECT;
+            case "skillMatch" -> MAX_SKILL_MATCH;
+            case "content" -> MAX_CONTENT;
+            case "structure" -> MAX_STRUCTURE;
+            case "expression" -> MAX_EXPRESSION;
+            default -> 0;
+        };
+    }
+
+    private static int scoreOf(String dimension, ScoreDetail scoreDetail) {
+        return switch (dimension == null ? "" : dimension) {
+            case "project" -> scoreDetail.projectScore();
+            case "skillMatch" -> scoreDetail.skillMatchScore();
+            case "content" -> scoreDetail.contentScore();
+            case "structure" -> scoreDetail.structureScore();
+            case "expression" -> scoreDetail.expressionScore();
+            default -> 0;
+        };
+    }
+
+    private static int clamp(int value, int max) {
+        return Math.max(0, Math.min(value, max));
     }
 
     /**
