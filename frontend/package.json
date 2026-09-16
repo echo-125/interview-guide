@@ -12,7 +12,8 @@
     "test:question-generation": "node --test src/pages/questionGenerationStatus.test.ts",
     "test:interview-capacity": "node --test src/components/knowledgebaseInterview/interviewCapacity.test.ts",
     "test:interview-entry": "node --test src/pages/interviewEntry.test.ts",
-    "test:vad-loader": "node --test src/utils/vadLoader.test.ts"
+    "test:vad-loader": "node --test src/utils/vadLoader.test.ts",
+    "test:resume-optimization": "node --test src/utils/diff.test.ts src/utils/rewriteApply.test.ts src/utils/rescore.test.ts src/utils/improvements.test.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
