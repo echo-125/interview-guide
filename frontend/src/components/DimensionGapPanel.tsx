@@ -78,6 +78,7 @@ export default function DimensionGapPanel({
                     return next;
                   })
                 }
+                aria-expanded={hasDetail ? isOpen : undefined}
                 className="w-full px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3 mb-2">

@@ -8,11 +8,35 @@
  * 全部内容都是对后端既有输出的重组与归因。
  */
 
-import type {
-  EvidenceLevel,
-  Improvement,
-  ScoreDimension,
-} from '../types/optimization';
+import {
+  DIMENSION_META,
+  DIMENSION_SCORE_FIELD,
+  type EvidenceLevel,
+  type Improvement,
+  type ScoreDimension,
+} from '../types/optimization.ts';
+import type { BulletAudit, Suggestion, TopAction } from '../types/resume.ts';
+
+/**
+ * 分析结果的宽松视图。
+ *
+ * 后端字段可能缺失或类型漂移（历史数据没有新字段、模型偶尔漏字段），
+ * 因此字段一律按可选处理；但不允许 any —— 用具体类型 + 逐字段收窄，
+ * 强制读取处显式处理「缺失」这种情况。
+ */
+export interface AnalysisLike {
+  id?: number;
+  analyzedAt?: string;
+  overallScore?: number;
+  topActions?: Array<Partial<TopAction>> | null;
+  bulletAudits?: Array<Partial<BulletAudit>> | null;
+  suggestions?: Array<Partial<Suggestion>> | null;
+  projectScore?: number;
+  skillMatchScore?: number;
+  contentScore?: number;
+  structureScore?: number;
+  expressionScore?: number;
+}
 
 /** 已确认/推测/缺失 → 统一证据等级 */
 export function toEvidenceLevel(status?: string | null): EvidenceLevel {
@@ -84,44 +108,90 @@ function toReasons(problems: string[], fallback: string[]): string[] {
 }
 
 /**
+ * 单次优化最多填补某维度缺口的比例。
+ *
+ * 「高」优先级影响面更大，估算也更高；但三者都远小于 1 ——
+ * 一次改写不可能彻底解决一个维度的所有问题。
+ */
+const GAIN_RATIO_BY_PRIORITY: Record<Improvement['priority'], number> = {
+  高: 0.2,
+  中: 0.15,
+  低: 0.1,
+};
+const DEFAULT_GAIN_RATIO = 0.15;
+
+/**
+ * 按维度剩余缺口估算增益。
+ *
+ * 之前 bulletAudit 固定给 2、suggestion 按优先级给 3/2/1，与「这个维度还剩多少空间」
+ * 完全无关：一个已经 39/40 的项目维度，改一句文案不可能再涨 2 分。
+ * 这里改为按剩余缺口比例估算，与重评分引擎同口径，也不会给出超出满分空间的数字。
+ *
+ * 维度分缺失时退回 1 分（保守），而不是编一个看上去精确的值。
+ */
+export function estimateDimensionGain(
+  analysis: AnalysisLike | null | undefined,
+  dimension: ScoreDimension,
+  ratio: number = DEFAULT_GAIN_RATIO
+): number {
+  if (!analysis) return 1;
+
+  const raw = analysis[DIMENSION_SCORE_FIELD[dimension] as keyof AnalysisLike];
+  const score = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(score)) return 1;
+
+  const remaining = Math.max(0, DIMENSION_META[dimension].maxScore - score);
+  if (remaining <= 0) return 0;
+
+  const estimated = Math.round(remaining * ratio);
+  return Math.min(remaining, Math.max(1, estimated));
+}
+
+/**
  * 构建优化项列表
  *
  * 排序策略：topActions 优先（后端已按收益排序），
  * 其后是带 quote→rewrite 对的 bulletAudits 与 suggestions（可直接应用改写的项）。
  */
-export function buildImprovements(analysis: any): Improvement[] {
+export function buildImprovements(analysis: AnalysisLike | null | undefined): Improvement[] {
   if (!analysis) return [];
 
   const improvements: Improvement[] = [];
   const seenQuotes = new Set<string>();
 
   // 1. Top3 优先行动：保留后端排好的收益顺序
-  (analysis.topActions || []).forEach((action: any, index: number) => {
+  (analysis.topActions || []).forEach((action, index) => {
     const quote = typeof action.relatedQuote === 'string' ? action.relatedQuote.trim() : '';
     if (quote) seenQuotes.add(quote);
+
+    const dimension = matchDimension(
+      `${action.title || ''}${action.reason || ''}`,
+      CATEGORY_DIMENSION_RULES
+    );
 
     improvements.push({
       id: `top-${index}`,
       title: action.title || '优化建议',
       priority: '高',
-      estimatedGain: Number(action.estimatedGain) || 0,
+      // 后端 topAction 自带 AI 估算的 estimatedGain，缺失时才退回按维度缺口估算
+      estimatedGain: Number(action.estimatedGain) > 0
+        ? Number(action.estimatedGain)
+        : estimateDimensionGain(analysis, dimension, GAIN_RATIO_BY_PRIORITY.高),
       currentProblem: action.reason || '',
       suggestion: action.reason || '',
-      evidenceLevel: 'insufficient',
+      // relatedQuote 就是简历原句，有原句即说明这条结论有据可查
+      evidenceLevel: quote ? 'confirmed' : 'insufficient',
       originalText: quote,
       suggestedText: '',
       reasons: [],
       source: 'topAction',
-      dimension: matchDimension(
-        `${action.title || ''}${action.reason || ''}`,
-        CATEGORY_DIMENSION_RULES
-      ),
+      dimension,
       rank: action.rank || index + 1,
     });
   });
 
   // 2. 逐条体检：已有 AI 改写，直接可应用
-  (analysis.bulletAudits || []).forEach((audit: any, index: number) => {
+  (analysis.bulletAudits || []).forEach((audit, index) => {
     const quote = typeof audit.quote === 'string' ? audit.quote.trim() : '';
     const rewrite = typeof audit.rewrite === 'string' ? audit.rewrite.trim() : '';
     if (!quote || !rewrite) return;
@@ -129,12 +199,13 @@ export function buildImprovements(analysis: any): Improvement[] {
     seenQuotes.add(quote);
 
     const problems: string[] = Array.isArray(audit.problems) ? audit.problems : [];
+    const dimension = inferDimensionFromProblems(problems);
+
     improvements.push({
       id: `bullet-${index}`,
       title: problems[0] ? `修正：${problems[0]}` : '优化经历描述',
       priority: '中',
-      // 逐条体检本身不携带 estimatedGain，按维度缺口给保守估算
-      estimatedGain: 2,
+      estimatedGain: estimateDimensionGain(analysis, dimension, DEFAULT_GAIN_RATIO),
       currentProblem: problems.length > 0 ? problems.join('、') : '描述表达可进一步优化',
       suggestion: '基于原文真实背景改写，补充技术方案与结果表达',
       evidenceLevel: 'confirmed',
@@ -142,23 +213,33 @@ export function buildImprovements(analysis: any): Improvement[] {
       suggestedText: rewrite,
       reasons: toReasons(problems, ['保留原文真实背景', '强化结果表达']),
       source: 'bulletAudit',
-      dimension: inferDimensionFromProblems(problems),
+      dimension,
     });
   });
 
   // 3. 改进建议：仅取带 quote→rewrite 的项（可确定性应用）
-  (analysis.suggestions || []).forEach((sug: any, index: number) => {
+  (analysis.suggestions || []).forEach((sug, index) => {
     const quote = typeof sug.quote === 'string' ? sug.quote.trim() : '';
     const rewrite = typeof sug.rewrite === 'string' ? sug.rewrite.trim() : '';
     if (!quote || !rewrite) return;
     if (seenQuotes.has(quote)) return;
     seenQuotes.add(quote);
 
+    const priority = (sug.priority as Improvement['priority']) || '中';
+    const dimension = matchDimension(
+      `${sug.category || ''}${sug.issue || ''}`,
+      CATEGORY_DIMENSION_RULES
+    );
+
     improvements.push({
       id: `suggestion-${index}`,
       title: sug.issue || '优化建议',
-      priority: (sug.priority as Improvement['priority']) || '中',
-      estimatedGain: sug.priority === '高' ? 3 : sug.priority === '中' ? 2 : 1,
+      priority,
+      estimatedGain: estimateDimensionGain(
+        analysis,
+        dimension,
+        GAIN_RATIO_BY_PRIORITY[priority] ?? DEFAULT_GAIN_RATIO
+      ),
       currentProblem: sug.impact || sug.issue || '',
       suggestion: sug.recommendation || '',
       evidenceLevel: 'confirmed',
@@ -166,10 +247,7 @@ export function buildImprovements(analysis: any): Improvement[] {
       suggestedText: rewrite,
       reasons: ['保留原文真实背景', '强化岗位相关性'],
       source: 'suggestion',
-      dimension: matchDimension(
-        `${sug.category || ''}${sug.issue || ''}`,
-        CATEGORY_DIMENSION_RULES
-      ),
+      dimension,
     });
   });
 
@@ -185,13 +263,13 @@ export function buildImprovements(analysis: any): Improvement[] {
  */
 export function attachExistingRewrites(
   improvements: Improvement[],
-  analysis: any
+  analysis: AnalysisLike | null | undefined
 ): Improvement[] {
   if (!analysis) return improvements;
 
   const rewriteByQuote = new Map<string, { rewrite: string; reasons: string[] }>();
 
-  (analysis.bulletAudits || []).forEach((audit: any) => {
+  (analysis.bulletAudits || []).forEach(audit => {
     const quote = typeof audit?.quote === 'string' ? audit.quote.trim() : '';
     const rewrite = typeof audit?.rewrite === 'string' ? audit.rewrite.trim() : '';
     if (quote && rewrite && !rewriteByQuote.has(quote)) {
@@ -200,7 +278,7 @@ export function attachExistingRewrites(
     }
   });
 
-  (analysis.suggestions || []).forEach((sug: any) => {
+  (analysis.suggestions || []).forEach(sug => {
     const quote = typeof sug?.quote === 'string' ? sug.quote.trim() : '';
     const rewrite = typeof sug?.rewrite === 'string' ? sug.rewrite.trim() : '';
     if (quote && rewrite && !rewriteByQuote.has(quote)) {

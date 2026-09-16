@@ -140,6 +140,7 @@ export default function ImprovementCard({
               <>
                 <button
                   onClick={() => setExpanded(!expanded)}
+                  aria-expanded={expanded}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/60 transition-colors flex items-center gap-1.5"
                 >
                   {expanded ? '收起修改' : '查看修改'}

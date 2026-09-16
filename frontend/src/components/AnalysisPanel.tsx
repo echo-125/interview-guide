@@ -12,12 +12,14 @@ import RescorePanel from './RescorePanel';
 import DiffView from './DiffView';
 import RecruiterViewCard from './RecruiterViewCard';
 import { useResumeOptimization } from '../hooks/useResumeOptimization';
-import type { AnalyzeStatus } from '../api/history';
+import { localRescoreEngine } from '../utils/rescore';
+import { DIMENSION_META, type ScoreDimension } from '../types/optimization';
+import type { AnalysisItem, AnalyzeStatus } from '../api/history';
+import type { Suggestion } from '../types/resume';
 import type { RewritePair } from '../utils/rewriteApply';
-import type { ScoreDimension } from '../types/optimization';
 
 interface AnalysisPanelProps {
-  analysis: any;
+  analysis: AnalysisItem | null;
   analyzeStatus?: AnalyzeStatus;
   analyzeError?: string;
   onExport: () => void;
@@ -98,12 +100,12 @@ export default function AnalysisPanel({
     const details: Partial<Record<ScoreDimension, string[]>> = {};
     const caps: CapabilityGap[] = [];
 
-    (analysis?.dimensionExplanations || []).forEach((dim: any) => {
+    (analysis?.dimensionExplanations || []).forEach(dim => {
       const key = dim.dimension as ScoreDimension;
       if (dim.explanation) gaps[key] = dim.explanation.replace(/[。.]$/, '');
 
       const evidences: string[] = [];
-      (dim.evidences || []).forEach((ev: any) => {
+      (dim.evidences || []).forEach(ev => {
         // 只把「未确认」的证据作为具体缺口列出
         if (ev.status !== '已确认') {
           evidences.push(ev.item + (ev.note ? `（${ev.note}）` : ''));
@@ -111,7 +113,9 @@ export default function AnalysisPanel({
             name: ev.item,
             current: ev.status === '缺失' ? '未发现' : '证据不足',
             level: ev.status === '缺失' ? 'missing' : 'insufficient',
-            importance: dim.maxScore >= 20 ? '高' : '中',
+            // 维度满分代表该维度在总分中的权重：满分越低，这条缺口对总分影响越小。
+            // 三档都要可达 —— 之前写死 >=20?'高':'中'，「低」永远不可能出现。
+            importance: dim.maxScore >= 20 ? '高' : dim.maxScore >= 15 ? '中' : '低',
           });
         }
       });
@@ -121,13 +125,13 @@ export default function AnalysisPanel({
     return { gapByDimension: gaps, detailsByDimension: details, capabilityGaps: caps };
   }, [analysis]);
 
-  // 最大影响因素：缺口最大的维度标签
+  // 最大影响因素：缺口最大的维度标签。
+  // 满分取自 DIMENSION_META，避免把「40 / 20 / 15 / 10」这套评分细则散落在组件里
   const impactFactors = useMemo(() => {
     return (Object.entries(dimensionScores) as [ScoreDimension, number][])
       .map(([dim, s]) => ({
-        label: ({ project: '项目经验', skillMatch: '技能匹配', content: '内容完整性',
-          structure: '结构清晰度', expression: '表达专业性' } as Record<ScoreDimension, string>)[dim],
-        gap: (dim === 'project' ? 40 : dim === 'skillMatch' ? 20 : dim === 'expression' ? 10 : 15) - s,
+        label: DIMENSION_META[dim].label,
+        gap: DIMENSION_META[dim].maxScore - s,
       }))
       .filter(d => d.gap > 0)
       .sort((a, b) => b.gap - a.gap)
@@ -136,20 +140,29 @@ export default function AnalysisPanel({
   }, [dimensionScores]);
 
   const suggestionsByPriority = useMemo(() => ({
-    high: suggestions.filter((s: any) => s.priority === '高'),
-    medium: suggestions.filter((s: any) => s.priority === '中'),
-    low: suggestions.filter((s: any) => s.priority === '低'),
+    high: suggestions.filter(s => s.priority === '高'),
+    medium: suggestions.filter(s => s.priority === '中'),
+    low: suggestions.filter(s => s.priority === '低'),
   }), [suggestions]);
 
   const hasRewrites = items.some(item => item.originalText && item.suggestedText);
 
-  // 预计提升区间：基于 Top3 的估算增益（保守 −20% 下限，不制造虚假精确值）
+  // 预计提升区间：把 Top3 全部采用后的得分交给重评分引擎投影。
+  //
+  // 不能直接累加 estimatedGain：那会给出「改 3 条从 73 变 95」这种
+  // 超过维度剩余空间的承诺。引擎会按「剩余缺口 × 75%」收敛，
+  // 上限取投影值、下限再打 8 折，与 OptimizationSummary 上的文案口径一致。
+  const projection = useMemo(() => {
+    if (topItems.length === 0) return null;
+    return localRescoreEngine.project({ analysis, applied: topItems });
+  }, [topItems, analysis]);
+
   const potentialRange = useMemo<[number, number] | null>(() => {
-    const totalGain = topItems.reduce((sum, item) => sum + Math.max(0, item.estimatedGain), 0);
-    if (totalGain <= 0) return null;
-    const low = Math.round(totalGain * 0.8);
-    return [Math.min(100, score + low), Math.min(100, score + totalGain)];
-  }, [topItems, score]);
+    if (!projection || projection.totalDelta <= 0) return null;
+    const low = Math.min(100, score + Math.round(projection.totalDelta * 0.8));
+    const high = Math.min(100, Math.max(low, projection.afterTotal));
+    return [low, high];
+  }, [projection, score]);
 
   // 区间依据：把参与估算的条目摊开，让「73~77」这个数字可追溯，
   // 而不是一个没有来源的承诺
@@ -169,10 +182,14 @@ export default function AnalysisPanel({
     analysis.summary.includes('Remote host terminated') ||
     analysis.summary.includes('handshake')
   );
-  const isAnalysisValid = analysis &&
-    analysis.overallScore >= 10 &&
-    analysis.summary &&
-    !hasErrorKeywords;
+  // 有效性判据只看「数据是否完整」。
+  // 之前用 overallScore >= 10 兜底，会把真实的极低分简历（<10 分）误判为分析失败；
+  // 分数低是结论，不是故障。
+  const isAnalysisValid = !!analysis
+    && typeof analysis.overallScore === 'number'
+    && Number.isFinite(analysis.overallScore)
+    && !!analysis.summary
+    && !hasErrorKeywords;
 
   // 分析中状态
   const isProcessing = analyzeStatus === 'PENDING' ||
@@ -206,7 +223,9 @@ export default function AnalysisPanel({
     );
   }
 
-  if (analyzeStatus === 'FAILED' || !isAnalysisValid) {
+  // ⚠️ 这里必须显式判空并返回：AnalysisPanel 的 props 是 AnalysisItem | null，
+  // 只有走到这一步之后，TS 才能把 analysis 收窄为非空，后续 JSX 里才可以直接取字段。
+  if (!analysis || analyzeStatus === 'FAILED' || !isAnalysisValid) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center">
         <div className="w-16 h-16 mx-auto mb-6 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center">
@@ -216,7 +235,7 @@ export default function AnalysisPanel({
         <p className="text-slate-500 dark:text-slate-400 mb-4">AI 服务暂时不可用，请稍后重试</p>
         {(analyzeError || analysis?.summary) && (
           <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-left mb-4">
-            <p className="text-sm text-red-600 dark:text-red-400">{analyzeError || analysis.summary}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{analyzeError || analysis?.summary}</p>
           </div>
         )}
         {onReanalyze && (
@@ -247,6 +266,7 @@ export default function AnalysisPanel({
         score={score}
         potentialRange={potentialRange}
         rangeBasis={rangeBasis}
+        cappedGain={projection?.cappedGain ?? 0}
         headline={analysis.headline || ''}
         summary={analysis.summary || ''}
         impactFactors={impactFactors}
@@ -356,6 +376,7 @@ export default function AnalysisPanel({
       >
         <button
           onClick={() => setShowDeepDive(!showDeepDive)}
+          aria-expanded={showDeepDive}
           className="w-full flex items-center gap-2 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
         >
           <ListChecks className="w-5 h-5 text-slate-400" />
@@ -408,7 +429,7 @@ export default function AnalysisPanel({
                     </div>
                     {bulletAudits
                       .slice(0, showAllAudits ? bulletAudits.length : AUDIT_PREVIEW_LIMIT)
-                      .map((b: any, i: number) => (
+                      .map((b, i) => (
                         <div
                           key={i}
                           className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/60 dark:bg-slate-900/30"
@@ -438,6 +459,7 @@ export default function AnalysisPanel({
                     {bulletAudits.length > AUDIT_PREVIEW_LIMIT && (
                       <button
                         onClick={() => setShowAllAudits(!showAllAudits)}
+                        aria-expanded={showAllAudits}
                         className="w-full py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
                         <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllAudits ? 'rotate-180' : ''}`} />
@@ -460,7 +482,7 @@ export default function AnalysisPanel({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {analysis.termIssues
                         .slice(0, showAllTerms ? analysis.termIssues.length : TERM_PREVIEW_LIMIT)
-                        .map((t: any, i: number) => (
+                        .map((t, i) => (
                           <div
                             key={i}
                             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700"
@@ -482,6 +504,7 @@ export default function AnalysisPanel({
                     {analysis.termIssues.length > TERM_PREVIEW_LIMIT && (
                       <button
                         onClick={() => setShowAllTerms(!showAllTerms)}
+                        aria-expanded={showAllTerms}
                         className="w-full mt-2 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
                         <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllTerms ? 'rotate-180' : ''}`} />
@@ -510,8 +533,8 @@ function IssuesSection({
   suggestionsByPriority,
   onApplySingle,
 }: {
-  suggestions: any[];
-  suggestionsByPriority: { high: any[]; medium: any[]; low: any[] };
+  suggestions: Suggestion[];
+  suggestionsByPriority: Record<'high' | 'medium' | 'low', Suggestion[]>;
   onApplySingle?: (quote: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -522,6 +545,7 @@ function IssuesSection({
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
         className="w-full flex items-center gap-2 text-slate-500 dark:text-slate-400 mb-2"
       >
         <AlertCircle className="w-5 h-5" />
@@ -564,7 +588,7 @@ function SuggestionGroup({
   onApplySingle,
 }: {
   priority: '高' | '中' | '低';
-  suggestions: any[];
+  suggestions: Suggestion[];
   onApplySingle?: (quote: string) => void;
 }) {
   return (
@@ -573,7 +597,13 @@ function SuggestionGroup({
         {priority}优先级（{suggestions.length}）
       </p>
       <div className="space-y-2">
-        {suggestions.map((s: any, i: number) => (
+        {suggestions.map((s, i) => {
+          // 提前收窄为 string：JSX 里的 && 短路不会缩小类型，
+          // 直接用 s.quote 传给回调会因为「可能是 undefined」过不了类型检查
+          const quote = s.quote ?? '';
+          const rewrite = s.rewrite ?? '';
+
+          return (
           <div
             key={i}
             className={`p-3 rounded-xl border ${PRIORITY_STYLES[priority]}`}
@@ -590,12 +620,12 @@ function SuggestionGroup({
                 {s.recommendation}
               </p>
             )}
-            {s.quote && s.rewrite && (
+            {quote && rewrite && (
               <div className="mt-2 space-y-2">
-                <DiffView before={s.quote} after={s.rewrite} />
+                <DiffView before={quote} after={rewrite} />
                 {onApplySingle && (
                   <button
-                    onClick={() => onApplySingle(s.quote)}
+                    onClick={() => onApplySingle(quote)}
                     className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white/80 dark:bg-slate-900/40 text-primary-600 dark:text-primary-300 border border-primary-200 dark:border-primary-800 hover:bg-primary-50 dark:hover:bg-primary-900/60 transition-colors"
                   >
                     应用此修改
@@ -604,7 +634,8 @@ function SuggestionGroup({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

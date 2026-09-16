@@ -14,7 +14,7 @@ import {
   type Improvement,
   type RescoreResult,
   type ScoreDimension,
-} from '../types/optimization';
+} from '../types/optimization.ts';
 
 /**
  * 单次优化最多填补某维度缺口的比例。
@@ -27,8 +27,12 @@ export const MAX_DIMENSION_FILL_RATIO = 0.75;
 
 /** 重新评分输入 */
 export interface RescoreInput {
-  /** 原始分析结果（用于取各维度当前得分） */
-  analysis: Record<string, unknown> | null;
+  /**
+   * 原始分析结果（用于取各维度当前得分）。
+   * 用 unknown 而非具体类型：调用方持有的是后端下发的分析结果，
+   * 这里只读几个已知字段，不该为其建立强耦合。
+   */
+  analysis: unknown;
   /** 已采用的优化项 */
   applied: Improvement[];
 }
@@ -45,21 +49,16 @@ export interface RescoreEngine {
   project(input: RescoreInput): RescoreResult;
 }
 
-/** 读取某维度当前得分，缺失按 0 处理 */
-function readDimensionScore(
-  analysis: Record<string, unknown> | null,
-  dimension: ScoreDimension
-): number {
-  if (!analysis) return 0;
-  const raw = analysis[DIMENSION_SCORE_FIELD[dimension]];
+/** 读取某维度当前得分，缺失或非数值按 0 处理 */
+function readDimensionScore(analysis: unknown, dimension: ScoreDimension): number {
+  if (!analysis || typeof analysis !== 'object') return 0;
+  const raw = (analysis as Record<string, unknown>)[DIMENSION_SCORE_FIELD[dimension]];
   const score = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(score) ? score : 0;
 }
 
 /** 构建维度快照（当前得分） */
-export function buildDimensionSnapshot(
-  analysis: Record<string, unknown> | null
-): DimensionSnapshot[] {
+export function buildDimensionSnapshot(analysis: unknown): DimensionSnapshot[] {
   return (Object.keys(DIMENSION_META) as ScoreDimension[]).map(dimension => ({
     dimension,
     label: DIMENSION_META[dimension].label,

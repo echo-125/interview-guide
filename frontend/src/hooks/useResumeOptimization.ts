@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   attachExistingRewrites,
   buildImprovements,
   buildPlaceholderRewrite,
+  type AnalysisLike,
 } from '../utils/improvements';
 import { localRescoreEngine } from '../utils/rescore';
 import type { RewritePair } from '../utils/rewriteApply';
@@ -16,7 +17,7 @@ const SOURCE_LABEL: Record<Improvement['source'], string> = {
 
 interface UseResumeOptimizationOptions {
   /** 原始分析结果（AnalysisItem） */
-  analysis: any;
+  analysis: AnalysisLike | null | undefined;
   /** 生成改写的异步实现；未传入时退化为本地占位方案 */
   generateRewrite?: (item: Improvement) => Promise<string>;
 }
@@ -72,6 +73,16 @@ export function useResumeOptimization({
   const [statusMap, setStatusMap] = useState<Record<string, ImprovementStatus>>({});
   const [rewriteMap, setRewriteMap] = useState<Record<string, string>>({});
   const [optimizingTop, setOptimizingTop] = useState(false);
+
+  // 换了一份分析结果就必须丢弃全部本地状态。
+  // 优化项 id 是按下标生成的（top-0 / bullet-1 …），新结果的同一个 id 很可能指向
+  // 完全不同的建议；沿用旧状态会让用户看到「已应用」却对不上内容，
+  // 分数与已应用项也会错位。
+  const analysisKey = useMemo(() => buildAnalysisKey(analysis), [analysis]);
+  useEffect(() => {
+    setStatusMap({});
+    setRewriteMap({});
+  }, [analysisKey]);
 
   const items = useMemo(() => {
     const base = buildImprovements(analysis);
@@ -202,4 +213,15 @@ export function useResumeOptimization({
     clearApplied,
     appliedPairs,
   };
+}
+
+/**
+ * 生成分析结果的身份标识。
+ *
+ * 只用 id + analyzedAt + 总分：这三个值足以区分「重新分析前后的两份结果」，
+ * 且都不依赖可能为空的新字段。
+ */
+function buildAnalysisKey(analysis: AnalysisLike | null | undefined): string {
+  if (!analysis) return '';
+  return `${String(analysis.id ?? '')}|${String(analysis.analyzedAt ?? '')}|${String(analysis.overallScore ?? '')}`;
 }

@@ -14,6 +14,8 @@ interface OptimizationSummaryProps {
   potentialRange: [number, number] | null;
   /** 区间依据：参与估算的条目（标题 + 单项预估提升） */
   rangeBasis?: Array<{ title: string; gain: number }>;
+  /** 因维度剩余空间不足而未计入的估算增益，>0 时明确提示，避免区间看起来偏保守得像 bug */
+  cappedGain?: number;
   /** 一句话结论 */
   headline: string;
   /** 一段话总结 */
@@ -40,6 +42,7 @@ export default function OptimizationSummary({
   score,
   potentialRange,
   rangeBasis = [],
+  cappedGain = 0,
   headline,
   summary,
   impactFactors,
@@ -130,6 +133,7 @@ export default function OptimizationSummary({
         <div className="mb-4">
           <button
             onClick={() => setBasisOpen(!basisOpen)}
+            aria-expanded={basisOpen}
             className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             <Info className="w-3.5 h-3.5" />
@@ -151,6 +155,11 @@ export default function OptimizationSummary({
               ))}
               <p className="text-xs text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-200 dark:border-slate-700">
                 下限按估算值的 8 折保守计，且不超过各维度剩余缺口
+                {cappedGain > 0 && (
+                  <>
+                    ；另有约 {cappedGain} 分因超出维度剩余空间未计入
+                  </>
+                )}
               </p>
             </div>
           )}
