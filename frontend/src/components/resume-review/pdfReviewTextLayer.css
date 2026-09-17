@@ -1,0 +1,53 @@
+/**
+ * PDF.js Text Layer 样式（与 pdf.js 官方 viewer 的 web/pdf_viewer.css 保持一致）
+ *
+ * 这段 CSS 是高亮能否与文字对齐的**决定性前提**：
+ *
+ * pdf.js 的 renderTextLayer 会给每个 <span> 设置 style.left / style.top / style.fontSize，
+ * 但这些内联样式只有在 span 处于 position:absolute 时才生效。
+ *
+ * 一旦缺少下面的 `.pdf-review-text-layer span { position: absolute; white-space: pre }`，
+ * span 会退化成普通行内文本流（自上而下依次换行排布），此时
+ * document.createRange().getClientRects() 返回的矩形描述的是「行内文本流里的位置」，
+ * 与 PDF 页面上的真实文字位置毫无关系 —— 表现就是「高亮框整体错位」。
+ *
+ * transform-origin 必须是 0% 0%：pdf.js 会用 scaleX() 对 span 做水平缩放来贴合字符宽度，
+ * 若原点不是左上角，缩放会围绕中心进行，导致矩形横向偏移。
+ */
+
+.pdf-review-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  text-align: initial;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  /* 文本层仅作为「真实文本节点 + 几何测量基底」，不参与鼠标交互，
+     避免遮挡上层高亮矩形的点击事件 */
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 关键规则：绝对定位 + 保留空白，否则 span 位置完全失真 */
+.pdf-review-text-layer span,
+.pdf-review-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+/*
+ * 诊断开关：把文本层文字显形（半透明蓝底 + 文字），
+ * 用于肉眼核对「文本层 span 是否与 Canvas 底图的文字像素重合」。
+ * 若开启后蓝色文字与原 PDF 文字严丝合缝 → 文本层坐标正确，高亮必然对齐。
+ */
+.pdf-review-text-layer--visible span {
+  color: rgba(37, 99, 235, 0.9);
+  background: rgba(59, 130, 246, 0.18);
+  outline: 1px solid rgba(37, 99, 235, 0.35);
+}

@@ -416,7 +416,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
                   rewriting={rewriting}
                 />
               ) : activeTab === 'preview' ? (
-                <ResumePreviewPanel resume={resume} />
+                <ResumePreviewPanel resume={resume} analysis={latestAnalysis} />
               ) : activeTab === 'jd' ? (
                 <JdMatchPanel resumeId={resumeId} />
               ) : (
