@@ -17,15 +17,21 @@ public class LlmProviderProperties {
     private Integer embeddingDimensions = 1024;
 
     /**
-     * OpenAI 兼容接口的兜底 max_tokens。
+     * 兜底 max_tokens（OpenAI 兼容与 Anthropic 共用）。
      *
      * Provider 未显式配置 maxTokens 时下发该值，避免服务端默认输出上限过小，
      * 导致结构化 JSON 被截断而触发反复重试。
      *
-     * 设为 0 或负数表示不兜底（完全沿用旧行为：不下发该字段），
-     * 便于在遇到「不接受 max_tokens 字段」的特殊服务端时快速回退。
+     * 取值 65536 是因为实测中 8192 会被撞满并截断（5 次调用全部 finishReason=LENGTH），
+     * 且部分模型存在不可见的推理 token 与输出共享该预算，需要留出更大余量。
+     *
+     * 调大的风险由 {@code MaxTokensDowngradeChatModel} 化解：小上限平台
+     * （如上限 4096）会以 400 拒绝该值，装饰器捕获后按阶梯降档并记住可用值。
+     *
+     * 设为 0 或负数表示不兜底（OpenAI 分支不下发该字段；
+     * Anthropic 分支因该字段必填而退回内置保守默认值）。
      */
-    private int fallbackMaxTokens = 8192;
+    private int fallbackMaxTokens = 65536;
 
     private Map<String, ProviderConfig> providers;
     private AdvisorConfig advisors = new AdvisorConfig();
@@ -74,5 +80,14 @@ public class LlmProviderProperties {
 
         // PromptSanitizer
         private boolean promptSanitizerEnabled = true;
+
+        /**
+         * LLM 原始响应诊断日志。
+         *
+         * 开启后会在模型调用内侧记录 finishReason / 输出长度 / token 用量 / 首尾片段，
+         * 用于排查「结构化输出失败但看不到模型返回了什么」的问题。
+         * 定位完成后建议关闭，避免生产日志体积膨胀。
+         */
+        private boolean responseDiagnosticsEnabled = true;
     }
 }

@@ -133,6 +133,10 @@ app:
     # 默认模型服务完全由用户在「设置 → 模型服务」中配置（落库 llm_global_setting），此处不再预设
     default-rerank-provider: ${APP_AI_DEFAULT_RERANK_PROVIDER:}
     embedding-dimensions: ${APP_AI_EMBEDDING_DIMENSIONS:1024}
+    # Provider 未显式配置 maxTokens 时的兜底值（OpenAI 兼容与 Anthropic 共用）。
+    # 取 65536 是为避免结构化输出被截断；小上限平台由自动降档机制兜住。
+    # 设为 0 或负数表示不兜底。
+    fallback-max-tokens: ${APP_AI_FALLBACK_MAX_TOKENS:65536}
     agent-utils:
       skills-root: ${APP_AI_AGENT_UTILS_SKILLS_ROOT:classpath:skills}
     advisors:
@@ -142,6 +146,10 @@ app:
       message-chat-memory-enabled: ${APP_AI_ADVISORS_MESSAGE_CHAT_MEMORY_ENABLED:false}
       message-chat-memory-max-messages: ${APP_AI_ADVISORS_MESSAGE_CHAT_MEMORY_MAX_MESSAGES:120}
       simple-logger-enabled: ${APP_AI_ADVISORS_SIMPLE_LOGGER_ENABLED:false}
+      # LLM 原始响应诊断日志：记录 finishReason / 输出长度 / token 用量 / 首尾片段。
+      # 用于排查结构化输出失败（空输出、JSON 截断）时「看不到模型返回了什么」的问题。
+      # 定位完成后建议关闭，避免生产日志体积膨胀。
+      response-diagnostics-enabled: ${APP_AI_ADVISORS_RESPONSE_DIAGNOSTICS_ENABLED:true}
     # 结构化输出重试次数（用于 BeanOutputConverter 解析失败时的业务层重试）
     structured-max-attempts: ${APP_AI_STRUCTURED_MAX_ATTEMPTS:2}
     # 重试时是否将上次错误原因注入提示词，帮助模型定向修复输出
@@ -156,6 +164,14 @@ app:
     structured-metrics-enabled: ${APP_AI_STRUCTURED_METRICS_ENABLED:true}
     # 是否启用 Spring AI 2.0 entity schema validation retry（失败时仍受 structured-max-attempts 外层控制）
     structured-schema-validation-enabled: ${APP_AI_STRUCTURED_SCHEMA_VALIDATION_ENABLED:true}
+    # 限流（429 tpm/rpm）退避：首次等待基数（毫秒）。限流不消耗 structured-max-attempts，
+    # 也不注入修复提示词，只退避等待后原样重发。设 0 表示不退避。
+    structured-rate-limit-base-backoff-millis: ${APP_AI_STRUCTURED_RATE_LIMIT_BASE_BACKOFF_MILLIS:60000}
+    # 限流退避等待上限（毫秒）。刻意压在 pending 回收阈值（300s）之下，
+    # 避免整个 processMessage 超时导致任务被其他消费者重复认领。
+    structured-rate-limit-max-backoff-millis: ${APP_AI_STRUCTURED_RATE_LIMIT_MAX_BACKOFF_MILLIS:90000}
+    # 限流退避重试最大次数。更长时间的等待交由外层 Stream 重投退避承担。
+    structured-rate-limit-max-retries: ${APP_AI_STRUCTURED_RATE_LIMIT_MAX_RETRIES:1}
     rag:
       rewrite:
         enabled: ${APP_AI_RAG_REWRITE_ENABLED:true}

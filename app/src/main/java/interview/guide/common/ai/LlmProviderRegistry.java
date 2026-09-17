@@ -255,7 +255,12 @@ public class LlmProviderRegistry {
     private ChatClient createPlainChatClient(String providerId) {
         ChatModel chatModel = getChatModel(providerId);
         ChatClient.Builder builder = ChatClient.builder(chatModel);
-        buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(List.of(advisor)));
+        List<Advisor> advisors = new ArrayList<>();
+        buildSafeGuardAdvisor().ifPresent(advisors::add);
+        buildResponseDiagnosticsAdvisor().ifPresent(advisors::add);
+        if (!advisors.isEmpty()) {
+            builder.defaultAdvisors(advisors);
+        }
         log.info("[LlmProviderRegistry] Created plain ChatClient (no tools) for {}", providerId);
         return builder.build();
     }
@@ -319,8 +324,16 @@ public class LlmProviderRegistry {
     }
 
     private ChatModel buildOpenAiChatModel(String providerId, ProviderSnapshot config) {
-        log.info("[LlmProviderRegistry] Building OpenAI ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
-                 providerId, config.baseUrl(), config.model());
+        // 未显式配置时兜底，避免服务端默认输出上限过小导致结构化 JSON 被截断
+        Integer effectiveMaxTokens =
+            resolveOpenAiMaxTokens(config.maxTokens(), properties.getFallbackMaxTokens());
+
+        // 打印实际下发的 maxTokens（null 表示不下发该字段）：
+        // 排查「输出被截断」时，必须能直接看到请求里到底带没带、带了多少，
+        // 否则只能靠猜测推断兜底是否生效。
+        log.info("[LlmProviderRegistry] Building OpenAI ChatModel - Provider: {}, BaseUrl: {}, Model: {}, maxTokens: {}",
+                 providerId, config.baseUrl(), config.model(),
+                 effectiveMaxTokens != null ? effectiveMaxTokens : "未下发");
 
         OpenAIClient openAiClient = ApiPathResolver.buildOpenAiClient(config.baseUrl(), config.apiKey());
 
@@ -332,9 +345,6 @@ public class LlmProviderRegistry {
         if (config.temperature() != null) {
             optionsBuilder.temperature(config.temperature());
         }
-        // 未显式配置时兜底，避免服务端默认输出上限过小导致结构化 JSON 被截断
-        Integer effectiveMaxTokens =
-            resolveOpenAiMaxTokens(config.maxTokens(), properties.getFallbackMaxTokens());
         if (effectiveMaxTokens != null) {
             optionsBuilder.maxTokens(effectiveMaxTokens);
         }
@@ -342,28 +352,53 @@ public class LlmProviderRegistry {
             optionsBuilder.topP(config.topP());
         }
 
-        return OpenAiChatModel.builder()
+        ChatModel chatModel = OpenAiChatModel.builder()
             .openAiClient(openAiClient)
             .openAiClientAsync(openAiClient.async())
             .options(optionsBuilder.build())
             .observationRegistry(observationRegistry != null ? observationRegistry : ObservationRegistry.NOOP)
             .build();
+
+        // 包一层降档装饰器：默认兜底值按大上限模型设定，小上限平台会以 400 拒绝，
+        // 由装饰器捕获后逐级下调并记住可用值，避免「调大默认值」反而让任务彻底失败。
+        return wrapWithMaxTokensDowngrade(chatModel, providerId, effectiveMaxTokens);
+    }
+
+    /**
+     * 按需包装 max_tokens 降档装饰器。
+     *
+     * 兜底值未下发（null，旧行为）时无需包装，避免引入无意义的调用层级。
+     */
+    private ChatModel wrapWithMaxTokensDowngrade(ChatModel chatModel, String providerId, Integer maxTokens) {
+        if (maxTokens == null) {
+            return chatModel;
+        }
+        return new MaxTokensDowngradeChatModel(chatModel, providerId, maxTokens);
     }
 
     private ChatModel buildAnthropicChatModel(String providerId, ProviderSnapshot config) {
         // Anthropic SDK 的 baseUrl 约定为根地址（SDK 自动补 /v1），兼容用户填入 OpenAI 风格带 /v1 的写法
         String baseUrl = ApiPathResolver.stripTrailingSlashes(config.baseUrl())
             .replaceAll("/v\\d+[a-zA-Z0-9]*$", "");
-        log.info("[LlmProviderRegistry] Building Anthropic ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
-                 providerId, baseUrl, config.model());
+
+        // Anthropic Messages API 强制要求 max_tokens（不能不下发），因此这里不能沿用
+        // OpenAI 分支「null 即不下发」的语义：未配置时先取兜底值，
+        // 兜底被关闭（非正数）时才退回内置的保守默认值。
+        Integer anthropicMaxTokens = resolveOpenAiMaxTokens(
+            config.maxTokens(), properties.getFallbackMaxTokens());
+        if (anthropicMaxTokens == null) {
+            anthropicMaxTokens = DEFAULT_ANTHROPIC_MAX_TOKENS;
+        }
+
+        log.info("[LlmProviderRegistry] Building Anthropic ChatModel - Provider: {}, BaseUrl: {}, Model: {}, maxTokens: {}",
+                 providerId, baseUrl, config.model(), anthropicMaxTokens);
 
         org.springframework.ai.anthropic.AnthropicChatOptions.Builder optionsBuilder =
             org.springframework.ai.anthropic.AnthropicChatOptions.builder()
                 .model(config.model())
                 .apiKey(config.apiKey())
                 .baseUrl(baseUrl)
-                // Anthropic Messages API 强制要求 max_tokens
-                .maxTokens(config.maxTokens() != null ? config.maxTokens() : DEFAULT_ANTHROPIC_MAX_TOKENS);
+                .maxTokens(anthropicMaxTokens);
         // 同 OpenAI 分支：temperature 未显式配置时不下发，避免被只接受固定值的模型拒绝
         if (config.temperature() != null) {
             optionsBuilder.temperature(config.temperature());
@@ -372,10 +407,13 @@ public class LlmProviderRegistry {
             optionsBuilder.topP(config.topP());
         }
 
-        return org.springframework.ai.anthropic.AnthropicChatModel.builder()
+        ChatModel chatModel = org.springframework.ai.anthropic.AnthropicChatModel.builder()
             .options(optionsBuilder.build())
             .observationRegistry(observationRegistry != null ? observationRegistry : ObservationRegistry.NOOP)
             .build();
+
+        // Anthropic 各模型输出上限差异同样很大，复用同一套降档机制
+        return wrapWithMaxTokensDowngrade(chatModel, providerId, anthropicMaxTokens);
     }
 
     private EmbeddingModel createEmbeddingModel(String providerId) {
@@ -463,6 +501,23 @@ public class LlmProviderRegistry {
             .order(100)
             .build();
         return Optional.of(advisor);
+    }
+
+    /**
+     * 构建 LLM 原始响应诊断 Advisor。
+     *
+     * order 取 {@link Integer#MAX_VALUE} - 50，夹在
+     * StructuredOutputValidationAdvisor（MAX - 100）与 ChatModelCallAdvisor（MAX）之间。
+     * Advisor 链按 order 升序排列，数值小的在外层，因此该位置能看到
+     * 「校验前」的每一次模型原始响应——包括 schema 校验失败触发的那几次重试，
+     * 而不会像校验 Advisor 外层那样只看到最终失败结果。
+     */
+    private Optional<Advisor> buildResponseDiagnosticsAdvisor() {
+        AdvisorConfig config = properties.getAdvisors();
+        if (config == null || !config.isResponseDiagnosticsEnabled()) {
+            return Optional.empty();
+        }
+        return Optional.of(new LlmResponseDiagnosticsAdvisor(Integer.MAX_VALUE - 50));
     }
 
     private String resolveProviderId(String providerId) {
