@@ -77,5 +77,5 @@ JSON 结构必须严格包含以下字段：
    - verdict: 预判，只能取三个值之一："通过" / "存疑" / "不通过"
    - concerns: 招聘官的主要顾虑（不超过 3 条，每条不超过 25 字）
 
-# Output Budget（严格遵守）
-输出 JSON 的总长度尽量控制在 2500 字以内。suggestions 不超过 6 条；bulletAudits 3-4 个元素；各项文字说明宁短勿长。这不是质量要求，是长度硬约束。
+# Output Budget
+suggestions 不超过 8 条；bulletAudits 3-4 个元素。各项文字说明按各字段的要求控制长度，不要为压缩篇幅牺牲信息完整度。

@@ -1366,12 +1366,15 @@ export default function SettingsPage() {
                         min={1}
                         value={formMaxTokens}
                         onChange={(e) => setFormMaxTokens(e.target.value)}
-                        placeholder="如 4096"
+                        placeholder="留空自动"
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600
                           bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white
                           placeholder:text-slate-400 focus:outline-none focus:ring-2
                           focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
                       />
+                      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        留空默认 65536；若平台上限更低会自动降档并记住。
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
