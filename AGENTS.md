@@ -30,6 +30,13 @@ cd frontend && pnpm run build
 docker compose -f docker-compose.dev.yml up -d
 ```
 
+## Branch Convention
+
+- **`main` 是主要开发分支**：日常开发、合并、推送都以 `main` 为目标分支。
+- **`master` 是原始分支，只做保留**：不要删除、不要合并、不要推送、不要切换过去改动它。
+- 提交前从 `main` 切出特性分支；合并回 `main` 时优先 `--ff-only` 快进，保持历史线性。
+- 特性分支合并完成后可删除（本地与远端），`master` 不在此列。
+
 ## Project Structure
 
 - `app/src/main/java/interview/guide/common/`: 通用能力，包括限流、AI 调用、异步模板、配置、异常、统一响应。
