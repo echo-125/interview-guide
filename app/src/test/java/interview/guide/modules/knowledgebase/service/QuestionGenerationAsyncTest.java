@@ -35,6 +35,7 @@ import org.redisson.api.stream.StreamMessageId;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.core.type.TypeReference;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
@@ -556,10 +557,22 @@ class QuestionGenerationAsyncTest {
       QuestionGenStreamConsumer consumer,
       Map<String, String> data
   ) throws Exception {
+    disableRetryBackoff(consumer);
     Method method = interview.guide.common.async.AbstractStreamConsumer.class
         .getDeclaredMethod("processMessage", StreamMessageId.class, Map.class);
     method.setAccessible(true);
     method.invoke(consumer, new StreamMessageId(1, 0), new HashMap<>(data));
+  }
+
+  /**
+   * 关闭重投退避：本用例会驱动失败路径，若保留默认退避会真实阻塞数十秒。
+   * 退避逻辑本身由 AbstractStreamConsumerTest 与 RetryBackoffTest 覆盖。
+   */
+  private void disableRetryBackoff(QuestionGenStreamConsumer consumer) throws Exception {
+    Field field = interview.guide.common.async.AbstractStreamConsumer.class
+        .getDeclaredField("retryBaseBackoffMillis");
+    field.setAccessible(true);
+    field.setLong(consumer, 0L);
   }
 
   private KnowledgeBaseQuestionRepository.CategoryCount categoryCount(

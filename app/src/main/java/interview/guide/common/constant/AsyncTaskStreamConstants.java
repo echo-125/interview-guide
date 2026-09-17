@@ -30,6 +30,20 @@ public final class AsyncTaskStreamConstants {
     public static final int MAX_RETRY_COUNT = 3;
 
     /**
+     * 任务失败重新入队前的首次退避基数（毫秒）。
+     *
+     * 上游失败多为 LLM 限流（429 tpm/rpm）这类「需要等待配额窗口恢复」的错误，
+     * 立即重投会让重试次数全部消耗在同一个窗口内（实测两次重投间隔仅 25ms）。
+     * 设为 0 表示不退避（保留旧行为：立即重投）。
+     */
+    public static final long RETRY_BASE_BACKOFF_MS = 30_000;
+
+    /**
+     * 任务重试退避上限（毫秒），防止指数增长到不可接受的时长。
+     */
+    public static final long RETRY_MAX_BACKOFF_MS = 120_000;
+
+    /**
      * 每次拉取的消息批次大小
      */
     public static final int BATCH_SIZE = 10;

@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.util.RetryBackoff;
 import org.slf4j.Logger;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
@@ -42,6 +43,9 @@ public class StructuredOutputInvoker {
     private final int errorMessageMaxLength;
     private final boolean metricsEnabled;
     private final boolean schemaValidationEnabled;
+    private final long rateLimitBaseBackoffMillis;
+    private final long rateLimitMaxBackoffMillis;
+    private final int rateLimitMaxRetries;
     private final MeterRegistry meterRegistry;
 
     public StructuredOutputInvoker(
@@ -55,6 +59,9 @@ public class StructuredOutputInvoker {
         this.errorMessageMaxLength = Math.max(20, properties.getStructuredErrorMessageMaxLength());
         this.metricsEnabled = properties.isStructuredMetricsEnabled();
         this.schemaValidationEnabled = properties.isStructuredSchemaValidationEnabled();
+        this.rateLimitBaseBackoffMillis = properties.getStructuredRateLimitBaseBackoffMillis();
+        this.rateLimitMaxBackoffMillis = properties.getStructuredRateLimitMaxBackoffMillis();
+        this.rateLimitMaxRetries = Math.max(0, properties.getStructuredRateLimitMaxRetries());
         this.meterRegistry = meterRegistry;
     }
 
@@ -73,7 +80,10 @@ public class StructuredOutputInvoker {
         String securedSystemPrompt = systemPromptWithFormat
             + PromptSecurityConstants.ANTI_INJECTION_INSTRUCTION;
         Exception lastError = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        int attempt = 1;
+        int rateLimitRetries = 0;
+
+        while (attempt <= maxAttempts) {
             String attemptSystemPrompt = attempt == 1
                 ? securedSystemPrompt
                 : buildRetrySystemPrompt(securedSystemPrompt, lastError);
@@ -86,6 +96,28 @@ public class StructuredOutputInvoker {
             } catch (Exception e) {
                 lastError = e;
                 recordAttempt(contextTag, STATUS_FAILURE);
+
+                if (AiErrorClassifier.isRateLimited(e)) {
+                    // 限流是服务端配额窗口未恢复，重发同一提示词才有意义：
+                    // 不消耗结构化重试额度、不注入修复提示词，改为退避等待后原样重试。
+                    if (rateLimitRetries >= rateLimitMaxRetries) {
+                        log.error("{}限流退避重试已达上限: rateLimitRetries={}, error={}",
+                            logContext, rateLimitRetries, e.getMessage());
+                        break;
+                    }
+                    rateLimitRetries++;
+                    long waitMillis = RetryBackoff.computeMillis(
+                        rateLimitRetries, rateLimitBaseBackoffMillis, rateLimitMaxBackoffMillis);
+                    log.warn("{}AI 服务限流，退避 {}ms 后重试: rateLimitRetry={}/{}, attempt={}/{}, error={}",
+                        logContext, waitMillis, rateLimitRetries, rateLimitMaxRetries,
+                        attempt, maxAttempts, e.getMessage());
+                    if (!sleepForBackoff(waitMillis, logContext, log)) {
+                        break;
+                    }
+                    // 不推进 attempt：限流重试不应挤占「输出格式修复」的额度
+                    continue;
+                }
+
                 if (attempt < maxAttempts) {
                     log.warn("{}结构化解析失败，准备重试: attempt={}/{}, error={}",
                         logContext, attempt, maxAttempts, e.getMessage());
@@ -93,6 +125,7 @@ public class StructuredOutputInvoker {
                     log.error("{}结构化解析失败，已达最大重试次数: attempts={}, error={}",
                         logContext, maxAttempts, e.getMessage());
                 }
+                attempt++;
             }
         }
 
@@ -101,6 +134,28 @@ public class StructuredOutputInvoker {
             errorCode,
             errorPrefix + (lastError != null ? lastError.getMessage() : "unknown")
         );
+    }
+
+    /**
+     * 退避等待。
+     *
+     * 抽成可覆写方法，便于单测注入「立即返回」的实现，避免测试真的睡满退避时长。
+     *
+     * @return true 表示等待完成；false 表示线程被中断，调用方应停止重试
+     */
+    boolean sleepForBackoff(long millis, String logContext, Logger log) {
+        if (millis <= 0) {
+            return true;
+        }
+        try {
+            Thread.sleep(millis);
+            return true;
+        } catch (InterruptedException e) {
+            // 恢复中断标志，交由上层决定是否终止，不静默吞掉
+            Thread.currentThread().interrupt();
+            log.warn("{}限流退避等待被中断，停止重试", logContext);
+            return false;
+        }
     }
 
     private <T> T callStructuredOutput(
