@@ -300,6 +300,24 @@ public class LlmProviderRegistry {
         return buildOpenAiChatModel(providerId, config);
     }
 
+    /**
+     * 解析 OpenAI 兼容接口最终要下发的 max_tokens。
+     *
+     * 为什么需要兜底：maxTokens 为空时旧实现会「完全不下发该字段」，由模型服务端决定输出上限。
+     * 但服务端默认值往往偏小，而简历分析这类结构化输出（bulletAudits + termIssues + suggestions）
+     * 动辄数千 token，一旦被截断就得到不完整 JSON，触发反复重试（实测单次分析近 10 分钟）。
+     *
+     * @param configured 用户在 Provider 配置里显式设置的 maxTokens，可为 null
+     * @param fallback   兜底值；非正数表示不兜底
+     * @return 要下发的值；null 表示不下发该字段
+     */
+    static Integer resolveOpenAiMaxTokens(Integer configured, int fallback) {
+        if (configured != null) {
+            return configured;
+        }
+        return fallback > 0 ? fallback : null;
+    }
+
     private ChatModel buildOpenAiChatModel(String providerId, ProviderSnapshot config) {
         log.info("[LlmProviderRegistry] Building OpenAI ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
                  providerId, config.baseUrl(), config.model());
@@ -314,8 +332,11 @@ public class LlmProviderRegistry {
         if (config.temperature() != null) {
             optionsBuilder.temperature(config.temperature());
         }
-        if (config.maxTokens() != null) {
-            optionsBuilder.maxTokens(config.maxTokens());
+        // 未显式配置时兜底，避免服务端默认输出上限过小导致结构化 JSON 被截断
+        Integer effectiveMaxTokens =
+            resolveOpenAiMaxTokens(config.maxTokens(), properties.getFallbackMaxTokens());
+        if (effectiveMaxTokens != null) {
+            optionsBuilder.maxTokens(effectiveMaxTokens);
         }
         if (config.topP() != null) {
             optionsBuilder.topP(config.topP());

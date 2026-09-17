@@ -15,6 +15,18 @@ public class LlmProviderProperties {
     private String defaultEmbeddingProvider;
     private String defaultRerankProvider;
     private Integer embeddingDimensions = 1024;
+
+    /**
+     * OpenAI 兼容接口的兜底 max_tokens。
+     *
+     * Provider 未显式配置 maxTokens 时下发该值，避免服务端默认输出上限过小，
+     * 导致结构化 JSON 被截断而触发反复重试。
+     *
+     * 设为 0 或负数表示不兜底（完全沿用旧行为：不下发该字段），
+     * 便于在遇到「不接受 max_tokens 字段」的特殊服务端时快速回退。
+     */
+    private int fallbackMaxTokens = 8192;
+
     private Map<String, ProviderConfig> providers;
     private AdvisorConfig advisors = new AdvisorConfig();
 

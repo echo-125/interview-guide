@@ -332,4 +332,34 @@ class LlmProviderRegistryTest {
         // 占位测试：等 ProviderConfig 补齐 enabled 字段 + Registry 实现禁用分支后恢复断言。
         // 不写任何 mock，避免 Mockito 严格模式把占位记为异常失败。
     }
+
+    @Nested
+    @DisplayName("OpenAI max_tokens 兜底决策")
+    class ResolveOpenAiMaxTokens {
+
+        @Test
+        @DisplayName("显式配置时优先使用配置值，不被兜底覆盖")
+        void configuredValueWins() {
+            assertEquals(4096, LlmProviderRegistry.resolveOpenAiMaxTokens(4096, 8192));
+        }
+
+        @Test
+        @DisplayName("未配置时使用兜底值，避免 JSON 被截断")
+        void nullFallsBackToDefault() {
+            assertEquals(8192, LlmProviderRegistry.resolveOpenAiMaxTokens(null, 8192));
+        }
+
+        @Test
+        @DisplayName("兜底值非正数时不下发该字段（保留旧行为，便于特殊服务端回退）")
+        void nonPositiveFallbackMeansOmit() {
+            assertNull(LlmProviderRegistry.resolveOpenAiMaxTokens(null, 0));
+            assertNull(LlmProviderRegistry.resolveOpenAiMaxTokens(null, -1));
+        }
+
+        @Test
+        @DisplayName("兜底被关闭时仍尊重显式配置值")
+        void explicitValueSurvivesDisabledFallback() {
+            assertEquals(2048, LlmProviderRegistry.resolveOpenAiMaxTokens(2048, 0));
+        }
+    }
 }
