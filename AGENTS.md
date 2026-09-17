@@ -90,7 +90,12 @@ docker compose -f docker-compose.dev.yml up -d
 - 后端测试使用 JUnit 5 + Mockito + AssertJ。
 - 测试意图用中文 `@DisplayName` 描述，复杂场景用 `@Nested` 分组。
 - 集成测试使用 H2 配置；限流相关测试需要真实 Redis。
-- 改后端公共能力时至少运行 `./gradlew :app:test --no-daemon`。
+- 按改动范围选择测试粒度，不要每次改动都跑全量（全量约 2.5 分钟，且主要耗时在无关的语音服务测试）：
+  1. `./gradlew :app:compileJava` —— 先确认能编译
+  2. `./gradlew :app:test --tests "包名.测试类"` —— 只跑直接相关的类
+  3. `./gradlew :app:test --tests "包名.*"` —— 扩大到同包
+  4. `./gradlew :app:test --no-daemon` —— 全量，仅限：改动 `common/` 公共基础设施、影响面无法用 `--tests` 圈定、提交/合并前、用户明确要求
+- 只改注释、日志文案、单个私有方法实现时，不要跑全量测试。
 - 改前端时至少运行 `cd frontend && pnpm run build`。
 
 ## Never Do
@@ -110,3 +115,4 @@ docker compose -f docker-compose.dev.yml up -d
 - 后端 Java 细则：`.claude/rules/backend.md`
 - AI、限流、异步细则：`.claude/rules/ai-and-async.md`
 - 前端细则：`.claude/rules/frontend.md`
+- 测试粒度与效率：`.claude/rules/testing-efficiency.md`
