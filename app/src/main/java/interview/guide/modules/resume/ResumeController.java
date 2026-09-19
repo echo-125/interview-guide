@@ -10,10 +10,12 @@ import interview.guide.modules.resume.model.ResumeJdAnalysisRequest;
 import interview.guide.modules.resume.model.ResumeJdAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
 import interview.guide.modules.resume.model.ResumeRewriteResponse;
+import interview.guide.modules.resume.model.ResumeStructuredParseResponse;
 import interview.guide.modules.resume.service.ResumeDeleteService;
 import interview.guide.modules.resume.service.ResumeHistoryService;
 import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
 import interview.guide.modules.resume.service.ResumeRewriteService;
+import interview.guide.modules.resume.service.ResumeStructuredParseService;
 import interview.guide.modules.resume.service.ResumeUploadService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -52,6 +54,7 @@ public class ResumeController {
     private final ResumeHistoryService historyService;
     private final ResumeJdAnalysisQueryService jdAnalysisQueryService;
     private final ResumeRewriteService rewriteService;
+    private final ResumeStructuredParseService structuredParseService;
 
     /**
      * 上传简历并获取分析结果
@@ -179,6 +182,23 @@ public class ResumeController {
             @PathVariable Long id,
             @RequestParam(value = "llmProvider", required = false) String llmProvider) {
         return Result.success(rewriteService.rewrite(id, llmProvider));
+    }
+
+    /**
+     * 简历结构化解析（LLM，按需同步调用）
+     * 基于原文提取结构化事实（不改写、不落库），供结构化编辑器使用
+     *
+     * @param id 简历ID
+     * @param llmProvider 使用的 Provider（空 = 跟随系统默认）
+     * @return 结构化文档 + 诊断（coverage / warnings）
+     */
+    @PostMapping("/api/resumes/{id}/parse-structured")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 30, interval = 1, timeUnit = TimeUnit.MINUTES)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 10, interval = 1, timeUnit = TimeUnit.MINUTES)
+    public Result<ResumeStructuredParseResponse> parseStructured(
+            @PathVariable Long id,
+            @RequestParam(value = "llmProvider", required = false) String llmProvider) {
+        return Result.success(structuredParseService.parse(id, llmProvider));
     }
 
     /**

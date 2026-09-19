@@ -77,7 +77,7 @@ export function findAllWhitespaceMatches(fullText: string, quote: string): Match
 /**
  * 计算两个字符串的重合/相似度 (0.0 ~ 1.0)
  */
-function calculateContextScore(actualContext: string, expectedContext: string): number {
+export function calculateContextScore(actualContext: string, expectedContext: string): number {
   if (!actualContext || !expectedContext) return 0;
   const cleanActual = actualContext.replace(WHITESPACE_RUN, '');
   const cleanExpected = expectedContext.replace(WHITESPACE_RUN, '');

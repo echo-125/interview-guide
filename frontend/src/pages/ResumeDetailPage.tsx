@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
-import {useLocation} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
 import {resumeApi} from '../api/resume';
@@ -15,7 +15,7 @@ import {useToast} from '../components/Toast';
 import {formatDateOnly} from '../utils/date';
 import {collectRewritePairs, type RewritePair} from '../utils/rewriteApply';
 import type {ResumeRewriteResponse} from '../types/resume';
-import {CheckSquare, ChevronLeft, Clock, Download, Eye, MessageSquare, Mic, Target} from 'lucide-react';
+import {CheckSquare, ChevronLeft, Clock, Download, Eye, FilePenLine, MessageSquare, Mic, Target} from 'lucide-react';
 
 interface ResumeDetailPageProps {
   resumeId: number;
@@ -35,6 +35,7 @@ const TAB_PAGE_INDEX: Record<TabType, number> = {
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -382,6 +383,19 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
               </span>
             </motion.button>
           ))}
+
+          {/* 编辑简历：与四个 tab 同级的直达入口，进入结构化编辑器 */}
+          <div className="w-px bg-slate-200 dark:bg-slate-700 mx-1 self-stretch" />
+          <motion.button
+            onClick={() => navigate(`/history/${resumeId}/builder`)}
+            className="relative px-6 py-3 rounded-xl font-medium flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-sm hover:shadow-md transition-shadow"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            title="进入结构化编辑器，修改简历内容"
+          >
+            <FilePenLine className="w-5 h-5" />
+            编辑简历
+          </motion.button>
         </div>
       )}
 

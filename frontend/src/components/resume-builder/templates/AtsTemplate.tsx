@@ -1,9 +1,26 @@
 /**
  * ATS 模板：单栏极简、无装饰色、强调关键词、标准时序（ATS 解析友好）
+ *
+ * 字体与 Developer 完全一致的无衬线系统，避免不同字体下中英文数字混排错位。
  */
 
 import type { ResumeDocument } from '../../../types/resumeDocument';
 import { BulletList, EducationEntry, EntryHead, SectionTitle } from './shared';
+
+/** ATS 模板统一字号阶（与 Developer 同步，整体上调一档） */
+const FONT = {
+  name: 28,
+  headline: 16,
+  section: 16,
+  company: 15.5,
+  jobTitle: 14.5,
+  body: 14,
+  meta: 12.5,
+  minor: 13,
+} as const;
+const LINE = 1.7;
+/** 与 Developer 完全一致的无衬线字体系统 */
+const SANS = "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif";
 
 export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
   const { basics } = doc;
@@ -11,12 +28,12 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
   const headCls = 'rm-ats-head';
 
   return (
-    <div className="rm-ats" style={{ padding: '32px 40px', width: '100%', minHeight: '100%', color: '#111827' }}>
+    <div className="rm-ats" style={{ padding: '32px 40px', width: '100%', minHeight: '100%', color: '#111827', fontFamily: SANS }}>
       {/* 头部：居中、无装饰 */}
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        {basics.name && <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>{basics.name}</h1>}
-        {basics.title && <p style={{ margin: '4px 0 0', fontSize: 14, fontWeight: 600 }}>{basics.title}</p>}
-        <p style={{ margin: '8px 0 0', fontSize: 12.5, lineHeight: 1.7 }}>
+        {basics.name && <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700 }}>{basics.name}</h1>}
+        {basics.title && <p style={{ margin: '4px 0 0', fontSize: FONT.headline, fontWeight: 600 }}>{basics.title}</p>}
+        <p style={{ margin: '8px 0 0', fontSize: FONT.meta, lineHeight: LINE }}>
           {[basics.gender, basics.age, basics.email, basics.phone, basics.location, basics.website].filter(Boolean).join(' | ')}
         </p>
       </div>
@@ -24,7 +41,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
       {basics.summary && (
         <div style={{ marginBottom: 16 }}>
           <SectionTitle className={headCls}>Summary / 个人总结</SectionTitle>
-          <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.65 }}>{basics.summary}</p>
+          <p style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE }}>{basics.summary}</p>
         </div>
       )}
 
@@ -56,7 +73,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
         <div style={{ marginBottom: 16 }}>
           <SectionTitle className={headCls}>Skills / 专业技能</SectionTitle>
           {doc.skills.map(g => (
-            <p key={g.id} style={{ margin: '0 0 3px', fontSize: 12.5, lineHeight: 1.7 }}>
+            <p key={g.id} style={{ margin: '0 0 3px', fontSize: FONT.body, lineHeight: LINE }}>
               <span style={{ fontWeight: 700 }}>{g.category}：</span>
               {g.items.join(', ')}
             </p>
@@ -77,7 +94,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
         <div style={{ marginBottom: 16 }}>
           <SectionTitle className={headCls}>Certifications / 证书资质</SectionTitle>
           {doc.certifications.map(c => (
-            <p key={c.id} style={{ margin: '0 0 2px', fontSize: 12 }}>
+            <p key={c.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {c.name}
               {c.date ? <span style={{ color: '#6b7280' }}> — {c.date}</span> : null}
             </p>
@@ -88,7 +105,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
         <div style={{ marginBottom: 16 }}>
           <SectionTitle className={headCls}>Awards / 获奖荣誉</SectionTitle>
           {doc.awards.map(a => (
-            <p key={a.id} style={{ margin: '0 0 2px', fontSize: 12 }}>
+            <p key={a.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {a.title}
               {a.date ? <span style={{ color: '#6b7280' }}> — {a.date}</span> : null}
             </p>
@@ -99,7 +116,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
         <div style={{ marginBottom: 16 }}>
           <SectionTitle className={headCls}>Languages / 语言能力</SectionTitle>
           {doc.languages.map(l => (
-            <p key={l.id} style={{ margin: '0 0 2px', fontSize: 12 }}>
+            <p key={l.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {l.name}
               {l.level ? <span style={{ color: '#6b7280' }}> — {l.level}</span> : null}
             </p>
@@ -113,12 +130,12 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.customSections.map(s =>
             s.blocks.map(b =>
               b.type === 'bullet' ? (
-                <div key={b.id} style={{ display: 'flex', gap: 6, fontSize: 12.5, lineHeight: 1.6 }}>
+                <div key={b.id} style={{ display: 'flex', gap: 6, fontSize: FONT.body, lineHeight: LINE }}>
                   <span style={{ flexShrink: 0 }}>-</span>
                   <span>{b.text}</span>
                 </div>
               ) : (
-                <p key={b.id} style={{ margin: 0, fontSize: 12.5, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{b.text}</p>
+                <p key={b.id} style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE, whiteSpace: 'pre-wrap' }}>{b.text}</p>
               )
             )
           )}

@@ -27,6 +27,8 @@ const InterviewSchedulePage = lazy(() => import('./pages/InterviewSchedulePage')
 const InterviewHubPage = lazy(() => import('./pages/InterviewHubPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const InterviewDetailPanel = lazy(() => import('./components/InterviewDetailPanel'));
+const ResumeBuilderDemoPage = lazy(() => import('./pages/ResumeBuilderDemoPage'));
+const ResumeBuilderPage = lazy(() => import('./pages/ResumeBuilderPage'));
 
 // Loading component
 const Loading = () => (
@@ -83,6 +85,22 @@ function ResumeDetailWrapper() {
       onStartInterview={handleStartInterview}
     />
   );
+}
+
+// Phase 4A：真实简历结构化编辑包装器
+function ResumeBuilderWrapper() {
+  const { resumeId } = useParams<{ resumeId: string }>();
+  const navigate = useNavigate();
+
+  if (!resumeId) {
+    return <Navigate to="/history" replace />;
+  }
+
+  const handleBack = () => {
+    navigate(`/history/${resumeId}`);
+  };
+
+  return <ResumeBuilderPage resumeId={parseInt(resumeId, 10)} onBack={handleBack} />;
 }
 
 interface InterviewEntryState {
@@ -254,6 +272,12 @@ function App() {
 
             {/* 问答助手（知识库聊天） */}
             <Route path="knowledgebase/chat" element={<KnowledgeBaseQueryPageWrapper />} />
+
+            {/* Phase 3：Resume Builder 技术验证 Demo（独立页面，不接入正式简历流程） */}
+            <Route path="resume-builder-demo" element={<ResumeBuilderDemoPage />} />
+
+            {/* Phase 4A：真实简历结构化编辑（resumeText → ResumeDocument → 编辑器 → A4 预览 → 导出） */}
+            <Route path="history/:resumeId/builder" element={<ResumeBuilderWrapper />} />
           </Route>
 
         </Routes>

@@ -38,7 +38,20 @@ function Measure({ blocks }: { blocks: PageBlock[] }) {
 }
 
 export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewProps) {
-  const scale = Math.min(1, viewportWidth / A4_WIDTH_PX);
+  // 自适应容器宽度：A4 纸按实际容器宽度缩放，避免固定 620px 在窄中栏里水平溢出/截断
+  const sheetAreaRef = useRef<HTMLDivElement>(null);
+  const [areaW, setAreaW] = useState(viewportWidth);
+  useEffect(() => {
+    const el = sheetAreaRef.current;
+    if (!el) return;
+    // 容器 p-6 左右 padding 各 24px，缩放基准取内容可用宽度
+    const update = () => setAreaW(Math.max(320, Math.floor(el.clientWidth) - 48));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = Math.min(1, areaW / A4_WIDTH_PX);
   const measureRef = useRef<HTMLDivElement>(null);
   // 兜底（children）模式的分页数
   const [fallbackCount, setFallbackCount] = useState(1);
@@ -75,7 +88,7 @@ export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewPr
   const pages = useBlocks ? (packedBlocks ?? []) : Array.from({ length: fallbackCount }, (_, i) => i);
 
   return (
-    <div className="flex-1 min-h-0 bg-slate-200 dark:bg-slate-900 overflow-auto" style={{ height: '100%' }}>
+    <div ref={sheetAreaRef} className="flex-1 min-h-0 bg-slate-200 dark:bg-slate-900 overflow-auto" style={{ height: '100%' }}>
       {/* 测量容器 */}
       <div ref={measureRef}>
         {useBlocks && blocks ? <Measure blocks={blocks} /> : <div aria-hidden style={{ position: 'absolute', visibility: 'hidden', width: A4_WIDTH_PX }} data-measure>{children}</div>}

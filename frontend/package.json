@@ -16,8 +16,11 @@
     "test:resume-optimization": "node --test src/utils/diff.test.ts src/utils/rewriteApply.test.ts src/utils/rescore.test.ts src/utils/improvements.test.ts"
   },
   "dependencies": {
+    "@fontsource/noto-sans-sc": "^5.3.0",
+    "@react-pdf/renderer": "^4.9.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.20",
+    "docx": "^9.7.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "3.11.174",

@@ -15,6 +15,8 @@ import { toResumeDocument, type StructuredParseDiagnostics } from '../types/stru
 import { parseResume, type ParseDiagnostics } from '../utils/resumeDocument/parser';
 import { RESUME_TEMPLATES, renderResumeTemplate } from '../components/resume-builder/templates';
 import { buildDeveloperBlocks } from '../components/resume-builder/templates/DeveloperBlocks';
+import { buildClassicBlocks } from '../components/resume-builder/templates/ClassicBlocks';
+import { buildAtsBlocks } from '../components/resume-builder/templates/AtsBlocks';
 import type { ResumeTemplateId } from '../components/resume-builder/templates/types';
 import { A4Preview } from '../components/resume-builder/A4Preview';
 import { StructuredEditor } from '../components/resume-builder/StructuredEditor';
@@ -142,6 +144,16 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const [aiStage, setAiStage] = useState<'idle' | 'parsing' | 'done' | 'failed'>('idle');
   const [suggestions, setSuggestions] = useState<PanelSuggestion[]>([]);
 
+  // 编辑简历页面禁止整体滚动：锁定 document 滚动，三栏内容各自内部滚动；离开页面时恢复
+  useEffect(() => {
+    const root = document.documentElement;
+    const prevOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => {
+      root.style.overflow = prevOverflow;
+    };
+  }, []);
+
   // 加载真实简历详情 + LLM 结构化解析 + 真实 AI 分析建议（Phase 4B）
   useEffect(() => {
     let mounted = true;
@@ -247,11 +259,14 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     [templateId, doc]
   );
 
-  /** Developer 模板接入块级分页（标题与条目同页、跨页不切词）；其余模板保持兼容渲染 */
-  const previewBlocks = useMemo(
-    () => (doc && templateId === 'developer' ? buildDeveloperBlocks(doc) : undefined),
-    [templateId, doc]
-  );
+  /** 三个模板均接入块级分页（标题与条目同页、跨页不切词）；避免 Classic/ATS 走切片分页导致错位 */
+  const previewBlocks = useMemo(() => {
+    if (!doc) return undefined;
+    if (templateId === 'developer') return buildDeveloperBlocks(doc);
+    if (templateId === 'classic') return buildClassicBlocks(doc);
+    if (templateId === 'ats') return buildAtsBlocks(doc);
+    return undefined;
+  }, [templateId, doc]);
 
   const handleExportPdf = async () => {
     if (!doc) return;
@@ -325,7 +340,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   if (!doc || !diag) return null;
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full flex flex-col gap-4 overflow-hidden" style={{ height: 'calc(100vh - 80px)' }}>
       {/* 顶部工具栏 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60 shadow-sm flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -405,8 +420,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       {/* 解析诊断 */}
       <ParseDiagnosticsPanel diagnostics={diag} />
 
-      {/* 主体：左编辑 / 中预览 / 右 AI 建议 */}
-      <div className="flex flex-col lg:flex-row gap-4 h-[78vh] min-h-[600px]">
+      {/* 主体：左编辑 / 中预览 / 右 AI 建议
+          三栏独立滚动：本页固定视口高度，禁止页面整体滚动；
+          左/中/右三栏各自内部滚动（与其它页面的整页滚动互不影响）。 */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
         <div className="w-full lg:w-[38%] xl:w-[34%] flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <Wand2 className="w-3.5 h-3.5 text-primary-500" />
@@ -426,7 +443,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           <A4Preview blocks={previewBlocks}>{preview}</A4Preview>
         </div>
 
-        <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden min-h-[400px]">
+        <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <SuggestionReviewPanel
             suggestions={suggestions}
             onApply={handleAiApply}

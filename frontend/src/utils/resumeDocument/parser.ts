@@ -20,6 +20,7 @@ import {
   createEmptyResumeDocument,
   newId,
   type ResumeBullet,
+  type ResumeBasics,
   type ResumeDocument,
   type ResumeEducationItem,
   type ResumeExperienceItem,
@@ -244,7 +245,12 @@ function extractBasicsFromHeader(lines: string[]): {
       if (!val) continue;
       if (/^(邮箱|e-?mail)$/.test(key) && !basics.email) basics.email = (val.match(EMAIL_RE) || [val])[0];
       else if (/^(电话|手机)$/.test(key) && !basics.phone) basics.phone = (val.match(PHONE_RE) || [val])[0];
-      else if (/^求职意向|期望职位|意向职位|目标职位|应聘职位$/.test(key) && !basics.title && val.length <= 40) basics.title = val;
+      else if (/^求职意向|期望职位|意向职位|目标职位|应聘职位$/.test(key) && !basics.title) {
+        // Tika 双栏交错会使标签值夹带正文（如「求职意向：Java 号码短信，…」），
+        // 只取第一个分隔符（空格/标点）前的值，避免整行超长被拒。
+        const tv = (val.match(/^([^，,。；;()（）\s]{1,20})/) || [])[1];
+        if (tv) basics.title = tv;
+      }
       // 城市/工作年限：双栏 PDF 的交错值常带噪声尾部（「南昌 史表中）」「4年 用）」），
       // 提取已知城市词前缀 / 数字年前缀，避免把交错文本混进字段
       else if (/^城市|现居|所在地|籍贯|期望城市/.test(key) && !basics.location) {
@@ -268,6 +274,79 @@ function extractBasicsFromHeader(lines: string[]): {
     if (!basics.age && /^(\d{1,2})\s*岁$/.test(t)) basics.age = `${(t.match(/^(\d{1,2})/) || ['', ''])[1]}岁`;
   }
   return { basics, education };
+}
+
+/** Tika 双栏交错读取时，右栏的「信息标签行」（如「工作时长：4年」「求职意向：Java」）
+ *  会被夹进左栏正文。剥离这类标签行：提取信息值进入 basics，正文残片（如「用）」）保留，
+ *  避免「工作时长：4年 用）…」这类交错文本污染经历/项目 bullet。 */
+const INFO_LABEL_STRIP_RE =
+  /^(工作时长|工作年限|工作年数|工作经验|求职意向|期望职位|意向职位|目标职位|应聘职位|期望城市|现居|所在地|籍贯|电话|手机|年龄|性别)\s*[：:]\s*/;
+type StrippedBasics = Partial<Pick<ResumeBasics, 'title' | 'location' | 'workYears' | 'phone' | 'age' | 'gender'>>;
+function stripInfoLabels(blocks: string[][]): { blocks: string[][]; basics: StrippedBasics } {
+  const basics: StrippedBasics = {};
+  const next = blocks
+    .map(block =>
+      block
+        .map(line => {
+          const m = line.match(INFO_LABEL_STRIP_RE);
+          if (!m) return line;
+          const label = m[1];
+          const rest = line.slice(m[0].length); // 值 + 正文残片
+          // 工作年限/时长：「工作时长：4年 用）…」→ 值「4年」，残片「用）…」
+          if (/^(工作时长|工作年限|工作年数|工作经验)$/.test(label) && !basics.workYears) {
+            const ym = rest.match(/^(\d{1,2})\s*年/);
+            if (ym) {
+              basics.workYears = `${ym[1]}年`;
+              return rest.slice(ym[0].length).trim();
+            }
+          }
+          // 求职意向/期望职位：「求职意向：Java 号码短信…」→ 值「Java」，残片「号码短信…」
+          if (/^(求职意向|期望职位|意向职位|目标职位|应聘职位)$/.test(label) && !basics.title) {
+            const tv = rest.match(/^([^，,。；;()（）\s]{1,20})/);
+            if (tv) {
+              basics.title = tv[1];
+              return rest.slice(tv[0].length).trim();
+            }
+          }
+          // 期望城市：「期望城市：南昌 史表中）」→ 值「南昌」，残片「史表中）」
+          if (/^(期望城市|现居|所在地|籍贯)$/.test(label) && !basics.location) {
+            const cm = rest.match(/^([\u4e00-\u9fa5]{2,3})/);
+            if (cm && CITY_WORDS.includes(cm[1])) {
+              basics.location = cm[1];
+              return rest.slice(cm[0].length).trim();
+            }
+          }
+          // 电话/手机
+          if (/^(电话|手机)$/.test(label) && !basics.phone) {
+            const pm = rest.match(PHONE_RE);
+            if (pm) {
+              basics.phone = pm[0];
+              return rest.replace(pm[0], ' ').replace(/\s{2,}/g, ' ').trim();
+            }
+          }
+          // 年龄
+          if (/^年龄$/.test(label) && !basics.age) {
+            const am = rest.match(/^(\d{1,2})\s*岁?/);
+            if (am) {
+              basics.age = `${am[1]}岁`;
+              return rest.slice(am[0].length).trim();
+            }
+          }
+          // 性别
+          if (/^性别$/.test(label) && !basics.gender) {
+            const gm = rest.match(/^[男女]/);
+            if (gm) {
+              basics.gender = gm[0];
+              return rest.slice(1).trim();
+            }
+          }
+          // 值无法可靠提取（无有效信息）→ 整行剔除，避免污染正文
+          return '';
+        })
+        .filter(Boolean)
+    )
+    .filter(block => block.length > 0);
+  return { blocks: next, basics };
 }
 
 /** 技能项拆分：强分隔符（顿号/逗号/竖线/分号/中点），保留段内空格 */
@@ -310,7 +389,25 @@ function parseHeadLine(head: string): { company: string; title: string; location
   if (spaced.length >= 2 && spaced[1].length <= 12 && !/[。，,；;、]/.test(spaced[1])) {
     return { company: spaced[0], title: spaced.slice(1).join(' '), isReliable: true };
   }
+  // 中文公司名 + 单空格 + 短职位词：cleanInlineNoise 已把「公司　Java」双空格压成单空格，
+  // \s{2,} 无法再拆分；仅在尾部为短职位词（英文词 / 中文职位词）时拆分，避免误拆公司名。
+  const single = trimmed.match(/^([^\s]{2,40}?)\s+([^\s，,。；;：:]{1,16})\s*$/);
+  if (single && isRoleTail(single[2]) && !CITY_WORDS.includes(single[2])) {
+    return { company: single[1].trim(), title: single[2].trim(), isReliable: true };
+  }
   return { company: trimmed, title: '', isReliable: false };
+}
+
+/** 判断短词是否为职位词（单空格公司/职位拆分兜底用） */
+function isRoleTail(word: string): boolean {
+  const w = (word || '').trim();
+  if (!w || w.length > 16) return false;
+  if (/[。，,；;：:]/.test(w)) return false;
+  if (/^(至今|现在|目前|今)$/.test(w)) return false;
+  // 纯英文/含数字的技术职位词（Java、JAVA、Go、Node.js、C++、Java工程师）
+  if (/^[A-Za-z][\w+#.\-]{0,15}$/.test(w)) return true;
+  // 中文职位词（工程师/开发/经理/主管/…）
+  return /(工程师|开发|经理|主管|设计师|架构师|运维|测试|产品|运营|顾问|助理|技术员|全栈|后端|前端|实习生|讲师|研究员|记者|编辑|策划|市场|销售|财务|人事)$/.test(w);
 }
 
 function toBullets(lines: string[]): ResumeBullet[] {
@@ -503,6 +600,23 @@ export function parseResume(text: string): ParseResult {
     buckets[section].push(block);
   }
 
+  // ---- 剥离 Tika 双栏交错的「信息标签行」（右栏个人信息夹进左栏正文） ----
+  // 提取的值回填 basics（仅在既有值缺失时），正文残片保留继续参与后续重组。
+  const expStrip = stripInfoLabels(buckets.experience);
+  buckets.experience = expStrip.blocks;
+  const prjStrip = stripInfoLabels(buckets.projects);
+  buckets.projects = prjStrip.blocks;
+  const applyStripBasics = (b: StrippedBasics): void => {
+    if (b.title && !doc.basics.title) doc.basics.title = b.title;
+    if (b.location && !doc.basics.location) doc.basics.location = b.location;
+    if (b.workYears && !doc.basics.workYears) doc.basics.workYears = b.workYears;
+    if (b.phone && !doc.basics.phone) doc.basics.phone = b.phone;
+    if (b.age && !doc.basics.age) doc.basics.age = b.age;
+    if (b.gender && !doc.basics.gender) doc.basics.gender = b.gender;
+  };
+  applyStripBasics(expStrip.basics);
+  applyStripBasics(prjStrip.basics);
+
   // ---- summary：重组 Tika 断行 + 剥离序号/标记符，避免「1. 程序员方面 2. 自我方面」残留 ----
   if (buckets.summary.length > 0) {
     const raw = buckets.summary.flatMap(b => b.map(stripBulletMarker).map(x => x.text));
@@ -668,6 +782,8 @@ export function parseResume(text: string): ParseResult {
   /** 跨块待定项目：遇到孤立短名称（如「SLA服务」）暂存，下一块是角色词则合并开新项目 */
   let pendingName = '';
   const ROLE_WORDS_ENTRY = /^(核心开发人员|项目负责人|负责人|主要开发|开发工程师|后端开发|前端开发|参与开发|开发者|架构师|主程|主导者|产品经理|项目经理|核心成员|成员)$/;
+  /** 当前项目最后一条 bullet 文本（用于跨块续行合并：Tika 断行 + 空行会把一句拆成多个块） */
+  let lastPrjBulletText = '';
   for (const block of buckets.projects) {
     // 先试「项目名/角色」两行式头部（同一 block 内）
     const twoLine = tryTwoLineProjectHead(block);
@@ -682,6 +798,7 @@ export function parseResume(text: string): ParseResult {
       };
       doc.projects.push(entry);
       openProjects.push(entry);
+      lastPrjBulletText = content.bullets.length > 0 ? content.bullets[content.bullets.length - 1] : '';
       continue;
     }
     const { head, body } = splitEntry(block);
@@ -709,6 +826,7 @@ export function parseResume(text: string): ParseResult {
       };
       doc.projects.push(entry);
       openProjects.push(entry);
+      lastPrjBulletText = content.bullets.length > 0 ? content.bullets[content.bullets.length - 1] : '';
       pendingName = '';
       continue;
     }
@@ -717,10 +835,25 @@ export function parseResume(text: string): ParseResult {
       if (openProjects.length > 0 && openProjects[openProjects.length - 1].name === pendingName) {
         const current = openProjects[openProjects.length - 1];
         const lines = sanitizeEntryLines([head, ...body]);
+        const blockStartsNewBullet = lines.length > 0 && stripBulletMarker(lines[0]).isBullet;
         const merged = mergeWrappedLines(lines, (l) => isBulletLine(l) || isEntryHeadLine(l));
-        const content = extractProjectContent(merged);
+        let rest = merged;
+        // 跨块续行：上一句未以终止标点结尾、本块首行非新 bullet/技术行 → 拼接首条
+        if (lastPrjBulletText && !hasSentenceEnd(lastPrjBulletText) && !blockStartsNewBullet && rest.length > 0 && !isTechHeaderLine(rest[0])) {
+          const lastIdx = current.bullets.length - 1;
+          if (lastIdx >= 0) {
+            const joined = lastPrjBulletText + rest[0];
+            current.bullets[lastIdx] = { ...current.bullets[lastIdx], text: joined };
+            lastPrjBulletText = joined;
+            rest = rest.slice(1);
+          }
+        }
+        const content = extractProjectContent(rest);
         if (content.tech.length > 0) current.technologies = [...(current.technologies || []), ...content.tech];
-        if (content.bullets.length > 0) current.bullets.push(...toBullets(content.bullets));
+        if (content.bullets.length > 0) {
+          current.bullets.push(...toBullets(content.bullets));
+          lastPrjBulletText = content.bullets[content.bullets.length - 1];
+        }
         continue;
       }
       // 尚未有对应 open 项目：直接新建（pendingName 作为项目名，本块作描述/角色）
@@ -735,6 +868,7 @@ export function parseResume(text: string): ParseResult {
       };
       doc.projects.push(entry);
       openProjects.push(entry);
+      lastPrjBulletText = content.bullets.length > 0 ? content.bullets[content.bullets.length - 1] : '';
       pendingName = '';
       continue;
     }
@@ -755,6 +889,7 @@ export function parseResume(text: string): ParseResult {
       if (entry.name) {
         doc.projects.push(entry);
         openProjects.push(entry);
+        lastPrjBulletText = blockContent.bullets.length > 0 ? blockContent.bullets[blockContent.bullets.length - 1] : '';
       } else {
         prjLeftovers.push(block);
       }
@@ -762,13 +897,32 @@ export function parseResume(text: string): ParseResult {
       const current = openProjects[openProjects.length - 1];
       const lines = sanitizeEntryLines([head, ...body]);
       if (lines.length > 0) {
-        // 重组被 Tika 断行长句，避免项目正文一句被切成多个 bullet
+        const blockStartsNewBullet = stripBulletMarker(lines[0]).isBullet;
         const merged = mergeWrappedLines(lines, (l) => isBulletLine(l) || isEntryHeadLine(l));
-        const content = extractProjectContent(merged);
+        let rest = merged;
+        // 跨块续行：上一句未以终止标点结尾、本块首行非新 bullet/技术行 → 拼接首条
+        if (lastPrjBulletText && !hasSentenceEnd(lastPrjBulletText) && !blockStartsNewBullet && rest.length > 0 && !isTechHeaderLine(rest[0])) {
+          const lastIdx = current.bullets.length - 1;
+          if (lastIdx >= 0) {
+            const joined = lastPrjBulletText + rest[0];
+            current.bullets[lastIdx] = { ...current.bullets[lastIdx], text: joined };
+            lastPrjBulletText = joined;
+            rest = rest.slice(1);
+          }
+        }
+        // 重组被 Tika 断行长句，避免项目正文一句被切成多个 bullet
+        const content = extractProjectContent(rest);
         if (content.tech.length > 0) {
           current.technologies = [...(current.technologies || []), ...content.tech];
         }
-        if (content.bullets.length > 0) current.bullets.push(...toBullets(content.bullets));
+        if (content.bullets.length > 0) {
+          current.bullets.push(...toBullets(content.bullets));
+          lastPrjBulletText = content.bullets[content.bullets.length - 1];
+        } else if (rest.length > 0) {
+          // 本块内容全为技术行（未产生 bullet）→ 重置续行状态
+          lastPrjBulletText = '';
+        }
+        // rest 为空（已全部拼接到上一条）→ 保持 lastPrjBulletText（拼接分支已更新）
       }
     } else {
       prjLeftovers.push(block);
@@ -953,6 +1107,7 @@ function splitEntry(lines: string[]): { head: string; body: string[] } {
 const EMPTY_HEADER_WORDS = new Set([
   '业绩', '联系方式', '求职信息', '微信号', '微信', '项目描述', '项目技术', '所用技术',
   '涉及技术', '技术栈', '技术选型', '项目周期', '核心职责', '个人参与', '责任描述', '工作职责', '岗位职责', '我的职责', '自我评价',
+  '服务部署', '职责', '个人贡献', '工作内容', '主要工作', '项目简介', '项目背景', '项目成果', '项目亮点',
 ]);
 
 /** 过滤折叠后的内容行：去掉空行与「只有标题、没有正文」的噪声行 */
@@ -1019,6 +1174,11 @@ function isEntryHeadLine(head: string): boolean {
   return rest.length > 0 && cjkCount >= 1;
 }
 
+/** 判断一行是否为「技术栈」类标题行（跨块续行合并时不应拼到上一条 bullet） */
+function isTechHeaderLine(line: string): boolean {
+  return /^(技术栈|技术选型|技术|技术方案|涉及技术)\s*[：:]/.test(line.trim());
+}
+
 /**
  * 从项目相关行中提取「技术栈行」并给出剩余正文。
  */
@@ -1075,11 +1235,14 @@ function foldEntries<T extends { bullets: ResumeBullet[] }>(
   const entries: T[] = [];
   const leftovers: string[][] = [];
   let current: T | null = null;
+  /** 当前条目最后一条 bullet 文本（用于跨块续行合并：Tika 断行 + 空行会把一句拆成多个块） */
+  let lastBulletText = '';
   for (const block of blocks) {
     const { head, body } = splitEntry(block);
     if (isEntryHeadLine(head)) {
       current = createEntry(head, body);
       entries.push(current);
+      lastBulletText = current.bullets.length > 0 ? current.bullets[current.bullets.length - 1].text : '';
     } else if (current) {
       // 独立角色行：单独成块、当前条目目标字段为空 → 提升而不是变成 bullet
       if (onRoleLine && body.length === 0 && isRoleLine(head)) {
@@ -1095,8 +1258,25 @@ function foldEntries<T extends { bullets: ResumeBullet[] }>(
       }
       // 描述块：先重组被 Tika 断行的长句，再折叠进当前条目（避免一句完整话被切成不同 bullet）
       const cleaned = sanitizeEntryLines([head, ...body]);
+      // 本块以新 bullet 开头（序号/符号）→ 整块独立，不参与跨块续行
+      const blockStartsNewBullet = cleaned.length > 0 && stripBulletMarker(cleaned[0]).isBullet;
       const merged = mergeWrappedLines(cleaned, (l) => isBulletLine(l) || isEntryHeadLine(l));
-      if (merged.length > 0) current.bullets.push(...toBullets(merged));
+      let rest = merged;
+      // 跨块续行：上一句未以终止标点结尾、且本块首行非新 bullet → 把重组后首条拼接到上一条
+      if (lastBulletText && !hasSentenceEnd(lastBulletText) && !blockStartsNewBullet && rest.length > 0) {
+        const lastIdx = current.bullets.length - 1;
+        if (lastIdx >= 0) {
+          const joined = lastBulletText + rest[0];
+          current.bullets[lastIdx] = { ...current.bullets[lastIdx], text: joined };
+          lastBulletText = joined;
+          rest = rest.slice(1);
+        }
+      }
+      if (rest.length > 0) {
+        current.bullets.push(...toBullets(rest));
+        lastBulletText = rest[rest.length - 1];
+      }
+      // rest 为空：要么本块无内容、要么已全部拼接到上一条（拼接分支已更新 lastBulletText）→ 均保持
     } else {
       leftovers.push(block);
     }

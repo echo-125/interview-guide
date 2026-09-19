@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Download, ExternalLink, Eye, FileText, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Download, ExternalLink, Eye, FileText, Sparkles, Wand2 } from 'lucide-react';
 import { historyApi, type AnalysisItem, type ResumeDetail } from '../api/history';
 import { DocumentReviewContainer } from './resume-review/DocumentReviewContainer';
 
@@ -26,6 +27,7 @@ function formatFileSize(bytes: number): string {
  */
 export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPanelProps) {
   const fileUrl = historyApi.getResumeFileUrl(resume.id);
+  const navigate = useNavigate();
   const isPdf = isPdfResume(resume);
 
   const effectiveAnalysis = analysis || resume.analyses?.[0];
@@ -99,6 +101,15 @@ export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPa
             <Download className="w-3.5 h-3.5" />
             下载原文件
           </a>
+          <button
+            type="button"
+            onClick={() => navigate(`/history/${resume.id}/builder`)}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 text-white text-xs font-semibold shadow-sm hover:from-primary-600 hover:to-primary-700 transition-all flex items-center gap-1.5"
+            title="把真实简历转换为结构化文档并进入结构化编辑器（不修改原始文件）"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            编辑简历
+          </button>
         </div>
       </div>
 

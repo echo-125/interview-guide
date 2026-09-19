@@ -1,18 +1,22 @@
 /**
- * Developer 模板的「分页友好块」版本。
+ * Classic 模板的「分页友好块」版本。
  *
- * 与 DeveloperTemplate.tsx 视觉一致（单栏、ATS、统一字体阶），但把内容拆成 PageBlock[]，
+ * 与 ClassicTemplate.tsx 视觉一致（单栏居中、统一无衬线、日期右对齐），但把内容拆成 PageBlock[]，
  * 供 A4Preview 做块级分页：标题与下一条目同页、正文可跨页但不切词。
  * 块与块之间用内边距分隔（不用跨块 margin），保证「测量高度 = 展示高度」。
+ *
+ * 与 DeveloperBlocks 的差异：
+ * - 头部居中
+ * - Section 标题居中、带下划线分隔
+ * - 字号略大（name 32）
  */
 
 import type { CSSProperties } from 'react';
 import type { ResumeDocument } from '../../../types/resumeDocument';
 import type { PageBlock } from './pagination';
 
-/** 与 DeveloperTemplate 完全一致的字号阶（保证预览与最终渲染一致） */
 const FONT = {
-  name: 30,
+  name: 32,
   headline: 16,
   section: 16,
   company: 15.5,
@@ -23,15 +27,15 @@ const FONT = {
 const LINE = 1.7;
 const INK = '#111827';
 const MUTED = '#6b7280';
-const ACCENT = '#0f766e';
+const SANS = "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif";
 
 function st(style: CSSProperties): CSSProperties {
-  return { fontFamily: "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif", color: INK, ...style };
+  return { fontFamily: SANS, color: INK, ...style };
 }
 
-function SectionTitle({ text, pad, center }: { text: string; pad: number; center?: boolean }) {
+function SectionTitle({ text, pad }: { text: string; pad: number }) {
   return (
-    <div style={st({ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 3, marginTop: pad, ...(center ? { justifyContent: 'center' } : {}) })}>
+    <div style={st({ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 3, marginTop: pad, justifyContent: 'center' })}>
       <span style={{ fontSize: FONT.section, fontWeight: 700, letterSpacing: 0.5, color: INK }}>{text}</span>
       <span style={{ flex: 1, height: 1.5, background: '#d1d5db' }} />
     </div>
@@ -41,7 +45,7 @@ function SectionTitle({ text, pad, center }: { text: string; pad: number; center
 function BulletText({ text, mark = '•' }: { text: string; mark?: string }) {
   return (
     <li style={st({ display: 'flex', gap: 6, fontSize: FONT.body, lineHeight: LINE, marginBottom: 2 })}>
-      <span style={{ flexShrink: 0, color: ACCENT }}>{mark}</span>
+      <span style={{ flexShrink: 0, color: MUTED }}>{mark}</span>
       <span>{text}</span>
     </li>
   );
@@ -59,22 +63,22 @@ function Head({ main, sub, dates, pad }: { main: string; sub?: string; dates?: s
   );
 }
 
-/** 生成 Developer 模板的分页块（视觉与 DeveloperTemplate 一致） */
-export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
+/** 生成 Classic 模板的分页块（视觉与 ClassicTemplate 一致） */
+export function buildClassicBlocks(doc: ResumeDocument): PageBlock[] {
   const b = doc.basics;
   const blocks: PageBlock[] = [];
-  const key = (p: string) => `dev-${p}`;
+  const key = (p: string) => `cls-${p}`;
 
-  // 头部
+  // 头部（居中）
   blocks.push({
     key: key('header'),
     node: (
-      <div style={st({ paddingBottom: 12 })}>
+      <div style={st({ textAlign: 'center', paddingBottom: 12 })}>
         {b.name ? (
-          <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700, letterSpacing: 0.5 }}>{b.name}</h1>
+          <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700, letterSpacing: 2 }}>{b.name}</h1>
         ) : null}
         {b.title ? (
-          <p style={{ margin: '4px 0 0', fontSize: FONT.headline, color: ACCENT, fontWeight: 600 }}>{b.title}</p>
+          <p style={{ margin: '6px 0 0', fontSize: FONT.headline, fontWeight: 600, color: '#374151' }}>{b.title}</p>
         ) : null}
         {(b.email || b.phone || b.location || b.website || b.gender || b.age || b.workYears) ? (
           <p style={{ margin: '8px 0 0', fontSize: FONT.meta, color: MUTED, lineHeight: LINE }}>
@@ -146,7 +150,7 @@ export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
           key: key(`prj-${p.id}-bl-${bl.id}`),
           node: (
             <ul style={st({ listStyle: 'none', margin: '2px 0 0', padding: 0, display: 'flex', flexDirection: 'column' })}>
-              <BulletText text={bl.text} mark="▸" />
+              <BulletText text={bl.text} mark="•" />
             </ul>
           ),
         }),
@@ -162,7 +166,7 @@ export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
         key: key(`skill-${g.id}`),
         node: (
           <p style={st({ margin: '6px 0 0', fontSize: FONT.body, lineHeight: LINE })}>
-            <span style={{ fontWeight: 600 }}>{g.category || g.name || '技能'}：</span>
+            <span style={{ fontWeight: 700 }}>{g.category || g.name || '技能'}：</span>
             {g.items.join('、')}
           </p>
         ),
@@ -180,7 +184,7 @@ export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
         node: (
           <div style={st({ paddingTop: 6, paddingBottom: 4 })}>
             <div style={st({ display: 'flex', alignItems: 'baseline', gap: 8 })}>
-              <span style={{ fontWeight: 600, fontSize: FONT.company }}>{e.school}</span>
+              <span style={{ fontWeight: 700, fontSize: FONT.company }}>{e.school}</span>
               <span style={{ fontSize: FONT.jobTitle, color: '#374151' }}>
                 {[e.degree, e.major].filter(Boolean).join(' · ')}
               </span>
@@ -192,17 +196,28 @@ export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
     });
   }
 
-  // 证书 / 语言
-  const hasCertsLangs = doc.certifications.length > 0 || doc.languages.length > 0;
-  if (hasCertsLangs) {
-    blocks.push({ key: key('cert-title'), node: <SectionTitle text="证书与语言" pad={14} />, avoid: 'after' });
+  // 证书 / 获奖 / 语言
+  const hasCertsAwardsLangs = doc.certifications.length > 0 || doc.awards.length > 0 || doc.languages.length > 0;
+  if (hasCertsAwardsLangs) {
+    blocks.push({ key: key('cert-title'), node: <SectionTitle text="证书 / 获奖 / 语言" pad={14} />, avoid: 'after' });
     doc.certifications.forEach((c) =>
       blocks.push({
         key: key(`cert-${c.id}`),
         node: (
           <p style={st({ margin: '6px 0 0', fontSize: FONT.body, lineHeight: LINE })}>
             {c.name}
-            {c.date ? <span style={{ color: MUTED, fontSize: FONT.meta }}>({c.date})</span> : null}
+            {c.date ? <span style={{ color: MUTED, fontSize: FONT.meta }}>（{c.date}）</span> : null}
+          </p>
+        ),
+      }),
+    );
+    doc.awards.forEach((a) =>
+      blocks.push({
+        key: key(`award-${a.id}`),
+        node: (
+          <p style={st({ margin: '6px 0 0', fontSize: FONT.body, lineHeight: LINE })}>
+            {a.title}
+            {a.date ? <span style={{ color: MUTED, fontSize: FONT.meta }}>（{a.date}）</span> : null}
           </p>
         ),
       }),
@@ -213,7 +228,7 @@ export function buildDeveloperBlocks(doc: ResumeDocument): PageBlock[] {
         node: (
           <p style={st({ margin: '6px 0 0', fontSize: FONT.body, lineHeight: LINE })}>
             {l.name}
-            {l.level ? <span style={{ color: MUTED, fontSize: FONT.meta }}>({l.level})</span> : null}
+            {l.level ? <span style={{ color: MUTED, fontSize: FONT.meta }}>（{l.level}）</span> : null}
           </p>
         ),
       }),

@@ -1,5 +1,6 @@
 import { request } from './request';
 import type { UploadResponse, JdAnalysisRecord, ResumeRewriteResponse } from '../types/resume';
+import type { StructuredParseResponse } from '../types/structuredParse';
 
 export const resumeApi = {
   /**
@@ -31,6 +32,18 @@ export const resumeApi = {
   async rewriteResume(resumeId: number | string, llmProvider?: string): Promise<ResumeRewriteResponse> {
     const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
     return request.post<ResumeRewriteResponse>(`/api/resumes/${resumeId}/rewrite${query}`);
+  },
+
+  /**
+   * LLM 结构化解析简历原文（同步，不改写、不落库）
+   * @param llmProvider 使用的 Provider（空 = 跟随系统默认）
+   */
+  async parseStructured(
+    resumeId: number | string,
+    llmProvider?: string
+  ): Promise<StructuredParseResponse> {
+    const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
+    return request.post<StructuredParseResponse>(`/api/resumes/${resumeId}/parse-structured${query}`);
   },
 
   /**
