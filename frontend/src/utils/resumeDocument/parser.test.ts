@@ -520,3 +520,52 @@ test('求职意向/期望城市 在正文节之后仍被识别（程仕右栏交
   assert.ok((doc.basics.location || '').includes('南昌'), `location 应含南昌：${doc.basics.location}`);
   assert.ok((doc.basics.workYears || '').includes('4年'), `workYears 应含4年：${doc.basics.workYears}`);
 });
+
+test('期望城市/工作时长 去掉交错噪声尾部（南昌 史表中 / 4年 用）', () => {
+  const text = `基本信息
+期望城市：南昌 史表中）
+工作时长：4年 用），前端请求量不大。
+`;
+  const doc = parseResumeToDocument(text);
+  assert.equal(doc.basics.location, '南昌');
+  assert.equal(doc.basics.workYears, '4年');
+});
+
+test('项目内部小节标签不落到 bullet（李阳：技术选型/核心职责/项目周期）', () => {
+  const text = `项目经历：
+SLA服务
+核心开发人员
+项目描述：联想标品项目，运营层面的SLA。
+技术选型：SpringBoot、Mybatis、Redis。
+核心职责：
+负责配置模块开发，使用Groovy转换配置项。
+
+项目周期：2018.11 – 至今
+51云发票系统
+负责发票开具。
+`;
+  const doc = parseResumeToDocument(text);
+  const prj = doc.projects.find(p => p.name === 'SLA服务');
+  assert.ok(prj, '应有 SLA服务 项目');
+  assert.deepEqual(prj!.technologies, ['SpringBoot', 'Mybatis', 'Redis']);
+  assert.ok(prj!.bullets.length > 0);
+  // 标签残行不应作为 bullet
+  assert.ok(!prj!.bullets.some(b => /技术选型|核心职责|项目周期/.test(b.text)), `残留标签: ${JSON.stringify(prj!.bullets.map(b => b.text))}`);
+});
+
+test('两行式经历头：独立职位行提升为 title/location（王昕）', () => {
+  const text = `工作经历：
+联想有限公司 2021.06 - 2023.07
+
+Java软件开发工程师 北京
+
+工作职责：
+1. 担任核心开发人员。
+`;
+  const doc = parseResumeToDocument(text);
+  const e = doc.experience[0];
+  assert.equal(e.title, 'Java软件开发工程师');
+  assert.equal(e.location, '北京');
+  // 职位行不再作为 bullet
+  assert.ok(!e.bullets.some(b => b.text.includes('Java软件开发工程师')));
+});

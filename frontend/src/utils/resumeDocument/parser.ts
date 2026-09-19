@@ -22,6 +22,7 @@ import {
   type ResumeBullet,
   type ResumeDocument,
   type ResumeEducationItem,
+  type ResumeExperienceItem,
   type ResumeLanguage,
   type ResumeProjectItem,
 } from '../../types/resumeDocument.ts';
@@ -244,8 +245,18 @@ function extractBasicsFromHeader(lines: string[]): {
       if (/^(邮箱|e-?mail)$/.test(key) && !basics.email) basics.email = (val.match(EMAIL_RE) || [val])[0];
       else if (/^(电话|手机)$/.test(key) && !basics.phone) basics.phone = (val.match(PHONE_RE) || [val])[0];
       else if (/^求职意向|期望职位|意向职位|目标职位|应聘职位$/.test(key) && !basics.title && val.length <= 40) basics.title = val;
-      else if (/^城市|现居|所在地|籍贯|期望城市/.test(key) && !basics.location && val.length <= 12) basics.location = val;
-      else if (/^工作年限|工作年数|工作经验|工作时长/.test(key) && !basics.workYears && val.length <= 12) basics.workYears = val;
+      // 城市/工作年限：双栏 PDF 的交错值常带噪声尾部（「南昌 史表中）」「4年 用）」），
+      // 提取已知城市词前缀 / 数字年前缀，避免把交错文本混进字段
+      else if (/^城市|现居|所在地|籍贯|期望城市/.test(key) && !basics.location) {
+        const city = CITY_WORDS.find(w => val.startsWith(w));
+        if (city) basics.location = city;
+        else if (val.length <= 12) basics.location = val;
+      }
+      else if (/^工作年限|工作年数|工作经验|工作时长/.test(key) && !basics.workYears) {
+        const ym = val.match(/^(\d{1,2})\s*年/);
+        if (ym) basics.workYears = `${ym[1]}年`;
+        else if (val.length <= 12) basics.workYears = val;
+      }
       else if (/^姓名$/.test(key) && !basics.name) basics.name = val;
       else if (/^毕业院校|院校$/.test(key) && !education.school) education.school = val;
       else if (/^专业$/.test(key) && !education.major) education.major = val;
@@ -606,7 +617,7 @@ export function parseResume(text: string): ParseResult {
   }
 
   // ---- experience：折叠式解析（头部行开新条目，其后描述块折叠进该条目） ----
-  const { entries: expEntries, leftovers: expLeftovers } = foldEntries(
+  const { entries: expEntries, leftovers: expLeftovers } = foldEntries<ResumeExperienceItem>(
     buckets.experience,
     (head, body) => {
       const dated = extractDateRange(head);
@@ -636,6 +647,14 @@ export function parseResume(text: string): ParseResult {
         location,
         bullets: toBullets(mergeWrappedLines(restBody, () => false)),
       };
+    },
+    // 独立角色行提升：如「Java软件开发工程师 北京」→ title=Java软件开发工程师 / location=北京
+    (roleHead: string) => {
+      const cityM = roleHead.match(/^(.*?)\s*([\u4e00-\u9fa5]{2,3})$/);
+      if (cityM && CITY_WORDS.includes(cityM[2])) {
+        return { title: cityM[1].trim(), location: cityM[2] };
+      }
+      return { title: roleHead };
     },
   );
   doc.experience = expEntries;
@@ -933,7 +952,7 @@ function splitEntry(lines: string[]): { head: string; body: string[] } {
 /** 纯标题噪声集合：单独的这类行没有实际内容，折叠时丢弃（避免「业绩:」「责任描述:」空行杂质） */
 const EMPTY_HEADER_WORDS = new Set([
   '业绩', '联系方式', '求职信息', '微信号', '微信', '项目描述', '项目技术', '所用技术',
-  '涉及技术', '技术栈', '个人参与', '责任描述', '工作职责', '岗位职责', '我的职责', '自我评价',
+  '涉及技术', '技术栈', '技术选型', '项目周期', '核心职责', '个人参与', '责任描述', '工作职责', '岗位职责', '我的职责', '自我评价',
 ]);
 
 /** 过滤折叠后的内容行：去掉空行与「只有标题、没有正文」的噪声行 */
@@ -957,6 +976,8 @@ function sanitizeEntryLines(lines: string[]): string[] {
     // 去除行首内嵌的个人信息噪声（Tika 把「男 | 25岁」混进条目正文），如「男 | 25岁 1、完成...」→「完成...」
     l = l.replace(/^(男|女)\s*[|\|｜,，、\s]+\s*\d{1,2}\s*岁[，,．.\s]*/, '');
     l = l.replace(/^(性别)?[：:\s]*[男女][，,．.\s]*$/, '');
+    // 剥掉标题前缀后只剩「日期范围」的元数据行（如「项目周期：2018.11 – 至今」→「2018.11 – 至今」）→ 丢弃
+    if (l && extractDateRange(l)) continue;
     if (l) out.push(l);
   }
   return out;
@@ -1005,9 +1026,10 @@ function extractProjectContent(lines: string[]): { tech: string[]; bullets: stri
   const tech: string[] = [];
   const rest: string[] = [];
   for (const line of lines) {
-    const techMatch = line.match(/^(?:技术栈|技术|技术方案|涉及技术)[:：]\s*(.+)$/);
+    const techMatch = line.match(/^(?:技术栈|技术选型|技术|技术方案|涉及技术)[:：]\s*(.+)$/);
     if (techMatch) {
-      tech.push(...splitSkills(techMatch[1]));
+      // 清理行尾终止标点/空白，避免「Redis。」这类残点进入技术栈项
+      tech.push(...splitSkills(techMatch[1].replace(/[。；;，,、\s]+$/, '')));
       continue;
     }
     if (line.length <= 40 && !line.match(/[\u4e00-\u9fa5]{6,}/)) {
@@ -1019,7 +1041,9 @@ function extractProjectContent(lines: string[]): { tech: string[]; bullets: stri
     }
     rest.push(line);
   }
-  return { tech, bullets: rest };
+  // 清洗 rest：剥噪声小标题（核心职责/项目周期等）与纯日期残行
+  const cleaned = sanitizeEntryLines(rest);
+  return { tech, bullets: cleaned };
 }
 
 /**
@@ -1045,6 +1069,8 @@ function tryTwoLineProjectHead(lines: string[]): { name: string; role: string; r
 function foldEntries<T extends { bullets: ResumeBullet[] }>(
   blocks: string[][],
   createEntry: (head: string, body: string[]) => T,
+  /** 独立「角色行」块（如空行分隔的「Java软件开发工程师 北京」）→ 提升为条目字段（title/location） */
+  onRoleLine?: (head: string) => Record<string, unknown> | null,
 ): { entries: T[]; leftovers: string[][] } {
   const entries: T[] = [];
   const leftovers: string[][] = [];
@@ -1055,6 +1081,18 @@ function foldEntries<T extends { bullets: ResumeBullet[] }>(
       current = createEntry(head, body);
       entries.push(current);
     } else if (current) {
+      // 独立角色行：单独成块、当前条目目标字段为空 → 提升而不是变成 bullet
+      if (onRoleLine && body.length === 0 && isRoleLine(head)) {
+        const patch = onRoleLine(head);
+        if (patch) {
+          const cur = current as unknown as Record<string, unknown>;
+          const applied: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(patch)) {
+            if (!cur[k] && v) { cur[k] = v; applied[k] = v; }
+          }
+          if (Object.keys(applied).length > 0) continue;
+        }
+      }
       // 描述块：先重组被 Tika 断行的长句，再折叠进当前条目（避免一句完整话被切成不同 bullet）
       const cleaned = sanitizeEntryLines([head, ...body]);
       const merged = mergeWrappedLines(cleaned, (l) => isBulletLine(l) || isEntryHeadLine(l));
