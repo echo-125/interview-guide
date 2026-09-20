@@ -6,19 +6,20 @@
 
 import type { ResumeDocument } from '../../../types/resumeDocument';
 import { BulletList, EducationEntry, EntryHead, SectionTitle } from './shared';
+import { COLOR, LINE_HEIGHT, TEMPLATE_NAME_PX, TYPE } from './tokens';
 
-/** ATS 模板统一字号阶（与 Developer 同步，整体上调一档） */
+/** ATS 模板统一字号阶（Phase 5D：派生自 tokens） */
 const FONT = {
-  name: 28,
-  headline: 16,
-  section: 16,
-  company: 15.5,
-  jobTitle: 14.5,
-  body: 14,
-  meta: 12.5,
-  minor: 13,
+  name: TEMPLATE_NAME_PX.ats,
+  headline: TYPE.headline,
+  section: TYPE.section,
+  company: TYPE.company,
+  jobTitle: TYPE.jobTitle,
+  body: TYPE.body,
+  meta: TYPE.meta,
+  minor: TYPE.minor,
 } as const;
-const LINE = 1.7;
+const LINE = LINE_HEIGHT;
 /** 与 Developer 完全一致的无衬线字体系统 */
 const SANS = "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif";
 
@@ -28,7 +29,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
   const headCls = 'rm-ats-head';
 
   return (
-    <div className="rm-ats" style={{ padding: '32px 40px', width: '100%', minHeight: '100%', color: '#111827', fontFamily: SANS }}>
+    <div className="rm-ats" style={{ padding: '32px 40px', width: '100%', minHeight: '100%', color: COLOR.ink, fontFamily: SANS }}>
       {/* 头部：居中、无装饰 */}
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
         {basics.name && <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700 }}>{basics.name}</h1>}
@@ -96,7 +97,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.certifications.map(c => (
             <p key={c.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {c.name}
-              {c.date ? <span style={{ color: '#6b7280' }}> — {c.date}</span> : null}
+              {c.date ? <span style={{ color: COLOR.muted }}> — {c.date}</span> : null}
             </p>
           ))}
         </div>
@@ -107,7 +108,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.awards.map(a => (
             <p key={a.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {a.title}
-              {a.date ? <span style={{ color: '#6b7280' }}> — {a.date}</span> : null}
+              {a.date ? <span style={{ color: COLOR.muted }}> — {a.date}</span> : null}
             </p>
           ))}
         </div>
@@ -118,7 +119,7 @@ export function AtsTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.languages.map(l => (
             <p key={l.id} style={{ margin: '0 0 2px', fontSize: FONT.minor }}>
               {l.name}
-              {l.level ? <span style={{ color: '#6b7280' }}> — {l.level}</span> : null}
+              {l.level ? <span style={{ color: COLOR.muted }}> — {l.level}</span> : null}
             </p>
           ))}
         </div>

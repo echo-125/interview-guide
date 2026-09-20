@@ -1,93 +1,114 @@
 /**
- * PDF 导出模板样式（Phase 4B 正式功能）
+ * PDF 导出模板样式（Phase 5D：字号/行高/颜色/页边距统一派生自 tokens.ts）
  *
- * Preview / PDF / DOCX 使用同一个 templateId：
- * 内容渲染结构共用，样式按模板参数化（差异收敛为样式，避免三套手写组件）。
- * developer：程序员单栏（现状）；classic：经典居中头部；ats：极简可解析。
+ * Preview / PDF / DOCX 使用同一个 templateId；
+ * 样式差异收敛为模板参数（对齐 / 颜色 / 边框），字号阶、行高与页边距来自统一令牌。
+ *
+ * 重要（Phase 5D 修复）：@react-pdf 对未显式设置 lineHeight 的 Text 会按字体度量
+ * （约 1.16em）计算行盒，且不级联页级 lineHeight——大字号（姓名）行盒曾塌陷到
+ * 0.2em 造成上下行重叠。因此每个文本样式都显式携带 lineHeight。
  */
 
-import { PDF_FONT_STACK } from '../../../utils/resumeDocument/pdfFonts';
 import type { ResumeTemplateId } from './types';
+import {
+  COLOR,
+  LINE_HEIGHT,
+  PAGE_PADDING_X_PX,
+  PAGE_PADDING_Y_PX,
+  PDF_FONT_STACK,
+  TEMPLATE_NAME_PX,
+  TYPE,
+  pxToPt,
+} from './tokens.ts';
+
+const pt = pxToPt;
+
+/** 统一页内边距（按模板，px → pt） */
+function pagePadding(id: ResumeTemplateId) {
+  const y = pt(PAGE_PADDING_Y_PX[id]);
+  const x = pt(PAGE_PADDING_X_PX[id]);
+  return { paddingTop: y, paddingBottom: y, paddingLeft: x, paddingRight: x };
+}
 
 const base = {
   page: {
-    padding: 40,
-    fontSize: 12,
-    lineHeight: 1.55,
+    fontSize: pt(TYPE.body),
+    lineHeight: LINE_HEIGHT,
     fontFamily: PDF_FONT_STACK,
-    color: '#1f2937',
+    color: COLOR.ink,
   },
+  // 间距与 Preview 同源换算（px × 0.75 = pt），保证页数与布局观感一致
   header: { marginBottom: 12 },
-  name: { fontSize: 26, fontWeight: 700, marginBottom: 2 },
-  title: { fontSize: 14, color: '#0f766e', marginBottom: 4 },
-  contact: { fontSize: 11, color: '#6b7280' },
-  summary: { fontSize: 12.5, marginTop: 6, color: '#374151' },
+  name: { fontSize: pt(TEMPLATE_NAME_PX.developer), fontWeight: 700, lineHeight: 1.3, marginBottom: 5 },
+  title: { fontSize: pt(TYPE.headline), lineHeight: 1.5, color: COLOR.accent, marginBottom: 5 },
+  contact: { fontSize: pt(TYPE.meta), lineHeight: 1.6, color: COLOR.muted },
+  summary: { fontSize: pt(TYPE.body), lineHeight: 1.65, marginTop: 9, color: COLOR.text },
   section: { marginTop: 12 },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: pt(TYPE.section),
+    lineHeight: 1.45,
     fontWeight: 700,
     borderBottomWidth: 1,
     borderBottomColor: '#cbd5e1',
-    paddingBottom: 2,
+    paddingBottom: 3,
     marginBottom: 6,
   },
   entry: { marginBottom: 7 },
-  entryHead: { flexDirection: 'row' as const, alignItems: 'baseline' as const, marginBottom: 2 },
-  entryMain: { fontSize: 13, fontWeight: 700 },
-  entrySub: { fontSize: 11, color: '#6b7280', marginLeft: 6 },
-  entryDates: { fontSize: 11, color: '#6b7280', marginLeft: 'auto' as const },
-  bullet: { flexDirection: 'row' as const, marginBottom: 1 },
-  bulletMark: { width: 8 },
-  bulletText: { flex: 1 },
-  skillLine: { fontSize: 11.5, marginBottom: 2 },
-  skillLabel: { fontWeight: 700 },
+  entryHead: { flexDirection: 'row' as const, alignItems: 'baseline' as const, marginBottom: 3 },
+  entryMain: { fontSize: pt(TYPE.company), lineHeight: 1.5, fontWeight: 700 },
+  entrySub: { fontSize: pt(TYPE.jobTitle), lineHeight: 1.5, color: COLOR.muted, marginLeft: 6 },
+  entryDates: { fontSize: pt(TYPE.meta), lineHeight: 1.5, color: COLOR.muted, marginLeft: 'auto' as const },
+  bullet: { flexDirection: 'row' as const, marginBottom: 1.5 },
+  bulletMark: { lineHeight: 1.6, width: 10 },
+  bulletText: { lineHeight: 1.6, flex: 1 },
+  skillLine: { fontSize: pt(TYPE.body), lineHeight: 1.6, marginBottom: 3 },
+  skillLabel: { lineHeight: 1.6, fontWeight: 700 },
 };
 
 const developer = {
   ...base,
-  title: { fontSize: 14, color: '#0f766e', marginBottom: 4 },
+  page: { ...base.page, ...pagePadding('developer') },
+  title: { fontSize: pt(TYPE.headline), lineHeight: 1.5, color: COLOR.accent, marginBottom: 5 },
 };
 
 const classic = {
   ...base,
+  page: { ...base.page, ...pagePadding('classic') },
   header: { marginBottom: 14, alignItems: 'center' as const },
-  name: { fontSize: 28, fontWeight: 700, marginBottom: 3, textAlign: 'center' as const },
-  title: { fontSize: 13, color: '#374151', marginBottom: 4, textAlign: 'center' as const },
-  contact: { fontSize: 11, color: '#6b7280', textAlign: 'center' as const },
-  summary: { fontSize: 12.5, marginTop: 8, color: '#374151', textAlign: 'center' as const },
+  name: { fontSize: pt(TEMPLATE_NAME_PX.classic), fontWeight: 700, lineHeight: 1.3, marginBottom: 5, textAlign: 'center' as const },
+  title: { fontSize: pt(TYPE.headline), lineHeight: 1.5, color: COLOR.text, marginBottom: 5, textAlign: 'center' as const },
+  contact: { fontSize: pt(TYPE.meta), lineHeight: 1.6, color: COLOR.muted, textAlign: 'center' as const },
+  summary: { fontSize: pt(TYPE.body), lineHeight: 1.65, marginTop: 10, color: COLOR.text, textAlign: 'center' as const },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: pt(TYPE.section),
+    lineHeight: 1.45,
     fontWeight: 700,
-    color: '#1f2937',
+    color: COLOR.text,
     borderBottomWidth: 1,
     borderBottomColor: '#94a3b8',
-    paddingBottom: 2,
+    paddingBottom: 3,
     marginBottom: 6,
   },
 };
 
 const ats = {
   ...base,
-  page: {
-    padding: 36,
-    fontSize: 11.5,
-    lineHeight: 1.5,
-    fontFamily: PDF_FONT_STACK,
-    color: '#000000',
-  },
-  name: { fontSize: 24, fontWeight: 700, marginBottom: 3 },
-  title: { fontSize: 13, color: '#111827', marginBottom: 4 },
-  contact: { fontSize: 10.5, color: '#374151' },
+  page: { ...base.page, ...pagePadding('ats'), color: '#000000' },
+  name: { fontSize: pt(TEMPLATE_NAME_PX.ats), fontWeight: 700, lineHeight: 1.3, marginBottom: 5 },
+  title: { fontSize: pt(TYPE.headline), lineHeight: 1.5, color: COLOR.ink, marginBottom: 5 },
+  contact: { fontSize: pt(TYPE.meta), lineHeight: 1.6, color: COLOR.text },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: pt(TYPE.section),
+    lineHeight: 1.45,
     fontWeight: 700,
     color: '#000000',
     borderBottomWidth: 0,
-    paddingBottom: 1,
-    marginBottom: 5,
+    paddingBottom: 2,
+    marginBottom: 6,
   },
-  entryDates: { fontSize: 10.5, color: '#111827', marginLeft: 'auto' as const },
-  skillLabel: { fontWeight: 700 },
+  entryDates: { fontSize: pt(TYPE.meta), lineHeight: 1.5, color: COLOR.ink, marginLeft: 'auto' as const },
+  skillLine: { fontSize: pt(TYPE.body), lineHeight: 1.6, marginBottom: 3 },
+  skillLabel: { lineHeight: 1.6, fontWeight: 700 },
 };
 
 /** 按 templateId 取 PDF 样式（兜底 developer） */

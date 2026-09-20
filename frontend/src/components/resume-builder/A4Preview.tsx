@@ -5,28 +5,51 @@
  * 页断点必然落在「块」的边界（段落 / bullet / 条目头之间），因此不会把一个词从中间切开，
  * 标题也尽量与其下一条目同页。
  *
+ * Phase 5D：页内边距按模板参数化（pagePadding），pageH = A4高 - 上边距 - 下边距，
+ * 与 PDF（react-pdf padding）/ DOCX（页边距 twip）使用同一份 tokens 换算，三端几何基础一致。
+ *
  * children 兜底模式：对未接入块模型的模板退化为「整树测量 + translateY 切片」（保持原行为）。
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PageBlock } from './templates/pagination';
 import { packBlocks } from './templates/pagination';
+import { PAGE } from './templates/tokens';
 
-export const A4_WIDTH_PX = 794;
-export const A4_HEIGHT_PX = 1123;
+export const A4_WIDTH_PX = PAGE.widthPx;
+export const A4_HEIGHT_PX = PAGE.heightPx;
+
+/** 页内边距（px）；bottom 缺省取 topPx */
+export interface A4PagePadding {
+  topPx: number;
+  bottomPx?: number;
+  xPx: number;
+}
+
+const DEFAULT_PADDING: A4PagePadding = { topPx: 36, bottomPx: 36, xPx: 42 };
 
 interface A4PreviewProps {
   children: ReactNode;
   /** 模板分页块（可选）；提供时用块级分页，否则退化为切片分页 */
   blocks?: PageBlock[];
+  /** 模板页内边距（与 PDF/DOCX 同一 tokens 来源） */
+  pagePadding?: A4PagePadding;
   viewportWidth?: number;
 }
 
 /** 隐藏测量：把所有块按列排布（flex 不合并 margin），读出每块真实高度 */
-function Measure({ blocks }: { blocks: PageBlock[] }) {
+function Measure({ blocks, pad }: { blocks: PageBlock[]; pad: A4PagePadding }) {
   return (
     <div aria-hidden style={{ position: 'absolute', visibility: 'hidden', width: A4_WIDTH_PX }}>
-      <div style={{ display: 'flex', flexDirection: 'column', width: A4_WIDTH_PX, padding: '36px 42px', boxSizing: 'border-box' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: A4_WIDTH_PX,
+          padding: `${pad.topPx}px ${pad.xPx}px ${pad.bottomPx ?? pad.topPx}px`,
+          boxSizing: 'border-box',
+        }}
+      >
         {blocks.map((bk) => (
           <div key={bk.key} data-block-key={bk.key}>
             {bk.node}
@@ -37,7 +60,9 @@ function Measure({ blocks }: { blocks: PageBlock[] }) {
   );
 }
 
-export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewProps) {
+export function A4Preview({ children, blocks, pagePadding, viewportWidth = 620 }: A4PreviewProps) {
+  const pad = pagePadding ?? DEFAULT_PADDING;
+  const padBottom = pad.bottomPx ?? pad.topPx;
   // 自适应容器宽度：A4 纸按实际容器宽度缩放，避免固定 620px 在窄中栏里水平溢出/截断
   const sheetAreaRef = useRef<HTMLDivElement>(null);
   const [areaW, setAreaW] = useState(viewportWidth);
@@ -82,8 +107,9 @@ export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewPr
     const items = Array.from(root.querySelectorAll<HTMLElement>('[data-block-key]'));
     if (items.length !== blocks.length) return;
     const heights = items.map((el) => el.getBoundingClientRect().height);
-    setPackedBlocks(packBlocks(blocks, heights, A4_HEIGHT_PX - 78)); // 78 = 上下 padding(36+42) 预留
-  }, [useBlocks, blocks]);
+    // contentHeight = pageHeight - topMargin - bottomMargin（Phase 5D：引用统一页面令牌）
+    setPackedBlocks(packBlocks(blocks, heights, A4_HEIGHT_PX - pad.topPx - padBottom));
+  }, [useBlocks, blocks, pad.topPx, padBottom]);
 
   const pages = useBlocks ? (packedBlocks ?? []) : Array.from({ length: fallbackCount }, (_, i) => i);
 
@@ -91,7 +117,7 @@ export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewPr
     <div ref={sheetAreaRef} className="flex-1 min-h-0 bg-slate-200 dark:bg-slate-900 overflow-auto" style={{ height: '100%' }}>
       {/* 测量容器 */}
       <div ref={measureRef}>
-        {useBlocks && blocks ? <Measure blocks={blocks} /> : <div aria-hidden style={{ position: 'absolute', visibility: 'hidden', width: A4_WIDTH_PX }} data-measure>{children}</div>}
+        {useBlocks && blocks ? <Measure blocks={blocks} pad={pad} /> : <div aria-hidden style={{ position: 'absolute', visibility: 'hidden', width: A4_WIDTH_PX }} data-measure>{children}</div>}
       </div>
 
       {/* 分页展示：占满容器宽度并水平居中每张 A4 纸，避免纸张靠左、右侧留白 */}
@@ -119,7 +145,7 @@ export function A4Preview({ children, blocks, viewportWidth = 620 }: A4PreviewPr
                     display: 'flex',
                     flexDirection: 'column',
                     width: A4_WIDTH_PX,
-                    padding: '36px 42px',
+                    padding: `${pad.topPx}px ${pad.xPx}px ${padBottom}px`,
                     boxSizing: 'border-box',
                     fontFamily: "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif",
                   }}

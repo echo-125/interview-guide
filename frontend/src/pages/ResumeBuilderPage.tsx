@@ -18,6 +18,7 @@ import { RESUME_TEMPLATES, renderResumeTemplate } from '../components/resume-bui
 import { buildDeveloperBlocks } from '../components/resume-builder/templates/DeveloperBlocks';
 import { buildClassicBlocks } from '../components/resume-builder/templates/ClassicBlocks';
 import { buildAtsBlocks } from '../components/resume-builder/templates/AtsBlocks';
+import { PAGE_PADDING_X_PX, PAGE_PADDING_Y_PX } from '../components/resume-builder/templates/tokens';
 import type { ResumeTemplateId } from '../components/resume-builder/templates/types';
 import { A4Preview } from '../components/resume-builder/A4Preview';
 import { StructuredEditor } from '../components/resume-builder/StructuredEditor';
@@ -514,6 +515,12 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     return undefined;
   }, [templateId, doc]);
 
+  /** Phase 5D：页内边距按模板提供（与 PDF/DOCX 同一 tokens 来源），pageH 计算随之对齐 */
+  const previewPagePadding = useMemo(() => {
+    const topPx = PAGE_PADDING_Y_PX[templateId];
+    return { topPx, bottomPx: topPx, xPx: PAGE_PADDING_X_PX[templateId] };
+  }, [templateId]);
+
   const handleExportPdf = async () => {
     if (!doc) return;
     setExporting('pdf');
@@ -695,7 +702,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
             <span>A4 实时预览 · {RESUME_TEMPLATES[templateId].label}</span>
             <span className="font-normal text-slate-400">210mm × 297mm · 仅浏览器内预览，不写入原始文件</span>
           </div>
-          <A4Preview blocks={previewBlocks}>{preview}</A4Preview>
+          <A4Preview blocks={previewBlocks} pagePadding={previewPagePadding}>{preview}</A4Preview>
         </div>
 
         <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">

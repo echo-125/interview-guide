@@ -6,18 +6,19 @@
 
 import type { ResumeDocument } from '../../../types/resumeDocument';
 import { BulletList, EducationEntry, EntryHead, SectionTitle } from './shared';
+import { COLOR, LINE_HEIGHT, TEMPLATE_NAME_PX, TYPE } from './tokens';
 
-/** Classic 模板统一字号阶（与 Developer 同步，整体上调一档） */
+/** Classic 模板统一字号阶（Phase 5D：派生自 tokens） */
 const FONT = {
-  name: 32,
-  headline: 16,
-  section: 16,
-  company: 15.5,
-  jobTitle: 14.5,
-  body: 14,
-  meta: 12.5,
+  name: TEMPLATE_NAME_PX.classic,
+  headline: TYPE.headline,
+  section: TYPE.section,
+  company: TYPE.company,
+  jobTitle: TYPE.jobTitle,
+  body: TYPE.body,
+  meta: TYPE.meta,
 } as const;
-const LINE = 1.7;
+const LINE = LINE_HEIGHT;
 /** 与 Developer 完全一致的无衬线字体系统 */
 const SANS = "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif";
 
@@ -27,12 +28,12 @@ export function ClassicTemplate({ doc }: { doc: ResumeDocument }) {
   const headCls = 'rm-classic-head';
 
   return (
-    <div className="rm-classic" style={{ padding: '36px 44px', width: '100%', minHeight: '100%', fontFamily: SANS, color: '#111827' }}>
+    <div className="rm-classic" style={{ padding: '36px 44px', width: '100%', minHeight: '100%', fontFamily: SANS, color: COLOR.ink }}>
       {/* 头部 */}
       <div style={{ textAlign: 'center', marginBottom: 22 }}>
         {basics.name && <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700, letterSpacing: 2 }}>{basics.name}</h1>}
-        {basics.title && <p style={{ margin: '6px 0 0', fontSize: FONT.headline, fontWeight: 600, color: '#374151' }}>{basics.title}</p>}
-        <p style={{ margin: '8px 0 0', fontSize: FONT.meta, color: '#6b7280', lineHeight: LINE }}>
+        {basics.title && <p style={{ margin: '6px 0 0', fontSize: FONT.headline, fontWeight: 600, color: COLOR.text }}>{basics.title}</p>}
+        <p style={{ margin: '8px 0 0', fontSize: FONT.meta, color: COLOR.muted, lineHeight: LINE }}>
           {[basics.gender, basics.age, basics.email, basics.phone, basics.location, basics.website].filter(Boolean).join('  ·  ')}
         </p>
       </div>
@@ -41,7 +42,7 @@ export function ClassicTemplate({ doc }: { doc: ResumeDocument }) {
       {basics.summary && (
         <div style={{ marginBottom: 18 }}>
           <SectionTitle className={headCls}>个人总结</SectionTitle>
-          <p style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE, color: '#374151' }}>{basics.summary}</p>
+          <p style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE, color: COLOR.text }}>{basics.summary}</p>
         </div>
       )}
 
@@ -101,7 +102,7 @@ export function ClassicTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.certifications.map(c => (
             <p key={c.id} style={{ margin: '0 0 3px', fontSize: FONT.body }}>
               {c.name}
-              {c.date ? <span style={{ color: '#6b7280' }}>（{c.date}）</span> : null}
+              {c.date ? <span style={{ color: COLOR.muted }}>（{c.date}）</span> : null}
             </p>
           ))}
         </div>
@@ -112,7 +113,7 @@ export function ClassicTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.awards.map(a => (
             <p key={a.id} style={{ margin: '0 0 3px', fontSize: FONT.body }}>
               {a.title}
-              {a.date ? <span style={{ color: '#6b7280' }}>（{a.date}）</span> : null}
+              {a.date ? <span style={{ color: COLOR.muted }}>（{a.date}）</span> : null}
             </p>
           ))}
         </div>
@@ -123,7 +124,7 @@ export function ClassicTemplate({ doc }: { doc: ResumeDocument }) {
           {doc.languages.map(l => (
             <p key={l.id} style={{ margin: '0 0 3px', fontSize: FONT.body }}>
               {l.name}
-              {l.level ? <span style={{ color: '#6b7280' }}>（{l.level}）</span> : null}
+              {l.level ? <span style={{ color: COLOR.muted }}>（{l.level}）</span> : null}
             </p>
           ))}
         </div>

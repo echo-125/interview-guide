@@ -11,23 +11,23 @@
 
 import type { ResumeBullet, ResumeDocument } from '../../../types/resumeDocument';
 import { SectionTitle } from './shared';
+import { COLOR, LINE_HEIGHT, TEMPLATE_NAME_PX, TYPE } from './tokens';
 
-/** 统一字体阶（模板级常量；视觉可在此微调，但所有内容都用它，杜绝同段混用）
- *  字号整体上调一档，解决「A4 实时预览缩放后字号偏小」问题。 */
+/** 统一字体阶（Phase 5D：派生自 tokens，与块版/PDF/DOCX 一致） */
 const FONT = {
-  name: 30,
-  headline: 16,
-  section: 16,
-  company: 15.5,
-  jobTitle: 14.5,
-  body: 14,
-  meta: 12.5,
+  name: TEMPLATE_NAME_PX.developer,
+  headline: TYPE.headline,
+  section: TYPE.section,
+  company: TYPE.company,
+  jobTitle: TYPE.jobTitle,
+  body: TYPE.body,
+  meta: TYPE.meta,
 } as const;
-const LINE = 1.7;
+const LINE = LINE_HEIGHT;
 
-const INK = '#111827';
-const MUTED = '#6b7280';
-const ACCENT = '#0f766e';
+const INK = COLOR.ink;
+const MUTED = COLOR.muted;
+const ACCENT = COLOR.accent;
 
 function BulletList({ bullets, mark = '•' }: { bullets: ResumeBullet[]; mark?: string }) {
   return (
@@ -76,7 +76,7 @@ export function DeveloperTemplate({ doc }: { doc: ResumeDocument }) {
       {b.summary && (
         <div style={{ marginTop: 12 }}>
           <SectionTitle size={FONT.section}>个人总结</SectionTitle>
-          <p style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE, color: '#374151' }}>{b.summary}</p>
+          <p style={{ margin: 0, fontSize: FONT.body, lineHeight: LINE, color: COLOR.text }}>{b.summary}</p>
         </div>
       )}
 
@@ -89,7 +89,7 @@ export function DeveloperTemplate({ doc }: { doc: ResumeDocument }) {
             return (
               <div key={e.id} style={{ marginBottom: 9 }}>
                 <EntryHead main={e.company} sub={e.title} dates={dates} />
-                {e.description ? <p style={{ margin: '2px 0 3px', fontSize: FONT.body, lineHeight: LINE, color: '#374151' }}>{e.description}</p> : null}
+                {e.description ? <p style={{ margin: '2px 0 3px', fontSize: FONT.body, lineHeight: LINE, color: COLOR.text }}>{e.description}</p> : null}
                 <ul style={{ listStyle: 'none', margin: '2px 0 0', padding: 0 }}>
                   <BulletList bullets={e.bullets} />
                 </ul>

@@ -14,19 +14,20 @@
 import type { CSSProperties } from 'react';
 import type { ResumeDocument } from '../../../types/resumeDocument';
 import type { PageBlock } from './pagination';
+import { COLOR, LINE_HEIGHT, TEMPLATE_NAME_PX, TYPE } from './tokens';
 
 const FONT = {
-  name: 32,
-  headline: 16,
-  section: 16,
-  company: 15.5,
-  jobTitle: 14.5,
-  body: 14,
-  meta: 12.5,
+  name: TEMPLATE_NAME_PX.classic,
+  headline: TYPE.headline,
+  section: TYPE.section,
+  company: TYPE.company,
+  jobTitle: TYPE.jobTitle,
+  body: TYPE.body,
+  meta: TYPE.meta,
 } as const;
-const LINE = 1.7;
-const INK = '#111827';
-const MUTED = '#6b7280';
+const LINE = LINE_HEIGHT;
+const INK = COLOR.ink;
+const MUTED = COLOR.muted;
 const SANS = "-apple-system,'Segoe UI',Roboto,'Noto Sans SC','Microsoft YaHei',sans-serif";
 
 function st(style: CSSProperties): CSSProperties {
@@ -55,7 +56,7 @@ function Head({ main, sub, dates, pad }: { main: string; sub?: string; dates?: s
   return (
     <div style={st({ display: 'flex', alignItems: 'baseline', gap: 8, paddingTop: pad })}>
       <span style={{ fontWeight: 700, fontSize: FONT.company, color: INK }}>{main}</span>
-      {sub ? <span style={{ fontSize: FONT.jobTitle, fontWeight: 500, color: '#374151' }}>{sub}</span> : null}
+      {sub ? <span style={{ fontSize: FONT.jobTitle, fontWeight: 500, color: COLOR.text }}>{sub}</span> : null}
       {dates ? (
         <span style={{ marginLeft: 'auto', fontSize: FONT.meta, color: MUTED, whiteSpace: 'nowrap' }}>{dates}</span>
       ) : null}
@@ -78,7 +79,7 @@ export function buildClassicBlocks(doc: ResumeDocument): PageBlock[] {
           <h1 style={{ margin: 0, fontSize: FONT.name, fontWeight: 700, letterSpacing: 2 }}>{b.name}</h1>
         ) : null}
         {b.title ? (
-          <p style={{ margin: '6px 0 0', fontSize: FONT.headline, fontWeight: 600, color: '#374151' }}>{b.title}</p>
+          <p style={{ margin: '6px 0 0', fontSize: FONT.headline, fontWeight: 600, color: COLOR.text }}>{b.title}</p>
         ) : null}
         {(b.email || b.phone || b.location || b.website || b.gender || b.age || b.workYears) ? (
           <p style={{ margin: '8px 0 0', fontSize: FONT.meta, color: MUTED, lineHeight: LINE }}>
@@ -86,7 +87,7 @@ export function buildClassicBlocks(doc: ResumeDocument): PageBlock[] {
           </p>
         ) : null}
         {b.summary ? (
-          <p style={{ margin: '10px 0 0', fontSize: FONT.body, lineHeight: LINE, color: '#374151' }}>{b.summary}</p>
+          <p style={{ margin: '10px 0 0', fontSize: FONT.body, lineHeight: LINE, color: COLOR.text }}>{b.summary}</p>
         ) : null}
       </div>
     ),
@@ -106,7 +107,7 @@ export function buildClassicBlocks(doc: ResumeDocument): PageBlock[] {
         blocks.push({
           key: key(`exp-${e.id}-desc`),
           node: (
-            <p style={st({ margin: '2px 0 3px', fontSize: FONT.body, lineHeight: LINE, color: '#374151' })}>
+            <p style={st({ margin: '2px 0 3px', fontSize: FONT.body, lineHeight: LINE, color: COLOR.text })}>
               {e.description}
             </p>
           ),
@@ -185,7 +186,7 @@ export function buildClassicBlocks(doc: ResumeDocument): PageBlock[] {
           <div style={st({ paddingTop: 6, paddingBottom: 4 })}>
             <div style={st({ display: 'flex', alignItems: 'baseline', gap: 8 })}>
               <span style={{ fontWeight: 700, fontSize: FONT.company }}>{e.school}</span>
-              <span style={{ fontSize: FONT.jobTitle, color: '#374151' }}>
+              <span style={{ fontSize: FONT.jobTitle, color: COLOR.text }}>
                 {[e.degree, e.major].filter(Boolean).join(' · ')}
               </span>
               {dates ? <span style={{ marginLeft: 'auto', fontSize: FONT.meta, color: MUTED, whiteSpace: 'nowrap' }}>{dates}</span> : null}
