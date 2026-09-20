@@ -19,6 +19,7 @@ import { buildDeveloperBlocks } from '../components/resume-builder/templates/Dev
 import { buildClassicBlocks } from '../components/resume-builder/templates/ClassicBlocks';
 import { buildAtsBlocks } from '../components/resume-builder/templates/AtsBlocks';
 import { PAGE_PADDING_X_PX, PAGE_PADDING_Y_PX } from '../components/resume-builder/templates/tokens';
+import { resolveAiStageAfterParse } from './builderAiStage';
 import type { ResumeTemplateId } from '../components/resume-builder/templates/types';
 import { A4Preview } from '../components/resume-builder/A4Preview';
 import { StructuredEditor } from '../components/resume-builder/StructuredEditor';
@@ -243,6 +244,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const [diag, setDiag] = useState<ParseDiagnostics | null>(null);
   const [templateId, setTemplateId] = useState<ResumeTemplateId>('developer');
   const [exporting, setExporting] = useState<'pdf' | 'docx' | null>(null);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [filename, setFilename] = useState('resume');
   const [aiStage, setAiStage] = useState<'idle' | 'parsing' | 'done' | 'failed'>('idle');
   const [suggestions, setSuggestions] = useState<PanelSuggestion[]>([]);
@@ -282,6 +284,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
         const saved = await resumeApi.getWorkingDocument(resumeId).catch(() => null);
         if (mounted && saved && saved.sourceTextHash === sourceHashRef.current && saved.document) {
           restoredRef.current = true;
+          setAiStage(resolveAiStageAfterParse(true, true)); // Phase 5E（P1）：恢复成功即结束解析状态
           const parsed = parseSavedWorkspace(saved, ruleResult.document);
           setWs({
             originalDocument: parsed.originalDocument,
@@ -313,10 +316,12 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
         }
 
         // LLM 结构化解析（Phase 5C：质量门 + 安全 Merge，不再整篇覆盖工作区）；失败回退 rule。
-        // 若已从持久化恢复工作区（resumeText 未变），保持恢复结果（Persistence Restore > Parse Initialization）。
+        // Phase 5E（P1）：恢复路径既不需要也不允许 LLM 覆盖工作区，直接跳过该请求（避免 60-90s 无效等待）。
+        if (restoredRef.current) return;
+
         try {
           const resp = await resumeApi.parseStructured(resumeId);
-          if (mounted && !restoredRef.current) {
+          if (mounted) {
             const llmDoc = toResumeDocument(resp.document);
             const llmCoverage: CoverageLike = {
               coverage: resp.diagnostics.sourceChars > 0 ? resp.diagnostics.structuredChars / resp.diagnostics.sourceChars : 0,
@@ -351,7 +356,8 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           }
         } catch (llmErr) {
           console.warn('LLM 结构化解析失败，已使用基础解析结果', llmErr);
-          if (mounted && !restoredRef.current) setAiStage('failed');
+          // 未恢复路径的 LLM 失败：展示「AI 解析失败」横幅（Rule 结果仍可编辑）
+          if (mounted) setAiStage(resolveAiStageAfterParse(false, false));
         }
       } catch (err) {
         if (!mounted) return;
@@ -559,6 +565,19 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     return nameOk ? n : filename.replace(/\.(pdf|docx|doc|txt|md)$/i, '');
   };
 
+  // Phase 5E（P2）：全部建议不可操作时的「重新分析」——复用后端已有 reanalyze，不触碰工作区
+  const handleReanalyze = async () => {
+    setReanalyzing(true);
+    try {
+      await resumeApi.reanalyze(resumeId);
+      showToast('重新分析完成，页面将刷新以获取最新建议', 'success');
+      window.location.reload();
+    } catch (err) {
+      showToast(getErrorMessage(err, '重新分析失败，请稍后重试'), 'error');
+      setReanalyzing(false);
+    }
+  };
+
   if (loading) {
     const stages = ['读取简历', '识别章节', '识别工作经历', '识别项目', '识别技能', '整理结构', '完成'];
     return (
@@ -719,6 +738,8 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
             selectedId={activeSuggestionId}
             relatedIds={relatedIds}
             onSelect={handleSelectSuggestion}
+            onReanalyze={handleReanalyze}
+            reanalyzing={reanalyzing}
           />
         </div>
       </div>

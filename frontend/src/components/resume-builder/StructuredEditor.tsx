@@ -20,7 +20,7 @@ import {
   type ResumeProjectItem,
 } from '../../types/resumeDocument';
 import { serializePath, type DocumentPath } from '../../utils/resumeDocument/structuredMapping';
-import { FieldAnchor, useEditorFieldLocator } from './EditorFieldRegistryProvider';
+import { FieldAnchor, useEditorFieldLocator, useEditorFieldRegistry } from './EditorFieldRegistryProvider';
 import { addBlock, removeBlock, updateBlock } from '../../utils/resumeDocument/customSection';
 
 interface StructuredEditorProps {
@@ -101,6 +101,57 @@ function Field({
   );
 }
 
+/**
+ * Phase 5E（P2）：自动增高 textarea。
+ * 高度校正在每轮渲染后经字段注册表读取已注册 DOM 元素执行（height=auto → scrollHeight），
+ * 不接管 FieldAnchor 的 ref 合约——定位/反向联动保持 Phase 5B 行为。
+ * 超出 maxHeight 后内部滚动兜底；清空内容恢复 minHeight。
+ */
+function AutoGrowFieldTextarea({
+  path,
+  value,
+  onChange,
+  onFieldFocus,
+  className,
+  placeholder,
+  minHeight = 36,
+  maxHeight = 280,
+}: {
+  path?: DocumentPath;
+  value: string;
+  onChange: (v: string) => void;
+  onFieldFocus?: (p: DocumentPath) => void;
+  className?: string;
+  placeholder?: string;
+  minHeight?: number;
+  maxHeight?: number;
+}) {
+  const { get } = useEditorFieldRegistry();
+  const key = path ? serializePath(path) : null;
+  useEffect(() => {
+    if (!key) return;
+    const el = get(key)?.element as HTMLTextAreaElement | undefined;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
+  }, [get, key, value, minHeight, maxHeight]);
+
+  const ta = (
+    <textarea
+      className={`${inputCls} resize-none overflow-y-auto ${className ?? ''}`}
+      style={{ minHeight, maxHeight }}
+      value={value}
+      placeholder={placeholder}
+      onChange={e => onChange(e.target.value)}
+    />
+  );
+  return path ? (
+    <FieldAnchor path={path} onFieldFocus={onFieldFocus}>
+      {ta}
+    </FieldAnchor>
+  ) : ta;
+}
+
 function BulletEditor({
   bullets,
   onChange,
@@ -118,9 +169,14 @@ function BulletEditor({
       {bullets.map((b, idx) => (
         <div key={b.id} className="flex items-start gap-1.5">
           <span className="mt-2 text-[10px] text-slate-400 select-none">{idx + 1}.</span>
-          <FieldAnchor path={pathFor!(b)} onFieldFocus={p => onFieldFocus?.(p)}>
-            <input className={`${inputCls} text-xs`} value={b.text} onChange={e => onChange(bullets.map(x => (x.id === b.id ? { ...x, text: e.target.value } : x)))} />
-          </FieldAnchor>
+          <AutoGrowFieldTextarea
+            path={pathFor?.(b)}
+            className="text-xs"
+            minHeight={32}
+            value={b.text}
+            onChange={v => onChange(bullets.map(x => (x.id === b.id ? { ...x, text: v } : x)))}
+            onFieldFocus={p => onFieldFocus?.(p)}
+          />
           <button
             type="button"
             title="删除该条"
@@ -193,13 +249,13 @@ export function StructuredEditor({ doc, onChange, activePath, onFieldFocus, onLo
         </div>
         <label className="block">
           <span className={labelCls}>个人总结</span>
-          <FieldAnchor path={{ kind: 'summary' }} onFieldFocus={emitFocus}>
-            <textarea
-              className={`${inputCls} resize-none min-h-[64px]`}
-              value={doc.basics.summary}
-              onChange={e => updateBasics('summary', e.target.value)}
-            />
-          </FieldAnchor>
+          <AutoGrowFieldTextarea
+            path={{ kind: 'summary' }}
+            minHeight={64}
+            value={doc.basics.summary}
+            onChange={v => updateBasics('summary', v)}
+            onFieldFocus={emitFocus}
+          />
         </label>
       </Card>
 
@@ -348,13 +404,14 @@ export function StructuredEditor({ doc, onChange, activePath, onFieldFocus, onLo
             {(s.blocks || []).map((b, bi) => (
               <div key={b.id} className="flex items-start gap-1.5">
                 <span className="mt-2 text-[10px] text-slate-400 select-none">{bi + 1}.</span>
-                <FieldAnchor path={{ kind: 'custom-block', sectionId: s.id, blockId: b.id }} onFieldFocus={emitFocus}>
-                  <textarea
-                    className={`${inputCls} text-xs resize-none min-h-[36px]`}
-                    value={b.text}
-                    onChange={e => update({ customSections: doc.customSections.map(x => (x.id === s.id ? updateBlock(x, b.id, e.target.value) : x)) })}
-                  />
-                </FieldAnchor>
+                <AutoGrowFieldTextarea
+                  path={{ kind: 'custom-block', sectionId: s.id, blockId: b.id }}
+                  className="text-xs"
+                  minHeight={36}
+                  value={b.text}
+                  onChange={v => update({ customSections: doc.customSections.map(x => (x.id === s.id ? updateBlock(x, b.id, v) : x)) })}
+                  onFieldFocus={emitFocus}
+                />
                 <button
                   type="button"
                   title="删除该块"

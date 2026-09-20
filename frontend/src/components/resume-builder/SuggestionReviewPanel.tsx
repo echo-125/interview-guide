@@ -1,6 +1,7 @@
 import type { SuggestionMapping } from '../../utils/resumeDocument/structuredMapping.ts';
 import type { Improvement } from '../../types/optimization.ts';
-import { AlertCircle, Check, KeyRound, RotateCcw, Target, Undo2, Redo2, Wand2 } from 'lucide-react';
+import { AlertCircle, Check, KeyRound, RotateCcw, RefreshCw, Target, Undo2, Redo2, Wand2 } from 'lucide-react';
+import { hasNoActionableSuggestions } from './suggestionPanelState.ts';
 
 export interface PanelSuggestion {
   improvement: Improvement;
@@ -35,6 +36,8 @@ export function SuggestionReviewPanel({
   relatedIds,
   onSelect,
   onLocate,
+  onReanalyze,
+  reanalyzing,
 }: {
   suggestions: PanelSuggestion[];
   onApply: (id: string) => void;
@@ -52,7 +55,11 @@ export function SuggestionReviewPanel({
   onSelect?: (id: string) => void;
   /** 独立「定位到编辑器」按钮 */
   onLocate?: (id: string) => void;
+  /** Phase 5E：全部建议不可操作时的「重新分析」入口（复用后端已有 reanalyze） */
+  onReanalyze?: () => void;
+  reanalyzing?: boolean;
 }) {
+  const allStale = hasNoActionableSuggestions(suggestions);
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
@@ -84,6 +91,24 @@ export function SuggestionReviewPanel({
           <Redo2 className="w-3 h-3" />重做
         </button>
       </div>
+
+      {/* Phase 5E（P2）：全部建议不可操作时的轻量引导（信息/警告级，非错误） */}
+      {allStale && (
+        <div className="mx-2 mt-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+          <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+            当前文档已修改，AI 建议均基于旧内容。<br />建议重新分析简历后获取最新建议。
+          </p>
+          <button
+            type="button"
+            onClick={onReanalyze}
+            disabled={reanalyzing}
+            className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium hover:bg-amber-200 dark:hover:bg-amber-900/60 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${reanalyzing ? 'animate-spin' : ''}`} />
+            {reanalyzing ? '正在重新分析…' : '重新分析简历'}
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {suggestions.length === 0 && (
