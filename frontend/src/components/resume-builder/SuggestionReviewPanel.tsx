@@ -1,12 +1,14 @@
 import type { SuggestionMapping } from '../../utils/resumeDocument/structuredMapping.ts';
 import type { Improvement } from '../../types/optimization.ts';
-import { AlertCircle, Check, KeyRound, RotateCcw, Undo2, Redo2, Wand2 } from 'lucide-react';
+import { AlertCircle, Check, KeyRound, RotateCcw, Target, Undo2, Redo2, Wand2 } from 'lucide-react';
 
 export interface PanelSuggestion {
   improvement: Improvement;
   mapping: SuggestionMapping;
-  /** applied / blocked-by-manual-edit / pending / unavailable */
+  /** applied / blocked-by-manual-edit / pending / unavailable（由 WorkingResumeDocument 派生） */
   status: 'pending' | 'applied' | 'blocked-by-manual-edit' | 'unavailable';
+  /** 原文已与当前字段不一致、不再可安全应用（pending 时可能为 true） */
+  stale?: boolean;
 }
 
 /** 人类可读的 strategy 徽标 */
@@ -30,7 +32,9 @@ export function SuggestionReviewPanel({
   onRedo,
   aiAppliedCount,
   selectedId,
+  relatedIds,
   onSelect,
+  onLocate,
 }: {
   suggestions: PanelSuggestion[];
   onApply: (id: string) => void;
@@ -42,8 +46,12 @@ export function SuggestionReviewPanel({
   aiAppliedCount: number;
   /** 当前在结构化编辑器中聚焦/被选中的建议 id（反向联动高亮） */
   selectedId?: string | null;
-  /** 点击建议卡片（用于正向定位联动） */
+  /** 与当前编辑器聚焦字段同路径的其他建议 id（Case F：同字段多条建议一并高亮） */
+  relatedIds?: string[];
+  /** 点击建议卡片 / 定位按钮（用于正向定位联动） */
   onSelect?: (id: string) => void;
+  /** 独立「定位到编辑器」按钮 */
+  onLocate?: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -81,8 +89,10 @@ export function SuggestionReviewPanel({
         {suggestions.length === 0 && (
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-8">暂无 AI 分析建议</p>
         )}
-        {suggestions.map(({ improvement, mapping, status }) => {
-          const isSelected = selectedId === improvement.id;
+        {suggestions.map(({ improvement, mapping, status, stale }) => {
+          const isSelected = selectedId === improvement.id ||
+            (!!relatedIds && relatedIds.includes(improvement.id));
+          const canStructured = mapping.strategy === 'structured-path' && !!mapping.documentPath;
           return (
           <div
             key={improvement.id}
@@ -118,7 +128,7 @@ export function SuggestionReviewPanel({
               </p>
             )}
 
-            <div className="mt-2 flex items-center justify-between">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               {status === 'applied' ? (
                 <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
                   <Check className="w-3 h-3" />已采用修改
@@ -126,6 +136,10 @@ export function SuggestionReviewPanel({
               ) : status === 'blocked-by-manual-edit' ? (
                 <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
                   ⚠ 该区域已手动修改，无法直接撤销此 AI 修改，请使用编辑历史撤销。
+                </span>
+              ) : stale ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                  <AlertCircle className="w-3 h-3" />原文已变化，无法安全应用
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-400">{improvement.priority}优先级</span>
@@ -139,16 +153,28 @@ export function SuggestionReviewPanel({
                   >
                     <RotateCcw className="w-3 h-3" />撤销此 AI 修改
                   </button>
-                ) : status === 'blocked-by-manual-edit' ? null : mapping.strategy === 'structured-path' ? (
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); onApply(improvement.id); }}
-                    className="text-[11px] px-2 py-1 rounded-lg bg-primary-500 hover:bg-primary-600 text-white font-medium inline-flex items-center gap-1"
-                  >
-                    <Check className="w-3 h-3" />采用修改
-                  </button>
+                ) : status === 'blocked-by-manual-edit' ? null : stale ? null : canStructured ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onLocate?.(improvement.id); }}
+                      className="text-[11px] px-2 py-1 rounded-lg border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/40 inline-flex items-center gap-1"
+                      title="定位到结构化编辑器中的对应字段"
+                    >
+                      <Target className="w-3 h-3" />定位到编辑器
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onApply(improvement.id); }}
+                      className="text-[11px] px-2 py-1 rounded-lg bg-primary-500 hover:bg-primary-600 text-white font-medium inline-flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3" />采用修改
+                    </button>
+                  </>
                 ) : (
-                  <span className="text-[10px] text-slate-400">不可用</span>
+                  <span className="text-[10px] text-slate-400" title="该建议只有原始文档锚点，无法定位到结构化字段">
+                    无法定位到结构化字段
+                  </span>
                 )}
               </div>
             </div>

@@ -469,7 +469,7 @@ export function applySuggestionToDocument(
  *  5. WorkingResumeDocument 状态机
  * ============================================================ */
 
-export type DocumentRevisionType = 'ai-apply' | 'manual-edit' | 'ai-revert';
+export type DocumentRevisionType = 'ai-apply' | 'manual-edit' | 'ai-revert' | 'auto-merge';
 export type AppliedStatus = 'pending' | 'applied' | 'unavailable' | 'blocked-by-manual-edit';
 
 export interface DocumentRevision {
@@ -586,6 +586,30 @@ export function manualEdit(state: WorkingResumeDocumentState, nextDoc: ResumeDoc
   return pushRevision(state, rev);
 }
 
+/**
+ * Phase 5C：自动增强（LLM 解析 Merge）。
+ * 作为「auto-merge」revision 入链，保证：
+ * - currentDocument 与 revision 链保持一致性（toRevisionDocument 语义不破坏）
+ * - Merge 本身可 undo/redo（回退 LLM 增强），且不污染 ai-apply/manual-edit 语义
+ * - appliedSuggestions 不受影响（无 suggestionId）
+ * 调用方（ResumeBuilderPage）在安全 Merge 后使用；无变化时返回 null。
+ */
+export function pushAutoMergeRev(
+  state: WorkingResumeDocumentState,
+  after: ResumeDocument
+): WorkingResumeDocumentState | null {
+  const before = toRevisionDocument(state);
+  if (before === after) return null;
+  const rev: DocumentRevision = {
+    id: nid('rev'),
+    type: 'auto-merge',
+    before,
+    after,
+    timestamp: Date.now(),
+  };
+  return pushRevision(state, rev);
+}
+
 export function undo(state: WorkingResumeDocumentState): WorkingResumeDocumentState {
   if (state.revisionIndex < 0) return state;
   const i = state.revisionIndex - 1;
@@ -654,6 +678,100 @@ export function revertSuggestion(
   const applied2 = { ...next.appliedSuggestions };
   delete applied2[suggestionId];
   return { state: { ...next, appliedSuggestions: applied2 }, status: 'applied' };
+}
+
+/* ============================================================
+ *  5.5 状态派生（Phase 5B：AI Review ↔ Editor 双向联动支撑）
+ *
+ * 规则（Spec 九 / 十四）：suggestion status 不依赖 UI 手动维护，
+ * 一律从 WorkingResumeDocument.revisions + currentDocument 派生。
+ * ============================================================ */
+
+/** 处于激活链（revisionIndex 可及）且未被 ai-revert 撤销的 suggestionId 集合 */
+export function activeAppliedSuggestionIds(state: WorkingResumeDocumentState): Set<string> {
+  const active = new Set<string>();
+  const revs = state.revisions.slice(0, state.revisionIndex + 1);
+  for (const rev of revs) {
+    if (rev.type === 'ai-apply' && rev.suggestionId) {
+      active.add(rev.suggestionId);
+    } else if (rev.type === 'ai-revert' && rev.suggestionId) {
+      active.delete(rev.suggestionId);
+    }
+  }
+  return active;
+}
+
+/**
+ * quote 在当前文档目标字段中是否仍可安全唯一命中（用于识别 stale）。
+ * 只读校验，不修改文档；复用 replaceFieldValue 语义（整字段 / 局部唯一 / 重复拒绝）。
+ */
+export function isQuoteStillApplicable(
+  doc: ResumeDocument,
+  mapping: Pick<SuggestionMapping, 'documentPath'>,
+  quote: string
+): boolean {
+  const path = mapping.documentPath;
+  if (!path || !quote) return false;
+  const current = readPathValue(doc, path);
+  if (!current) return false; // 字段被删除 / 已清空
+  return replaceFieldValue(current, quote, '') !== null;
+}
+
+/** 派生状态输入的最小结构（避免 import 组件类型造成循环依赖） */
+export interface DeriveSuggestionInput {
+  id: string;
+  mapping: Pick<SuggestionMapping, 'strategy' | 'documentPath'>;
+  improvement: { originalText: string };
+}
+
+export interface DerivedSuggestionStatus {
+  /** pending / applied / blocked-by-manual-edit / unavailable */
+  status: AppliedStatus;
+  /** 原文已与当前字段不一致、不再可安全应用（仅 pending 时可能为 true） */
+  stale: boolean;
+}
+
+/**
+ * 由工作区状态派生单条 suggestion 的展示状态：
+ * - 激活链上有 ai-apply → 字段值仍等于应用后值 = applied；已被手改 = blocked-by-manual-edit
+ * - 撤销（undo / ai-revert）离链 → 回到 pending（redo 后再变回 applied）
+ * - 未应用时若 quote 已不可安全命中 → stale（禁止假装可 Apply）
+ */
+export function deriveSuggestionStatus(
+  state: WorkingResumeDocumentState,
+  suggestion: DeriveSuggestionInput
+): DerivedSuggestionStatus {
+  const active = activeAppliedSuggestionIds(state);
+  if (!active.has(suggestion.id)) {
+    if (suggestion.mapping.strategy === 'structured-path' && suggestion.mapping.documentPath) {
+      const stale = !isQuoteStillApplicable(
+        state.currentDocument,
+        suggestion.mapping,
+        suggestion.improvement.originalText
+      );
+      return { status: 'pending', stale };
+    }
+    return { status: 'pending', stale: false };
+  }
+
+  // 取激活链上最近一次 ai-apply revision（其后的 ai-revert 会先清除 active）
+  let applyRev: DocumentRevision | null = null;
+  const revs = state.revisions.slice(0, state.revisionIndex + 1);
+  for (const rev of revs) {
+    if (rev.type === 'ai-apply' && rev.suggestionId === suggestion.id) {
+      applyRev = rev;
+    } else if (rev.type === 'ai-revert' && rev.suggestionId === suggestion.id) {
+      applyRev = null;
+    }
+  }
+  if (!applyRev) return { status: 'unavailable', stale: false };
+
+  const afterValue = readPathValue(applyRev.after, applyRev.documentPath);
+  const currentValue = readPathValue(state.currentDocument, applyRev.documentPath);
+  return {
+    status: currentValue === afterValue ? 'applied' : 'blocked-by-manual-edit',
+    stale: false,
+  };
 }
 
 /* ---------- 读/写 path 值（供 revert 校验） ---------- */

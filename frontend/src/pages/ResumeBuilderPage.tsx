@@ -27,10 +27,12 @@ import { SuggestionReviewPanel, type PanelSuggestion } from '../components/resum
 import { buildImprovements } from '../utils/improvements';
 import { hashText } from '../utils/resumeDocument/workingHash';
 import {
+  activeAppliedSuggestionIds,
   aiApply,
   canRedo,
   canUndo,
   createWorkingResumeDocument,
+  deriveSuggestionStatus,
   manualEdit,
   mapSuggestionToDocument,
   redo,
@@ -42,6 +44,14 @@ import {
   type DocumentRevision,
   type WorkingResumeDocumentState,
 } from '../utils/resumeDocument/structuredMapping';
+import { EditorFieldRegistryProvider } from '../components/resume-builder/EditorFieldRegistryProvider';
+import {
+  applyLlmMerge,
+  collectActiveEditedPaths,
+  reconcileSuggestionMappings,
+  shouldAcceptLlmDiagnostics,
+  type CoverageLike,
+} from '../utils/resumeDocument/mergeLlmIntoWorking';
 
 interface ResumeBuilderPageProps {
   resumeId: number;
@@ -235,9 +245,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const [filename, setFilename] = useState('resume');
   const [aiStage, setAiStage] = useState<'idle' | 'parsing' | 'done' | 'failed'>('idle');
   const [suggestions, setSuggestions] = useState<PanelSuggestion[]>([]);
-  // P1-1 双向定位联动：选中的建议 id + 编辑器聚焦/定位的字段路径
+  // P1-1 双向定位联动：选中的建议 id + 编辑器聚焦/定位的字段路径 + 同路径的建议集合
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
   const [activePath, setActivePath] = useState<DocumentPath | null>(null);
+  const [relatedIds, setRelatedIds] = useState<string[]>([]);
   // 持久化：当前 resumeText 哈希（工作区过期校验）+ 最新工作区引用（debounce 保存用）
   const sourceHashRef = useRef('');
   const wsRef = useRef<WorkingResumeDocumentState | null>(null);
@@ -279,6 +290,8 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
             revisionSeq: saved.revisionSeq ?? 0,
             appliedSuggestions: deriveAppliedFromRevisions(parsed.revisions, saved.revisionIndex ?? -1),
           });
+          // Phase 5C（G2）：恢复的工作区与 Rule 快照不同，建议 mapping 依据恢复后的 currentDocument 重建
+          setSuggestions(prev => reconcileSuggestionMappings(prev, parsed.currentDocument));
         }
 
         // 真实 AI 建议：从既有 analyses 派生改善项，再做结构化映射（Spec 三十）。
@@ -298,15 +311,42 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           console.warn('[pb4] 加载 AI 建议失败', e);
         }
 
-        // LLM 结构化解析（成功替换 rule 结果，重建 working state）；失败回退 rule。
-        // 若已从持久化恢复工作区（resumeText 未变），跳过对工作区的覆盖
+        // LLM 结构化解析（Phase 5C：质量门 + 安全 Merge，不再整篇覆盖工作区）；失败回退 rule。
+        // 若已从持久化恢复工作区（resumeText 未变），保持恢复结果（Persistence Restore > Parse Initialization）。
         try {
           const resp = await resumeApi.parseStructured(resumeId);
           if (mounted && !restoredRef.current) {
             const llmDoc = toResumeDocument(resp.document);
-            setWs(createWorkingResumeDocument(llmDoc));
-            setDiag(toLocalDiagnostics(llmDoc, resp.diagnostics, 'llm'));
-            setAiStage('done');
+            const llmCoverage: CoverageLike = {
+              coverage: resp.diagnostics.sourceChars > 0 ? resp.diagnostics.structuredChars / resp.diagnostics.sourceChars : 0,
+              confidence: resp.diagnostics.confidence,
+            };
+            // 质量门：LLM 明显低于 Rule 时采用 LLM 的解析诊断展示，但保留当前文档
+            if (shouldAcceptLlmDiagnostics(
+              { coverage: ruleResult.diagnostics.coverage, confidence: ruleResult.diagnostics.confidence },
+              llmCoverage
+            )) {
+              // 用户解析等待期间的编辑已在 wsRef.current 中（每次 render 同步），确保 User Edit > LLM
+              const base = wsRef.current;
+              if (base) {
+                const merged = applyLlmMerge(base, {
+                  llmDocument: llmDoc,
+                  editedPaths: collectActiveEditedPaths(base),
+                });
+                if (merged.changed) {
+                  setWs(merged.state);
+                  // Phase 5C（G2）：merge 后 mapping 依据最终 currentDocument 重建（suggestionId 保持稳定）
+                  setSuggestions(prev => reconcileSuggestionMappings(prev, merged.state.currentDocument));
+                  setDiag(toLocalDiagnostics(merged.state.currentDocument, resp.diagnostics, 'llm'));
+                } else {
+                  setDiag(toLocalDiagnostics(llmDoc, resp.diagnostics, 'llm'));
+                }
+                setAiStage('done');
+              }
+            } else {
+              setDiag(toLocalDiagnostics(llmDoc, resp.diagnostics, 'llm'));
+              setAiStage('done');
+            }
           }
         } catch (llmErr) {
           console.warn('LLM 结构化解析失败，已使用基础解析结果', llmErr);
@@ -365,10 +405,30 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
 
   const doc = ws?.currentDocument ?? null;
 
+  /**
+   * Phase 5B：suggestion 展示状态从 WorkingResumeDocument 派生（revisions + currentDocument），
+   * 不依赖 UI 手动 setStatus —— undo/redo/manual edit 后自动一致。
+   */
+  const derivedSuggestions: PanelSuggestion[] = useMemo(() => {
+    if (!ws) return suggestions;
+    return suggestions.map(s => {
+      const d = deriveSuggestionStatus(ws, {
+        id: s.improvement.id,
+        mapping: s.mapping,
+        improvement: s.improvement,
+      });
+      return { ...s, status: d.status, stale: d.stale };
+    });
+  }, [suggestions, ws]);
+
   // Phase 4B：AI Apply / revert / undo / redo
   const handleAiApply = (suggestionId: string) => {
-    const item = suggestions.find(s => s.improvement.id === suggestionId);
+    const item = derivedSuggestions.find(s => s.improvement.id === suggestionId);
     if (!item || !ws) return;
+    if (item.stale) {
+      showToast('该建议对应的原文已变化，无法安全应用，请在编辑器中手动修改', 'error');
+      return;
+    }
     if (item.mapping.strategy !== 'structured-path' || !item.mapping.documentPath) {
       showToast('该建议无法安全结构化定位，请在编辑器中手动修改');
       return;
@@ -385,7 +445,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       return;
     }
     setWs(next);
-    setSuggestions(prev => prev.map(s => s.improvement.id === suggestionId ? { ...s, status: 'applied' } : s));
+    // suggestion 状态由 deriveSuggestionStatus 基于 next 自动变为 applied
     showToast('已采用修改（结构化字段更新）', 'success');
   };
 
@@ -393,7 +453,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     if (!ws) return;
     const { state: next, status } = revertSuggestion(ws, suggestionId);
     setWs(next);
-    setSuggestions(prev => prev.map(s => s.improvement.id === suggestionId ? { ...s, status } : s));
+    // 状态由 deriveSuggestionStatus 基于 next 自动重算（applied → pending / blocked-by-manual-edit）
     if (status === 'blocked-by-manual-edit') {
       showToast('该区域已被手动修改，无法撤销此 AI 修改，请使用编辑历史撤销', 'error');
     } else if (status === 'applied') {
@@ -404,10 +464,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const handleUndo = () => ws && setWs(undo(ws));
   const handleRedo = () => ws && setWs(redo(ws));
 
-  // P1-1 正向：点击建议 → 定位编辑器字段
+  // P1-1 正向：点击建议 / 定位按钮 → 定位编辑器字段（registry O(1) 定位）
   const handleSelectSuggestion = (suggestionId: string) => {
     setActiveSuggestionId(suggestionId);
-    const item = suggestions.find(s => s.improvement.id === suggestionId);
+    const item = derivedSuggestions.find(s => s.improvement.id === suggestionId);
     if (item && item.mapping.strategy === 'structured-path' && item.mapping.documentPath) {
       setActivePath(item.mapping.documentPath);
     } else {
@@ -416,18 +476,28 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     }
   };
 
-  // P1-1 反向：编辑器字段聚焦 → 高亮映射到该字段的建议
+  /** 定位失败（path 在编辑器字段注册表中不存在）→ 优雅提示，不做 fuzzy 猜测 */
+  const handleLocateMissed = (path: DocumentPath) => {
+    const label = derivedSuggestions
+      .find(s => s.mapping.documentPath && serializePath(s.mapping.documentPath) === serializePath(path))
+      ?.mapping.humanLabel;
+    showToast(label ? `「${label}」字段已不存在（该建议对应的字段已删除）` : '当前版本中找不到对应字段', 'error');
+  };
+
+  // P1-1 反向：编辑器字段聚焦 → 高亮映射到该字段的全部建议（同 path 多建议 Case F）
   const handleFieldFocus = (path: DocumentPath | null) => {
     setActivePath(path);
     if (!path) {
       setActiveSuggestionId(null);
+      setRelatedIds([]);
       return;
     }
     const target = serializePath(path);
-    const hit = suggestions.find(
-      s => s.mapping.documentPath && serializePath(s.mapping.documentPath) === target
-    );
-    setActiveSuggestionId(hit ? hit.improvement.id : null);
+    const hitIds = derivedSuggestions
+      .filter(s => s.mapping.documentPath && serializePath(s.mapping.documentPath) === target)
+      .map(s => s.improvement.id);
+    setRelatedIds(hitIds);
+    setActiveSuggestionId(hitIds.length > 0 ? hitIds[0] : null);
   };
 
   const preview = useMemo(
@@ -609,12 +679,15 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
             <Wand2 className="w-3.5 h-3.5 text-primary-500" />
             结构化编辑器（实时驱动右侧 A4 预览）
           </div>
-          <StructuredEditor
-            doc={doc}
-            onChange={(d) => ws && setWs(manualEdit(ws, d))}
-            activePath={activePath}
-            onFieldFocus={handleFieldFocus}
-          />
+          <EditorFieldRegistryProvider>
+            <StructuredEditor
+              doc={doc}
+              onChange={(d) => ws && setWs(manualEdit(ws, d))}
+              activePath={activePath}
+              onFieldFocus={handleFieldFocus}
+              onLocateMissed={handleLocateMissed}
+            />
+          </EditorFieldRegistryProvider>
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -627,15 +700,17 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
 
         <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <SuggestionReviewPanel
-            suggestions={suggestions}
+            suggestions={derivedSuggestions}
             onApply={handleAiApply}
             onRevert={handleAiRevert}
+            onLocate={handleSelectSuggestion}
             canUndo={Boolean(ws && canUndo(ws))}
             canRedo={Boolean(ws && canRedo(ws))}
             onUndo={handleUndo}
             onRedo={handleRedo}
-            aiAppliedCount={ws ? Object.keys(ws.appliedSuggestions).length : 0}
+            aiAppliedCount={ws ? activeAppliedSuggestionIds(ws).size : 0}
             selectedId={activeSuggestionId}
+            relatedIds={relatedIds}
             onSelect={handleSelectSuggestion}
           />
         </div>
