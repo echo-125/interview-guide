@@ -29,6 +29,8 @@ export function SuggestionReviewPanel({
   onUndo,
   onRedo,
   aiAppliedCount,
+  selectedId,
+  onSelect,
 }: {
   suggestions: PanelSuggestion[];
   onApply: (id: string) => void;
@@ -38,6 +40,10 @@ export function SuggestionReviewPanel({
   onUndo: () => void;
   onRedo: () => void;
   aiAppliedCount: number;
+  /** 当前在结构化编辑器中聚焦/被选中的建议 id（反向联动高亮） */
+  selectedId?: string | null;
+  /** 点击建议卡片（用于正向定位联动） */
+  onSelect?: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -75,8 +81,18 @@ export function SuggestionReviewPanel({
         {suggestions.length === 0 && (
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-8">暂无 AI 分析建议</p>
         )}
-        {suggestions.map(({ improvement, mapping, status }) => (
-          <div key={improvement.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-800">
+        {suggestions.map(({ improvement, mapping, status }) => {
+          const isSelected = selectedId === improvement.id;
+          return (
+          <div
+            key={improvement.id}
+            onClick={onSelect ? () => onSelect(improvement.id) : undefined}
+            className={`rounded-xl border p-3 bg-white dark:bg-slate-800 cursor-pointer transition-shadow ${
+              isSelected
+                ? 'border-primary-500 dark:border-primary-400 ring-1 ring-primary-500/50'
+                : 'border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-600'
+            }`}
+          >
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-snug">{improvement.title}</p>
               <StrategyTag strategy={mapping.strategy} />
@@ -118,7 +134,7 @@ export function SuggestionReviewPanel({
                 {status === 'applied' ? (
                   <button
                     type="button"
-                    onClick={() => onRevert(improvement.id)}
+                    onClick={e => { e.stopPropagation(); onRevert(improvement.id); }}
                     className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 inline-flex items-center gap-1"
                   >
                     <RotateCcw className="w-3 h-3" />撤销此 AI 修改
@@ -126,7 +142,7 @@ export function SuggestionReviewPanel({
                 ) : status === 'blocked-by-manual-edit' ? null : mapping.strategy === 'structured-path' ? (
                   <button
                     type="button"
-                    onClick={() => onApply(improvement.id)}
+                    onClick={e => { e.stopPropagation(); onApply(improvement.id); }}
                     className="text-[11px] px-2 py-1 rounded-lg bg-primary-500 hover:bg-primary-600 text-white font-medium inline-flex items-center gap-1"
                   >
                     <Check className="w-3 h-3" />采用修改
@@ -137,7 +153,8 @@ export function SuggestionReviewPanel({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

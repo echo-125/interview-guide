@@ -110,6 +110,64 @@ class ResumeStructuredParseServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("verifyLineCoverage 行级核对")
+    class LineCoverage {
+        @Test
+        @DisplayName("全部行都被结构化文本包含 → 无未归档行")
+        void allMapped() {
+            String input = "姓名：李阳\n7 年 Java 后端经验。\n设计和开发了短链接基础服务。";
+            String structured = "李阳\n7 年 Java 后端经验。\n设计和开发了短链接基础服务。";
+            assertThat(ResumeStructuredParseService.verifyLineCoverage(input, structured)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("存在未归档行 → 以 L行号 形式列出")
+        void partialUnmapped() {
+            String input = "姓名：李阳\n这是一段完全没有进入结构化文档的零散内容。";
+            String structured = "李阳";
+            var unmapped = ResumeStructuredParseService.verifyLineCoverage(input, structured);
+            assertThat(unmapped).hasSize(1);
+            assertThat(unmapped.get(0)).startsWith("L2: ").contains("零散内容");
+        }
+
+        @Test
+        @DisplayName("行内首/尾片段命中（LLM 拼接重组行）→ 不算未归档")
+        void recombinedLineMapped() {
+            String input = "负责订单系统研发。";
+            // LLM 把整行内容重组进更长字段，行首片段「负责订单系统研发」仍应命中
+            String structured = "负责订单系统研发，主导高并发架构改造";
+            assertThat(ResumeStructuredParseService.verifyLineCoverage(input, structured)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("行保留空白差异仍能命中（去空白紧凑匹配）")
+        void whitespaceTolerant() {
+            String input = "Spring Boot  /  Redis  /  MySQL";
+            String structured = "Spring Boot/Redis/MySQL";
+            assertThat(ResumeStructuredParseService.verifyLineCoverage(input, structured)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("空输入或空结构化文本 → 空清单，不崩溃")
+        void emptyInputs() {
+            assertThat(ResumeStructuredParseService.verifyLineCoverage("", "任意")).isEmpty();
+            assertThat(ResumeStructuredParseService.verifyLineCoverage("任意", "")).isEmpty();
+            assertThat(ResumeStructuredParseService.verifyLineCoverage(null, null)).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("truncationWarning 截断文案")
+    class TruncationWarning {
+        @Test
+        @DisplayName("文案显式给出总长、上限与未参与解析的尾部字数")
+        void explicitNumbers() {
+            String w = ResumeStructuredParseService.truncationWarning(15000, 12000);
+            assertThat(w).contains("15000").contains("12000").contains("3000");
+        }
+    }
+
     @Test
     @DisplayName("LLM 额外字段不会被 Bean 绑定（Jackson 忽略未知字段），normalize 仍安全")
     void extraFieldsIgnored() {

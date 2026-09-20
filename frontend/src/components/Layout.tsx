@@ -140,7 +140,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800">
+    <div className="flex min-h-[110vh] bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800">
       {/* 左侧边栏：支持折叠（手动 toggle + 二级及以下路由自动折叠） */}
       <aside className={`bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700 fixed h-screen left-0 top-0 z-50 flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
         {/* 折叠/展开按钮：浮在侧边栏右边缘 */}

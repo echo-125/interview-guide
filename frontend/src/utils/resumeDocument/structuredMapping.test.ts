@@ -10,8 +10,10 @@ import {
   createWorkingResumeDocument,
   manualEdit,
   mapSuggestionToDocument,
+  parsePath,
   redo,
   revertSuggestion,
+  serializePath,
   undo,
 } from './structuredMapping.ts';
 
@@ -344,4 +346,44 @@ test('E 导出对象引用 currentDocument 而非 originalDocument', () => {
   // undo 后 currentDocument 回退
   st = undo(st);
   assert.equal(st.currentDocument.experience[0].bullets[1].text, '设计订单扣款流程。');
+});
+
+/* ---------- F. DocumentPath 序列化 ---------- */
+
+test('F1 serializePath → parsePath 往返一致（各 kind）', () => {
+  const paths = [
+    { kind: 'basic', field: 'email' },
+    { kind: 'summary' },
+    { kind: 'skill-item', skillId: 's1', itemIndex: 1 },
+    { kind: 'skill-category', skillId: 's1' },
+    { kind: 'experience-field', experienceId: 'e1', field: 'company' },
+    { kind: 'experience-bullet', experienceId: 'e1', bulletId: 'eb1' },
+    { kind: 'project-field', projectId: 'p1', field: 'name' },
+    { kind: 'project-bullet', projectId: 'p1', bulletId: 'pb1' },
+    { kind: 'education-field', educationId: 'pd1', field: 'school' },
+    { kind: 'education-bullet', educationId: 'pd1', bulletId: 'x' },
+    { kind: 'certification-item', itemId: 'c1' },
+    { kind: 'award-item', itemId: 'a1' },
+    { kind: 'language-item', itemId: 'l1' },
+    { kind: 'custom-block', sectionId: 'cs1', blockId: 'cb1' },
+  ] as const;
+  for (const p of paths) {
+    const s = serializePath(p);
+    const back = parsePath(s);
+    assert.deepEqual(back, p);
+  }
+});
+
+test('F2 非法 / 未知 kind 字符串 → null', () => {
+  assert.equal(parsePath('not-json'), null);
+  assert.equal(parsePath('{}'), null);
+  assert.equal(parsePath('{"kind":"hack-path"}'), null);
+  assert.equal(parsePath(''), null);
+  assert.equal(parsePath('null'), null);
+});
+
+test('F3 序列化稳定：同 path 两次序列化结果一致', () => {
+  const p = { kind: 'experience-bullet', experienceId: 'e1', bulletId: 'eb1' } as const;
+  assert.equal(serializePath(p), serializePath(p));
+  assert.equal(serializePath(p), '{"kind":"experience-bullet","experienceId":"e1","bulletId":"eb1"}');
 });

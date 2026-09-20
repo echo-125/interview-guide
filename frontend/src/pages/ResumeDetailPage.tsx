@@ -388,7 +388,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
           <div className="w-px bg-slate-200 dark:bg-slate-700 mx-1 self-stretch" />
           <motion.button
             onClick={() => navigate(`/history/${resumeId}/builder`)}
-            className="relative px-6 py-3 rounded-xl font-medium flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-sm hover:shadow-md transition-shadow"
+            className="text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 relative px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             title="进入结构化编辑器，修改简历内容"

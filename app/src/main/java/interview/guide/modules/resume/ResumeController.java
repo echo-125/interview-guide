@@ -11,12 +11,14 @@ import interview.guide.modules.resume.model.ResumeJdAnalysisResponse;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
 import interview.guide.modules.resume.model.ResumeRewriteResponse;
 import interview.guide.modules.resume.model.ResumeStructuredParseResponse;
+import interview.guide.modules.resume.model.WorkingDocumentSnapshotDTO;
 import interview.guide.modules.resume.service.ResumeDeleteService;
 import interview.guide.modules.resume.service.ResumeHistoryService;
 import interview.guide.modules.resume.service.ResumeJdAnalysisQueryService;
 import interview.guide.modules.resume.service.ResumeRewriteService;
 import interview.guide.modules.resume.service.ResumeStructuredParseService;
 import interview.guide.modules.resume.service.ResumeUploadService;
+import interview.guide.modules.resume.service.ResumeWorkingDocumentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,6 +58,7 @@ public class ResumeController {
     private final ResumeJdAnalysisQueryService jdAnalysisQueryService;
     private final ResumeRewriteService rewriteService;
     private final ResumeStructuredParseService structuredParseService;
+    private final ResumeWorkingDocumentService workingDocumentService;
 
     /**
      * 上传简历并获取分析结果
@@ -199,6 +203,33 @@ public class ResumeController {
             @PathVariable Long id,
             @RequestParam(value = "llmProvider", required = false) String llmProvider) {
         return Result.success(structuredParseService.parse(id, llmProvider));
+    }
+
+    /**
+     * 读取简历工作区快照（ResumeDocument + revisions，一简历一行）
+     * 无记录时返回 null；过期判定由前端用 sourceTextHash 与当前 resumeText 比对完成。
+     *
+     * @param id 简历ID
+     * @return 工作区快照（可能为 null）
+     */
+    @GetMapping("/api/resumes/{id}/working-document")
+    public Result<WorkingDocumentSnapshotDTO> getWorkingDocument(@PathVariable Long id) {
+        return Result.success(workingDocumentService.load(id).orElse(null));
+    }
+
+    /**
+     * 保存简历工作区快照（幂等整体覆盖，不追加）
+     * 前端 debounce 自动保存调用；不调用 LLM、不修改原始文件。
+     *
+     * @param id  简历ID
+     * @param dto 工作区快照（document + revisions）
+     * @return 落库后的快照
+     */
+    @PutMapping("/api/resumes/{id}/working-document")
+    public Result<WorkingDocumentSnapshotDTO> saveWorkingDocument(
+            @PathVariable Long id,
+            @RequestBody WorkingDocumentSnapshotDTO dto) {
+        return Result.success(workingDocumentService.upsert(id, dto));
     }
 
     /**

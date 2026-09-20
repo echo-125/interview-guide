@@ -2,10 +2,11 @@
  * 真实简历 → ResumeDocument → 结构化编辑器 → A4 预览 / 导出 (Phase 4A)
  *
  * 数据完全来自 GET /api/resumes/{id}/detail 的 resumeText（不使用 demo.ts）。
- * 编辑 ResumeDocument（工作简历），不修改原始 PDF/DOCX；刷新后恢复 resumeText 重新 parse。
+ * 编辑 ResumeDocument（工作简历），不修改原始 PDF/DOCX；
+ * 工作区（文档 + 修订历史）自动保存到后端，刷新后恢复上次编辑。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Download, FileDown, FileText, Loader2, Wand2 } from 'lucide-react';
 import { historyApi } from '../api/history';
 import { resumeApi } from '../api/resume';
@@ -20,12 +21,11 @@ import { buildAtsBlocks } from '../components/resume-builder/templates/AtsBlocks
 import type { ResumeTemplateId } from '../components/resume-builder/templates/types';
 import { A4Preview } from '../components/resume-builder/A4Preview';
 import { StructuredEditor } from '../components/resume-builder/StructuredEditor';
-import { exportResumePdf } from '../components/resume-builder/ResumePdf';
-import { exportResumeDocx } from '../components/resume-builder/ResumeDocx';
 import { useToast } from '../components/Toast';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { SuggestionReviewPanel, type PanelSuggestion } from '../components/resume-builder/SuggestionReviewPanel';
 import { buildImprovements } from '../utils/improvements';
+import { hashText } from '../utils/resumeDocument/workingHash';
 import {
   aiApply,
   canRedo,
@@ -35,13 +35,41 @@ import {
   mapSuggestionToDocument,
   redo,
   revertSuggestion,
+  serializePath,
   undo,
+  type AppliedSuggestion,
+  type DocumentPath,
+  type DocumentRevision,
   type WorkingResumeDocumentState,
 } from '../utils/resumeDocument/structuredMapping';
 
 interface ResumeBuilderPageProps {
   resumeId: number;
   onBack: () => void;
+}
+
+/** 由修订历史派生 appliedSuggestions（持久化恢复时重建 undo/redo 状态，与结构化状态机一致） */
+function deriveAppliedFromRevisions(
+  revisions: DocumentRevision[],
+  index: number
+): Record<string, AppliedSuggestion> {
+  const applied: Record<string, AppliedSuggestion> = {};
+  for (let i = 0; i <= index && i < revisions.length; i++) {
+    const rev = revisions[i];
+    if (rev.type === 'ai-apply' && rev.suggestionId && rev.documentPath) {
+      applied[rev.suggestionId] = {
+        suggestionId: rev.suggestionId,
+        strategy: 'structured-path',
+        documentPath: rev.documentPath,
+        quote: '',
+        rewrite: '',
+        revisionId: rev.id,
+      };
+    } else if (rev.type === 'ai-revert' && rev.suggestionId) {
+      delete applied[rev.suggestionId];
+    }
+  }
+  return applied;
 }
 
 /** 把后端 LLM 诊断映射为本地 ParseDiagnostics（供现有诊断面板复用） */
@@ -70,11 +98,15 @@ function toLocalDiagnostics(
     sectionsDetected: Array.from(detected),
     warnings: llm.warnings || [],
     confidence: llm.confidence ?? 0.9,
+    unmappedLines: llm.unmappedLines || [],
+    truncated: llm.truncated || false,
   };
 }
 
-/** 诊断面板：结构化结果 + coverage + 警告 */
+/** 诊断面板：结构化结果 + coverage + 警告 + 未归档片段 */
 function ParseDiagnosticsPanel({ diagnostics }: { diagnostics: ParseDiagnostics }) {
+  const [showUnmapped, setShowUnmapped] = useState(false);
+  const unmapped = diagnostics.unmappedLines || [];
   const sectionBadges: Array<{ key: string; label: string }> = [
     { key: '个人简介', label: '基础信息' },
     { key: '工作经历', label: '工作经历' },
@@ -114,6 +146,14 @@ function ParseDiagnosticsPanel({ diagnostics }: { diagnostics: ParseDiagnostics 
         })}
       </div>
 
+      {diagnostics.truncated && (
+        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-2 mb-2">
+          <p className="text-red-700 dark:text-red-300 font-medium">
+            原文被截断：单次解析上限 12000 字，尾部内容未参与解析，请分节处理或精简原文
+          </p>
+        </div>
+      )}
+
       {diagnostics.warnings.length > 0 && (
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-2 mb-2">
           <p className="text-amber-700 dark:text-amber-300 font-medium mb-1">部分内容未自动结构化，已保留到「其他内容」</p>
@@ -125,8 +165,28 @@ function ParseDiagnosticsPanel({ diagnostics }: { diagnostics: ParseDiagnostics 
         </div>
       )}
 
+      {unmapped.length > 0 && (
+        <div className="border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden mb-2">
+          <button
+            type="button"
+            onClick={() => setShowUnmapped(v => !v)}
+            className="w-full flex items-center justify-between px-2 py-1.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 text-xs font-medium"
+          >
+            <span>未归档原文片段（{unmapped.length} 条）</span>
+            <span>{showUnmapped ? '收起 ▲' : '展开 ▼'}</span>
+          </button>
+          {showUnmapped && (
+            <ul className="bg-white dark:bg-slate-900/40 px-2 py-1.5 max-h-32 overflow-y-auto text-amber-700/80 dark:text-amber-400/70 text-[11px] space-y-0.5">
+              {unmapped.map((u, i) => (
+                <li key={i}>· {u}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <p className="text-slate-400 dark:text-slate-500">
-        编辑的是工作简历（ResumeDocument），原始文件未修改 · 刷新后恢复为 resumeText 重新解析（仅当前会话）
+        编辑的是工作简历（ResumeDocument），原始文件未修改 · 工作区已自动保存，刷新后可恢复上次编辑
       </p>
     </div>
   );
@@ -143,16 +203,17 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const [filename, setFilename] = useState('resume');
   const [aiStage, setAiStage] = useState<'idle' | 'parsing' | 'done' | 'failed'>('idle');
   const [suggestions, setSuggestions] = useState<PanelSuggestion[]>([]);
+  // P1-1 双向定位联动：选中的建议 id + 编辑器聚焦/定位的字段路径
+  const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
+  const [activePath, setActivePath] = useState<DocumentPath | null>(null);
+  // 持久化：当前 resumeText 哈希（工作区过期校验）+ 最新工作区引用（debounce 保存用）
+  const sourceHashRef = useRef('');
+  const wsRef = useRef<WorkingResumeDocumentState | null>(null);
+  wsRef.current = ws;
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoredRef = useRef(false);
 
-  // 编辑简历页面禁止整体滚动：锁定 document 滚动，三栏内容各自内部滚动；离开页面时恢复
-  useEffect(() => {
-    const root = document.documentElement;
-    const prevOverflow = root.style.overflow;
-    root.style.overflow = 'hidden';
-    return () => {
-      root.style.overflow = prevOverflow;
-    };
-  }, []);
+  // 编辑简历页面：允许页面整体滚动（编辑区域内容较多时不压缩显示面积）
 
   // 加载真实简历详情 + LLM 结构化解析 + 真实 AI 分析建议（Phase 4B）
   useEffect(() => {
@@ -171,6 +232,23 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
         setDiag(ruleResult.diagnostics);
         setLoading(false);
 
+        // 持久化恢复：resumeText 未变时采用已保存的工作区（含修订历史），
+        // 并跳过 LLM 重新解析对工作区的覆盖
+        sourceHashRef.current = hashText(text);
+        const saved = await resumeApi.getWorkingDocument(resumeId).catch(() => null);
+        if (mounted && saved && saved.sourceTextHash === sourceHashRef.current && saved.document) {
+          restoredRef.current = true;
+          const revisions = saved.revisions || [];
+          setWs({
+            originalDocument: saved.originalDocument,
+            currentDocument: saved.document,
+            revisions,
+            revisionIndex: saved.revisionIndex ?? -1,
+            revisionSeq: saved.revisionSeq ?? 0,
+            appliedSuggestions: deriveAppliedFromRevisions(revisions, saved.revisionIndex ?? -1),
+          });
+        }
+
         // 真实 AI 建议：从既有 analyses 派生改善项，再做结构化映射（Spec 三十）。
         // 基于 Rule 结果立即计算，不依赖 LLM 完成（LLM 可能超时数分钟）。
         try {
@@ -188,10 +266,11 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           console.warn('[pb4] 加载 AI 建议失败', e);
         }
 
-        // LLM 结构化解析（成功替换 rule 结果，重建 working state）；失败回退 rule
+        // LLM 结构化解析（成功替换 rule 结果，重建 working state）；失败回退 rule。
+        // 若已从持久化恢复工作区（resumeText 未变），跳过对工作区的覆盖
         try {
           const resp = await resumeApi.parseStructured(resumeId);
-          if (mounted) {
+          if (mounted && !restoredRef.current) {
             const llmDoc = toResumeDocument(resp.document);
             setWs(createWorkingResumeDocument(llmDoc));
             setDiag(toLocalDiagnostics(llmDoc, resp.diagnostics, 'llm'));
@@ -199,7 +278,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           }
         } catch (llmErr) {
           console.warn('LLM 结构化解析失败，已使用基础解析结果', llmErr);
-          if (mounted) setAiStage('failed');
+          if (mounted && !restoredRef.current) setAiStage('failed');
         }
       } catch (err) {
         if (!mounted) return;
@@ -210,6 +289,45 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     })();
     return () => {
       mounted = false;
+    };
+  }, [resumeId]);
+
+  // 自动保存：ws 变化后 debounce 1s 保存快照（幂等整体覆盖，不阻塞编辑）
+  useEffect(() => {
+    if (!ws) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const s = wsRef.current;
+      if (!s) return;
+      resumeApi.saveWorkingDocument(resumeId, {
+        parser: 'llm',
+        sourceTextHash: sourceHashRef.current,
+        originalDocument: s.originalDocument,
+        document: s.currentDocument,
+        revisionIndex: s.revisionIndex,
+        revisionSeq: s.revisionSeq,
+        revisions: s.revisions,
+      }).catch(() => {
+        showToast('工作区自动保存失败，刷新后将恢复为重新解析', 'error');
+      });
+    }, 1000);
+  }, [ws, resumeId, showToast]);
+
+  // 卸载时 flush：立即保存最新工作区（不等待 debounce）
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const s = wsRef.current;
+      if (!s) return;
+      resumeApi.saveWorkingDocument(resumeId, {
+        parser: 'llm',
+        sourceTextHash: sourceHashRef.current,
+        originalDocument: s.originalDocument,
+        document: s.currentDocument,
+        revisionIndex: s.revisionIndex,
+        revisionSeq: s.revisionSeq,
+        revisions: s.revisions,
+      }).catch(() => {});
     };
   }, [resumeId]);
 
@@ -254,6 +372,32 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   const handleUndo = () => ws && setWs(undo(ws));
   const handleRedo = () => ws && setWs(redo(ws));
 
+  // P1-1 正向：点击建议 → 定位编辑器字段
+  const handleSelectSuggestion = (suggestionId: string) => {
+    setActiveSuggestionId(suggestionId);
+    const item = suggestions.find(s => s.improvement.id === suggestionId);
+    if (item && item.mapping.strategy === 'structured-path' && item.mapping.documentPath) {
+      setActivePath(item.mapping.documentPath);
+    } else {
+      setActivePath(null);
+      showToast('该建议未做结构化定位，请在编辑器中手动修改');
+    }
+  };
+
+  // P1-1 反向：编辑器字段聚焦 → 高亮映射到该字段的建议
+  const handleFieldFocus = (path: DocumentPath | null) => {
+    setActivePath(path);
+    if (!path) {
+      setActiveSuggestionId(null);
+      return;
+    }
+    const target = serializePath(path);
+    const hit = suggestions.find(
+      s => s.mapping.documentPath && serializePath(s.mapping.documentPath) === target
+    );
+    setActiveSuggestionId(hit ? hit.improvement.id : null);
+  };
+
   const preview = useMemo(
     () => (doc ? renderResumeTemplate(templateId, doc) : null),
     [templateId, doc]
@@ -272,8 +416,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     if (!doc) return;
     setExporting('pdf');
     try {
-      await exportResumePdf(doc, exportBaseName());
-      showToast('PDF 已导出（含当前真实修改）', 'success');
+      // 动态导入：@react-pdf/renderer 体积较大，拆出独立 chunk，避免拖慢首屏
+      const { exportResumePdf } = await import('../components/resume-builder/ResumePdf');
+      await exportResumePdf(doc, templateId, exportBaseName());
+      showToast('PDF 已导出（含当前真实修改，按当前模板）', 'success');
     } catch (err) {
       showToast(getErrorMessage(err, 'PDF 导出失败'), 'error');
     } finally {
@@ -285,8 +431,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     if (!doc) return;
     setExporting('docx');
     try {
-      await exportResumeDocx(doc, exportBaseName());
-      showToast('DOCX 已导出（含当前真实修改）', 'success');
+      // 动态导入：docx 库约 2MB，拆出独立 chunk，避免拖慢首屏
+      const { exportResumeDocx } = await import('../components/resume-builder/ResumeDocx');
+      await exportResumeDocx(doc, templateId, exportBaseName());
+      showToast('DOCX 已导出（含当前真实修改，按当前模板）', 'success');
     } catch (err) {
       showToast(getErrorMessage(err, 'DOCX 导出失败'), 'error');
     } finally {
@@ -340,7 +488,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   if (!doc || !diag) return null;
 
   return (
-    <div className="w-full flex flex-col gap-4 overflow-hidden" style={{ height: 'calc(100vh - 80px)' }}>
+    <div className="w-full flex flex-col gap-4 pb-8">
       {/* 顶部工具栏 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60 shadow-sm flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -421,29 +569,31 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       <ParseDiagnosticsPanel diagnostics={diag} />
 
       {/* 主体：左编辑 / 中预览 / 右 AI 建议
-          三栏独立滚动：本页固定视口高度，禁止页面整体滚动；
-          左/中/右三栏各自内部滚动（与其它页面的整页滚动互不影响）。 */}
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
-        <div className="w-full lg:w-[38%] xl:w-[34%] flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+          桌面三栏：每栏固定在可用高度内各自内部滚动（保留每栏滚动栏）；
+          同时页面本身可整体滚动（顶部工具栏/状态条/诊断 + 三栏较高时由页面滚动条承接）。 */}
+      <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-60px)] lg:min-h-[480px] lg:items-stretch">
+        <div className="w-full lg:w-[38%] xl:w-[34%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-shrink-0">
             <Wand2 className="w-3.5 h-3.5 text-primary-500" />
             结构化编辑器（实时驱动右侧 A4 预览）
           </div>
           <StructuredEditor
             doc={doc}
             onChange={(d) => ws && setWs(manualEdit(ws, d))}
+            activePath={activePath}
+            onFieldFocus={handleFieldFocus}
           />
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+        <div className="flex-1 min-w-0 flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between flex-shrink-0">
             <span>A4 实时预览 · {RESUME_TEMPLATES[templateId].label}</span>
             <span className="font-normal text-slate-400">210mm × 297mm · 仅浏览器内预览，不写入原始文件</span>
           </div>
           <A4Preview blocks={previewBlocks}>{preview}</A4Preview>
         </div>
 
-        <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <SuggestionReviewPanel
             suggestions={suggestions}
             onApply={handleAiApply}
@@ -453,6 +603,8 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
             onUndo={handleUndo}
             onRedo={handleRedo}
             aiAppliedCount={ws ? Object.keys(ws.appliedSuggestions).length : 0}
+            selectedId={activeSuggestionId}
+            onSelect={handleSelectSuggestion}
           />
         </div>
       </div>

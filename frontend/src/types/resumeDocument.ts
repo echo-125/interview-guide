@@ -1,9 +1,9 @@
 /**
- * 自研结构化简历文档模型 (Phase 3 POC)
+ * 自研结构化简历文档模型（Phase 4B 正式功能）
  *
  * 设计要点（结合 Reactive Resume / JSON Resume 调研，按本项目需求裁剪）：
  * - 所有 section 与条目都有稳定 id，支持 AI 精确寻址（如 experience[id].bullets[id]）
- * - 富文本一律为纯文本（POC 阶段不引入 HTML 富文本，后续再升级）
+ * - 富文本一律为纯文本（不引入 HTML 富文本）
  * - 复杂/未识别内容走 customSections 与 rawText 兜底，不阻塞解析
  * - 数据与模板完全解耦：ResumeDocument + Template → Renderer
  */
@@ -124,7 +124,7 @@ export interface ResumeDocument {
   rawText?: string;
 }
 
-/** 稳定 id 生成（POC：时间戳 + 随机数；生产可换 uuid） */
+/** 稳定 id 生成（时间戳 + 随机数） */
 export function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }

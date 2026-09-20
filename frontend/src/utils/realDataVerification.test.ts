@@ -6,9 +6,9 @@ import { buildImprovements } from './improvements.ts';
 import { locateQuoteInText, locateQuoteInSpanStream } from './anchorMatcher.ts';
 import type { TextSpanNodeInfo } from '../types/review.ts';
 
-// 读取项目中真实的简历样本文件
+// 读取项目中真实的简历样本文件（项目为 ESM，用 import.meta.dirname 而非 __dirname）
 const sampleResumePath = resolve(
-  __dirname,
+  import.meta.dirname,
   '../../../app/src/test/resources/test-files/sample-resume.txt'
 );
 const sampleResumeText = readFileSync(sampleResumePath, 'utf-8');

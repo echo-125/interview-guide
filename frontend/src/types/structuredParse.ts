@@ -13,6 +13,10 @@ export interface StructuredParseDiagnostics {
   sourceChars: number;
   structuredChars: number;
   unparsedChars: number;
+  /** 行级核对未归档的原文片段清单（L行号: 前80字符），空 = 全部行均已归档 */
+  unmappedLines: string[];
+  /** 原文是否因超过单次解析上限被截断 */
+  truncated: boolean;
 }
 
 /** 后端返回的 LLM 文档 DTO（字段名与前端大体一致） */

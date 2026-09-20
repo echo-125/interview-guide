@@ -1,5 +1,5 @@
 /**
- * AI 简历审阅与文档锚点定位模型 (Phase 1 POC)
+ * AI 简历审阅与文档锚点定位模型（Phase 4B 正式功能）
  */
 
 import type { Improvement } from './optimization';

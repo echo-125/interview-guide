@@ -4,7 +4,7 @@
  * - 渲染时逐块输出（不再拼成单个 textarea）
  */
 
-import { newId, type ResumeSectionBlock, type ResumeSectionBlockType } from '../../types/resumeDocument.ts';
+import { newId, type ResumeCustomSection, type ResumeSectionBlock, type ResumeSectionBlockType } from '../../types/resumeDocument.ts';
 
 const BULLET_RE = /^\s*[-–—•·*▪◦]?\s*(.+)$/;
 
@@ -27,6 +27,24 @@ export function textToBlocks(text: string): ResumeSectionBlock[] {
 export function sectionText(section: { blocks: ResumeSectionBlock[] }): string {
   if (!section?.blocks) return '';
   return section.blocks.map(b => b.text).join('\n');
+}
+
+/** 不可变地新增一个块（paragraph / bullet / text） */
+export function addBlock(section: ResumeCustomSection, type: ResumeSectionBlockType): ResumeCustomSection {
+  return { ...section, blocks: [...(section.blocks || []), { id: newId('blk'), type, text: '' }] };
+}
+
+/** 不可变地更新指定块文本 */
+export function updateBlock(section: ResumeCustomSection, blockId: string, text: string): ResumeCustomSection {
+  return {
+    ...section,
+    blocks: (section.blocks || []).map(b => (b.id === blockId ? { ...b, text } : b)),
+  };
+}
+
+/** 不可变地删除指定块 */
+export function removeBlock(section: ResumeCustomSection, blockId: string): ResumeCustomSection {
+  return { ...section, blocks: (section.blocks || []).filter(b => b.id !== blockId) };
 }
 
 export { BULLET_RE };

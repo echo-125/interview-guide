@@ -788,3 +788,32 @@ function writePathValue(doc: ResumeDocument, path: DocumentPath | undefined, val
     default: return null;
   }
 }
+
+/* ============================================================
+ *  6. DocumentPath 序列化（DOM data-path / 双向定位）
+ * ============================================================ */
+
+const DOCUMENT_PATH_KINDS = new Set([
+  'basic', 'summary', 'skill-item', 'skill-category',
+  'experience-field', 'experience-bullet',
+  'project-field', 'project-bullet',
+  'education-field', 'education-bullet',
+  'certification-item', 'award-item', 'language-item', 'custom-block',
+]);
+
+/** DocumentPath → 稳定字符串（供 DOM data-path 与反向定位） */
+export function serializePath(path: DocumentPath): string {
+  return JSON.stringify(path);
+}
+
+/** 字符串 → DocumentPath；非法或未知 kind 返回 null */
+export function parsePath(s: string): DocumentPath | null {
+  try {
+    const raw = JSON.parse(s) as { kind?: string };
+    if (!raw || typeof raw !== 'object' || typeof raw.kind !== 'string') return null;
+    if (!DOCUMENT_PATH_KINDS.has(raw.kind)) return null;
+    return raw as DocumentPath;
+  } catch {
+    return null;
+  }
+}

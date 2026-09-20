@@ -81,9 +81,12 @@ public class ResumeStructuredParseService {
 
         List<String> warnings = new ArrayList<>();
         String input = resumeText.trim();
+        int originalLength = input.length();
+        boolean truncated = false;
         if (input.length() > MAX_INPUT_CHARS) {
+            truncated = true;
             input = input.substring(0, MAX_INPUT_CHARS);
-            warnings.add("原文过长已截断（取前 " + MAX_INPUT_CHARS + " 字）");
+            warnings.add(truncationWarning(originalLength, MAX_INPUT_CHARS));
         }
         int sourceChars = stripWhitespace(input).length();
 
@@ -118,12 +121,20 @@ public class ResumeStructuredParseService {
             }
 
             double confidence = Math.max(0, Math.min(0.98, 0.9 - warnings.size() * 0.03));
-            log.info("简历结构化解析完成: resumeId={}, sourceChars={}, warnings={}",
-                resumeId, sourceChars, warnings.size());
+
+            // 行级核对：逐行确认原文是否被归档进结构化文档，未归档行列入清单供前端展示
+            List<String> unmappedLines = verifyLineCoverage(input, flattenToText(normalized));
+            if (truncated) {
+                unmappedLines.add("[截断] 末尾 " + (originalLength - MAX_INPUT_CHARS) + " 字未参与解析");
+            }
+
+            log.info("简历结构化解析完成: resumeId={}, sourceChars={}, warnings={}, unmappedLines={}",
+                resumeId, sourceChars, warnings.size(), unmappedLines.size());
             return new ResumeStructuredParseResponse(
                 normalized,
                 new ResumeStructuredParseResponse.ResumeStructuredParseDiagnostics(
-                    "llm", confidence, warnings, sourceChars, structuredChars, unparsedChars
+                    "llm", confidence, warnings, sourceChars, structuredChars, unparsedChars,
+                    unmappedLines, truncated
                 )
             );
         } catch (BusinessException e) {
@@ -230,6 +241,60 @@ public class ResumeStructuredParseService {
 
     private static String stripWhitespace(String s) {
         return s == null ? "" : s.replaceAll("\\s+", "");
+    }
+
+    /** 截断 warning 文案：显式给出原文总长、上限与未参与解析的尾部字数 */
+    static String truncationWarning(int originalLength, int maxChars) {
+        return "原文共 " + originalLength + " 字，超过单次解析上限 " + maxChars
+            + " 字，已取前 " + maxChars + " 字解析，末尾 " + (originalLength - maxChars) + " 字未参与解析";
+    }
+
+    /**
+     * 行级核对：把实际送入 LLM 的输入逐行与结构化文档扁平文本比对，
+     * 返回未归档行清单（L行号: 前80字符）。
+     * 命中规则：
+     * 1) 行紧凑形式（去全部空白）被文档紧凑形式包含 → 已归档；
+     * 2) 行内首/尾 20 字符紧凑形式命中（容忍 LLM 拼接/重组行） → 已归档；
+     * 3) 其余行列入未归档清单。
+     */
+    static List<String> verifyLineCoverage(String input, String structuredText) {
+        List<String> unmapped = new ArrayList<>();
+        if (input == null || input.isBlank() || structuredText == null || structuredText.isBlank()) {
+            return unmapped;
+        }
+        String structuredCompact = stripWhitespace(structuredText);
+        String[] lines = input.split("\r?\n");
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            String compact = stripWhitespace(line);
+            if (compact.isEmpty()) continue;
+            if (structuredCompact.contains(compact)) continue;
+            // 标签行处理：形如「姓名：李阳」「电话: 138xxx」，LLM 只提取冒号后的值，
+            // 标签部分会被丢弃，因此用「值」的紧凑形式参与匹配
+            int colon = -1;
+            int cn = line.indexOf('：');
+            int en = line.indexOf(':');
+            if (cn >= 0) {
+                colon = cn;
+            } else if (en >= 0) {
+                String label = line.substring(0, en).trim();
+                if (label.length() <= 8 && !label.contains(" ")) colon = en;
+            }
+            if (colon >= 0) {
+                String valuePart = line.substring(colon + 1).trim();
+                String compactValue = stripWhitespace(valuePart);
+                if (!compactValue.isEmpty() && structuredCompact.contains(compactValue)) continue;
+            }
+            // 行内首/尾片段兜底：剔除行尾常见标点后再取首/尾 20 字符，容忍 LLM 拼接/重组行
+            String stripped = compact.replaceAll("[。！？!?，,；;：:.、]+$", "");
+            String head = stripped.length() > 20 ? stripped.substring(0, 20) : stripped;
+            String tail = stripped.length() > 20 ? stripped.substring(stripped.length() - 20) : stripped;
+            if (head.length() > 0 && (structuredCompact.contains(head) || structuredCompact.contains(tail))) continue;
+            String display = compact.length() > 80 ? compact.substring(0, 80) + "…" : compact;
+            unmapped.add("L" + (i + 1) + ": " + display);
+        }
+        return unmapped;
     }
     private static String nz(String s) { return s == null ? "" : s.trim(); }
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }

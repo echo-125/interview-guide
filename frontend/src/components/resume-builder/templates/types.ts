@@ -1,5 +1,5 @@
 /**
- * 模板系统定义 (Phase 3 POC)
+ * 模板系统定义（Phase 4B 正式功能）
  *
  * 模板与数据完全解耦：ResumeDocument + Template → Renderer。
  * 换模板只换 render 函数，不改变任何数据 → 换模板不丢内容。

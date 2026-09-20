@@ -1,6 +1,19 @@
 import { request } from './request';
 import type { UploadResponse, JdAnalysisRecord, ResumeRewriteResponse } from '../types/resume';
 import type { StructuredParseResponse } from '../types/structuredParse';
+import type { ResumeDocument } from '../types/resumeDocument';
+import type { DocumentRevision } from '../utils/resumeDocument/structuredMapping';
+
+/** 简历工作区快照（original/current 文档 + revisions 全量，后端透传 JSON） */
+export interface WorkingDocumentSnapshot {
+  parser: string;
+  sourceTextHash: string;
+  originalDocument: ResumeDocument;
+  document: ResumeDocument;
+  revisionIndex: number;
+  revisionSeq: number;
+  revisions: DocumentRevision[];
+}
 
 export const resumeApi = {
   /**
@@ -44,6 +57,23 @@ export const resumeApi = {
   ): Promise<StructuredParseResponse> {
     const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
     return request.post<StructuredParseResponse>(`/api/resumes/${resumeId}/parse-structured${query}`);
+  },
+
+  /**
+   * 读取简历工作区快照（无记录返回 null）
+   */
+  async getWorkingDocument(resumeId: number | string): Promise<WorkingDocumentSnapshot | null> {
+    return request.get<WorkingDocumentSnapshot | null>(`/api/resumes/${resumeId}/working-document`);
+  },
+
+  /**
+   * 保存简历工作区快照（幂等整体覆盖）
+   */
+  async saveWorkingDocument(
+    resumeId: number | string,
+    snapshot: WorkingDocumentSnapshot
+  ): Promise<WorkingDocumentSnapshot> {
+    return request.put<WorkingDocumentSnapshot>(`/api/resumes/${resumeId}/working-document`, snapshot);
   },
 
   /**

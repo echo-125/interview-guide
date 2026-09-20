@@ -1,5 +1,5 @@
 /**
- * @react-pdf/renderer 中文字体注册 (Phase 3 POC)
+ * @react-pdf/renderer 中文字体注册（Phase 4B 正式功能）
  *
  * 方案借鉴 Reactive Resume：
  * - 使用 @fontsource/noto-sans-sc 的整段简体中文子集（1.1MB/weight），经 Vite ?url 打包为资产

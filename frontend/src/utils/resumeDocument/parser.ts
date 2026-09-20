@@ -57,6 +57,10 @@ export interface ParseDiagnostics {
   warnings: string[];
   /** 0~1：基于 coverage 与警告的保守置信度 */
   confidence: number;
+  /** 行级核对未归档的原文片段清单（仅 LLM 解析回填；L行号: 前80字符） */
+  unmappedLines?: string[];
+  /** 原文是否因超过单次解析上限被截断（仅 LLM 解析回填） */
+  truncated?: boolean;
 }
 
 export interface ParseResult {
