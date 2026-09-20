@@ -1,18 +1,20 @@
 import { request } from './request';
 import type { UploadResponse, JdAnalysisRecord, ResumeRewriteResponse } from '../types/resume';
 import type { StructuredParseResponse } from '../types/structuredParse';
-import type { ResumeDocument } from '../types/resumeDocument';
-import type { DocumentRevision } from '../utils/resumeDocument/structuredMapping';
 
-/** 简历工作区快照（original/current 文档 + revisions 全量，后端透传 JSON） */
+/**
+ * 简历工作区快照（original/current 文档 + revisions 全量）。
+ * 后端以 JSON 文本（string）透传三个树形字段，避免 Jackson 版本类型冲突；
+ * 前端在保存时 JSON.stringify、恢复时 JSON.parse。
+ */
 export interface WorkingDocumentSnapshot {
   parser: string;
   sourceTextHash: string;
-  originalDocument: ResumeDocument;
-  document: ResumeDocument;
+  originalDocument: string;
+  document: string;
   revisionIndex: number;
   revisionSeq: number;
-  revisions: DocumentRevision[];
+  revisions: string;
 }
 
 export const resumeApi = {

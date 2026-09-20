@@ -159,7 +159,14 @@ export const PdfReviewViewer: React.FC<PdfReviewViewerProps> = ({
     loadPdfJs()
       .then(async (pdfjs: any) => {
         pdfjsRef.current = pdfjs;
-        const doc = await pdfjs.getDocument({ url: fileUrl }).promise;
+        const doc = await pdfjs.getDocument({
+          url: fileUrl,
+          // 中文 PDF 常使用 CID（如 Adobe-GB1）字体且无内嵌 ToUnicode，
+          // 缺 CMap 时 pdf.js 无法把 CID 翻译成 Unicode，中文字符会全部丢失/乱码。
+          // /vendor/pdfjs/cmaps 由构建期从 pdfjs-dist 拷贝（.bcmap 打包版）。
+          cMapUrl: '/vendor/pdfjs/cmaps/',
+          cMapPacked: true,
+        }).promise;
         if (!isMounted) return;
         pdfDocRef.current = doc;
 

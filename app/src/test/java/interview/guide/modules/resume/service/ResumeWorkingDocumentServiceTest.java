@@ -1,7 +1,5 @@
 package interview.guide.modules.resume.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import interview.guide.modules.resume.model.ResumeEntity;
 import interview.guide.modules.resume.model.ResumeWorkingDocumentEntity;
 import interview.guide.modules.resume.model.WorkingDocumentSnapshotDTO;
@@ -13,7 +11,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,8 +31,6 @@ class ResumeWorkingDocumentServiceTest {
     private ResumePersistenceService resumePersistenceService;
 
     private ResumeWorkingDocumentService service;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
@@ -63,10 +58,10 @@ class ResumeWorkingDocumentServiceTest {
         when(repository.findByResumeId(1L)).thenReturn(Optional.of(entity()));
         var dto = service.load(1L).orElseThrow();
         assertThat(dto.sourceTextHash()).isEqualTo("abc123");
-        assertThat(dto.originalDocument()).isNotNull();
+        assertThat(dto.originalDocument()).isEqualTo("{\"version\":1}");
         assertThat(dto.revisionIndex()).isEqualTo(0);
         assertThat(dto.revisionSeq()).isEqualTo(1);
-        assertThat(dto.revisions()).hasSize(1);
+        assertThat(dto.revisions()).isEqualTo("[{\"id\":\"rev-1\"}]");
     }
 
     @Test
@@ -83,18 +78,14 @@ class ResumeWorkingDocumentServiceTest {
         when(repository.findByResumeId(1L)).thenReturn(Optional.empty());
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        ObjectNode doc = objectMapper.createObjectNode();
-        doc.put("version", 1);
-        ObjectNode orig = objectMapper.createObjectNode();
-        orig.put("version", 1);
         WorkingDocumentSnapshotDTO dto = new WorkingDocumentSnapshotDTO(
-            "llm", "hash1", orig, doc, 1, 2, List.of(objectMapper.createObjectNode()));
+            "llm", "hash1", "{\"version\":1}", "{\"version\":1}", 1, 2, "[{\"id\":\"rev-1\"}]");
 
         var saved = service.upsert(1L, dto);
         assertThat(saved.sourceTextHash()).isEqualTo("hash1");
         assertThat(saved.revisionIndex()).isEqualTo(1);
         assertThat(saved.revisionSeq()).isEqualTo(2);
-        assertThat(saved.revisions()).hasSize(1);
+        assertThat(saved.revisions()).isEqualTo("[{\"id\":\"rev-1\"}]");
         verify(repository).save(any(ResumeWorkingDocumentEntity.class));
     }
 
@@ -102,9 +93,7 @@ class ResumeWorkingDocumentServiceTest {
     @DisplayName("upsert：简历不存在 → 拒绝保存")
     void upsertResumeMissing() {
         when(resumePersistenceService.findById(1L)).thenReturn(Optional.empty());
-        ObjectNode doc = objectMapper.createObjectNode();
-        ObjectNode orig = objectMapper.createObjectNode();
-        WorkingDocumentSnapshotDTO dto = new WorkingDocumentSnapshotDTO("llm", "h", orig, doc, -1, 0, List.of());
+        WorkingDocumentSnapshotDTO dto = new WorkingDocumentSnapshotDTO("llm", "h", "{\"version\":1}", "{\"version\":1}", -1, 0, "[]");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.upsert(1L, dto))
             .isInstanceOf(interview.guide.common.exception.BusinessException.class);
         verify(repository, never()).save(any());

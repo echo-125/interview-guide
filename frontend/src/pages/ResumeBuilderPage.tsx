@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Download, FileDown, FileText, Loader2, Wand2 } from 'lucide-react';
 import { historyApi } from '../api/history';
-import { resumeApi } from '../api/resume';
+import { resumeApi, type WorkingDocumentSnapshot } from '../api/resume';
 import { getErrorMessage } from '../api/request';
 import type { ResumeDocument } from '../types/resumeDocument';
 import { toResumeDocument, type StructuredParseDiagnostics } from '../types/structuredParse';
@@ -192,6 +192,38 @@ function ParseDiagnosticsPanel({ diagnostics }: { diagnostics: ParseDiagnostics 
   );
 }
 
+/**
+ * 把后端透传的 JSON 文本工作区反序列化为运行时对象。
+ * 任一字段解析失败时回退：original/current 用基础 Rule 文档，revisions 用空数组。
+ */
+function parseSavedWorkspace(
+  saved: WorkingDocumentSnapshot,
+  fallback: ResumeDocument
+): { originalDocument: ResumeDocument; currentDocument: ResumeDocument; revisions: DocumentRevision[] } {
+  let originalDocument = fallback;
+  let currentDocument = fallback;
+  let revisions: DocumentRevision[] = [];
+  try {
+    const o = JSON.parse(saved.originalDocument);
+    if (o && typeof o === 'object') originalDocument = o;
+  } catch {
+    // 保留基础 Rule 回退，避免恢复失败导致编辑器不可用
+  }
+  try {
+    const d = JSON.parse(saved.document);
+    if (d && typeof d === 'object') currentDocument = d;
+  } catch {
+    // 保留基础 Rule 回退
+  }
+  try {
+    const r = JSON.parse(saved.revisions || '[]');
+    revisions = Array.isArray(r) ? r : [];
+  } catch {
+    revisions = [];
+  }
+  return { originalDocument, currentDocument, revisions };
+}
+
 export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPageProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -238,14 +270,14 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
         const saved = await resumeApi.getWorkingDocument(resumeId).catch(() => null);
         if (mounted && saved && saved.sourceTextHash === sourceHashRef.current && saved.document) {
           restoredRef.current = true;
-          const revisions = saved.revisions || [];
+          const parsed = parseSavedWorkspace(saved, ruleResult.document);
           setWs({
-            originalDocument: saved.originalDocument,
-            currentDocument: saved.document,
-            revisions,
+            originalDocument: parsed.originalDocument,
+            currentDocument: parsed.currentDocument,
+            revisions: parsed.revisions,
             revisionIndex: saved.revisionIndex ?? -1,
             revisionSeq: saved.revisionSeq ?? 0,
-            appliedSuggestions: deriveAppliedFromRevisions(revisions, saved.revisionIndex ?? -1),
+            appliedSuggestions: deriveAppliedFromRevisions(parsed.revisions, saved.revisionIndex ?? -1),
           });
         }
 
@@ -302,11 +334,11 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       resumeApi.saveWorkingDocument(resumeId, {
         parser: 'llm',
         sourceTextHash: sourceHashRef.current,
-        originalDocument: s.originalDocument,
-        document: s.currentDocument,
+        originalDocument: JSON.stringify(s.originalDocument),
+        document: JSON.stringify(s.currentDocument),
         revisionIndex: s.revisionIndex,
         revisionSeq: s.revisionSeq,
-        revisions: s.revisions,
+        revisions: JSON.stringify(s.revisions),
       }).catch(() => {
         showToast('工作区自动保存失败，刷新后将恢复为重新解析', 'error');
       });
@@ -322,11 +354,11 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       resumeApi.saveWorkingDocument(resumeId, {
         parser: 'llm',
         sourceTextHash: sourceHashRef.current,
-        originalDocument: s.originalDocument,
-        document: s.currentDocument,
+        originalDocument: JSON.stringify(s.originalDocument),
+        document: JSON.stringify(s.currentDocument),
         revisionIndex: s.revisionIndex,
         revisionSeq: s.revisionSeq,
-        revisions: s.revisions,
+        revisions: JSON.stringify(s.revisions),
       }).catch(() => {});
     };
   }, [resumeId]);

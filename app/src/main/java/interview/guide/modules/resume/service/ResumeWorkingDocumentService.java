@@ -1,8 +1,5 @@
 package interview.guide.modules.resume.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
@@ -14,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -52,52 +48,57 @@ public class ResumeWorkingDocumentService {
     public WorkingDocumentSnapshotDTO upsert(Long resumeId, WorkingDocumentSnapshotDTO dto) {
         resumePersistenceService.findById(resumeId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND));
-        if (dto == null || dto.document() == null || !dto.document().isObject()) {
+        if (dto == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "工作区快照不能为空");
+        }
+        String docJson = dto.document();
+        String origJson = dto.originalDocument();
+        if (!isJsonObject(docJson)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "工作区 document 不能为空");
         }
-        if (dto.originalDocument() == null || !dto.originalDocument().isObject()) {
+        if (!isJsonObject(origJson)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "工作区 originalDocument 不能为空");
         }
         String sourceTextHash = dto.sourceTextHash();
         if (sourceTextHash == null || sourceTextHash.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "工作区 sourceTextHash 不能为空");
         }
+        ResumeWorkingDocumentEntity entity = repository.findByResumeId(resumeId).orElseGet(() -> {
+            ResumeWorkingDocumentEntity e = new ResumeWorkingDocumentEntity();
+            e.setResumeId(resumeId);
+            return e;
+        });
+        entity.setParser(dto.parser() == null || dto.parser().isBlank() ? "llm" : dto.parser());
+        entity.setSourceTextHash(sourceTextHash);
+        entity.setOriginalDocumentJson(origJson);
+        entity.setDocumentJson(docJson);
+        entity.setRevisionIndex(Math.max(-1, dto.revisionIndex()));
+        entity.setRevisionSeq(Math.max(0, dto.revisionSeq()));
+        String revisionsJson = dto.revisions();
+        entity.setRevisionsJson(revisionsJson == null || revisionsJson.isBlank()
+            ? WorkingDocumentSnapshotDTO.EMPTY_REVISIONS : revisionsJson);
+        ResumeWorkingDocumentEntity saved = repository.save(entity);
+        log.info("简历工作区已保存: resumeId={}, revisions={}, parser={}",
+            resumeId, entity.getRevisionsJson().length(), entity.getParser());
+        return toDto(saved);
+    }
+
+    /** 校验字符串是否为合法 JSON 对象（DTO 以 JSON 文本透传） */
+    private boolean isJsonObject(String json) {
+        if (json == null || json.isBlank()) {
+            return false;
+        }
         try {
-            ResumeWorkingDocumentEntity entity = repository.findByResumeId(resumeId).orElseGet(() -> {
-                ResumeWorkingDocumentEntity e = new ResumeWorkingDocumentEntity();
-                e.setResumeId(resumeId);
-                return e;
-            });
-            entity.setParser(dto.parser() == null || dto.parser().isBlank() ? "llm" : dto.parser());
-            entity.setSourceTextHash(sourceTextHash);
-            entity.setOriginalDocumentJson(objectMapper.writeValueAsString(dto.originalDocument()));
-            entity.setDocumentJson(objectMapper.writeValueAsString(dto.document()));
-            entity.setRevisionIndex(Math.max(-1, dto.revisionIndex()));
-            entity.setRevisionSeq(Math.max(0, dto.revisionSeq()));
-            entity.setRevisionsJson(objectMapper.writeValueAsString(
-                dto.revisions() == null ? List.of() : dto.revisions()));
-            ResumeWorkingDocumentEntity saved = repository.save(entity);
-            log.info("简历工作区已保存: resumeId={}, revisions={}, parser={}",
-                resumeId, entity.getRevisionsJson().length(), entity.getParser());
-            return toDto(saved);
-        } catch (JsonProcessingException e) {
-            log.error("简历工作区序列化失败: resumeId={}", resumeId, e);
-            throw new BusinessException(ErrorCode.RESUME_ANALYSIS_FAILED, "简历工作区序列化失败");
+            return objectMapper.readTree(json).isObject();
+        } catch (Exception e) {
+            return false;
         }
     }
 
     private WorkingDocumentSnapshotDTO toDto(ResumeWorkingDocumentEntity e) {
-        try {
-            JsonNode originalDocument = objectMapper.readTree(e.getOriginalDocumentJson());
-            JsonNode document = objectMapper.readTree(e.getDocumentJson());
-            List<JsonNode> revisions = objectMapper.readValue(
-                e.getRevisionsJson(), new TypeReference<List<JsonNode>>() { });
-            return new WorkingDocumentSnapshotDTO(
-                e.getParser(), e.getSourceTextHash(), originalDocument, document,
-                e.getRevisionIndex(), e.getRevisionSeq(), revisions);
-        } catch (JsonProcessingException ex) {
-            log.error("简历工作区反序列化失败: resumeId={}", e.getResumeId(), ex);
-            throw new BusinessException(ErrorCode.RESUME_ANALYSIS_FAILED, "简历工作区读取失败");
-        }
+        return new WorkingDocumentSnapshotDTO(
+            e.getParser(), e.getSourceTextHash(),
+            e.getOriginalDocumentJson(), e.getDocumentJson(),
+            e.getRevisionIndex(), e.getRevisionSeq(), e.getRevisionsJson());
     }
 }
