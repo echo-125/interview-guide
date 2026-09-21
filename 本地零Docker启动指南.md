@@ -75,7 +75,7 @@ org.gradle.java.installations.auto-download=false
 ## 启动成功标志
 
 - `HikariPool-1 - Start completed.` — PG
-- `5 connections initialized for 106.52.109.128:6379` — Redis
+- `5 connections initialized for <redis地址>:<port>` — Redis（示例格式，`<redis地址>` 为你的云端 Redis 主机）
 - `存储桶已存在: interview-guide` — S3
 - `Tomcat started on port 8080`
 - `Started App in X.X seconds`

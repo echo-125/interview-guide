@@ -20,6 +20,7 @@
 - Backend: `.claude/rules/backend.md`
 - AI / async / rate limit: `.claude/rules/ai-and-async.md`
 - Frontend: `.claude/rules/frontend.md`
+- 测试粒度与效率：`.claude/rules/testing-efficiency.md`
 
 ## Maintenance
 

@@ -232,6 +232,18 @@ Prompt 层面值得记录的两处设计：
 
 ## 代码结构变化
 
+### V5（v1.0）新增：结构化编辑工作区
+
+> 分析结果从「展示」进一步演进为「可编辑、可导出」：真实 PDF/DOCX → `ResumeDocument` → 结构化编辑器 → A4 预览（三模板），全程不修改原始文件。工作区状态仅保存在浏览器会话（不落库），导出由前端直接生成 PDF/DOCX。
+
+**核心页面**：`frontend/src/pages/ResumeBuilderPage.tsx`（结构化编辑器主页面，含三模板切换、导出入口与 AI 建议面板）
+
+**前端组件**（`frontend/src/components/resume-builder/`）：`StructuredEditor.tsx`、`A4Preview.tsx`（Developer/Classic/ATS 三模板实时预览）、`SuggestionReviewPanel.tsx`（AI 建议应用/定位/撤销）、`ResumePdf.tsx` / `ResumeDocx.ts`（PDF/DOCX 导出）、`templates/pdfStyles.ts` / `docxStyles.ts`（三模板样式）、`EditorFieldRegistryProvider.tsx`、`suggestionPanelState.ts`
+
+**数据模型与纯函数**（`frontend/src/utils/resumeDocument/`）：`parser.ts`（文本 → `ResumeDocument`）、`structuredMapping.ts`（文档路径 ↔ DOM `data-path` 双向映射，供建议定位）、`mergeLlmIntoWorking.ts`（AI 建议安全合并，避免覆盖后续手动编辑）、`cjkWrap.ts` + `pdfTextBreaks.ts`（PDF 手工折行，消除导出游离连字符）、`customSection.ts`、`workingHash.ts`
+
+**后端**：`ResumeStructuredParseService`（文本 → 结构化 `ResumeDocument`，LLM + 规则合并，`MAX_INPUT_CHARS` 截断）、`ResumeWorkingDocumentEntity / Repository / Service` + `WorkingDocumentSnapshotDTO`（工作区快照读写，配套 Flyway 迁移）
+
 ### 核心页面
 
 **`frontend/src/pages/ResumeDetailPage.tsx`**

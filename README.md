@@ -73,6 +73,12 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 | Lucide React      | 0.468 | 图标库         |
 | React Big Calendar| 1.19  | 面试日历组件   |
 | React Virtuoso    | 4.18  | RAG 聊天虚拟列表 |
+| React PDF Renderer| 4.9   | A4 简历实时预览（三模板） |
+| docx             | 9.7   | DOCX 导出        |
+| PDF.js (pdfjs-dist)| 3.11 | PDF 原文件预览   |
+| Harfbuzz.js      | 1.6   | PDF 中文字形整形 |
+| Noto Sans SC     | 5.3   | PDF 中文字体     |
+| JSZip            | 3.10  | DOCX 打包        |
 | pnpm              | 10.26 | 前端包管理器   |
 
 ## 功能特性
@@ -232,7 +238,7 @@ interview-guide/
 │   │   │   ├── annotation/           # @RateLimit 可重复限流注解
 │   │   │   ├── aspect/               # RateLimitAspect + Redis Lua 限流
 │   │   │   ├── async/                # Redis Stream 生产者/消费者模板
-│   │   │   ├── config/               # CORS、S3、OpenAPI、Jackson 等配置
+│   │   │   ├── config/               # CORS、S3、OpenAPI、SPA 路由等配置
 │   │   │   ├── evaluation/           # 文字/语音共用的统一评估引擎
 │   │   │   ├── exception/            # 业务异常与全局异常处理
 │   │   │   └── result/               # 统一响应 Result<T>
@@ -260,7 +266,9 @@ interview-guide/
 ├── frontend/                         # 前端应用
 │   ├── src/
 │   │   ├── api/                      # API 接口
-│   │   ├── components/               # 公共组件
+│   │   ├── assets/                   # 静态资源（字体、图标）
+│   │   ├── components/               # 公共组件（含 resume-builder/ 简历编辑器）
+│   │   ├── constants/                # 路由等常量
 │   │   ├── hooks/                    # 业务 Hooks
 │   │   ├── pages/                    # 页面组件
 │   │   ├── types/                    # 类型定义
@@ -270,7 +278,7 @@ interview-guide/
 │
 ├── run.bat                           # Windows 低内存一键启动（整合构建前后端产物并以轻量 JVM 托管）
 ├── run.sh                            # Linux/macOS 低内存一键启动脚本
-├── scripts/                          # 运维辅助与单体托管脚本（如 run-backend.ps1）
+├── scripts/                          # 少量辅助脚本（如 git 提交信息 hook 校验）
 ├── 本地零Docker启动指南.md            # 零 Docker 启动教程（中间件走云端，本机只跑 Vite + Spring Boot）
 ├── docs/                             # 架构设计与改造记录；docs/image 为效果展示截图；docs/legacy-docker 为旧 Docker 部署归档
 ├── .env.example                      # 环境变量示例
@@ -317,8 +325,17 @@ cd interview-guide
 依赖中间件（PostgreSQL + pgvector / Redis / S3 兼容存储）**由云端提供**，连接信息统一配置在根目录 `.env`：
 
 ```dotenv
-POSTGRES_URL=jdbc:postgresql://<云端地址>:5432/interview_guide?sslmode=require
-REDIS_ADDRESS=redis://<云端地址>:6379
+POSTGRES_HOST=<云端 PG 地址>
+POSTGRES_PORT=5432
+POSTGRES_DB=interview_guide
+POSTGRES_USER=<用户名>
+POSTGRES_PASSWORD=<密码>
+POSTGRES_SSLMODE=require          # 云端强制 SSL；本机免 SSL 时改 disable
+
+REDIS_HOST=<云端 Redis 地址>
+REDIS_PORT=6379
+REDIS_PASSWORD=<可选>
+
 APP_STORAGE_ENDPOINT=<S3 兼容端点>
 APP_STORAGE_ACCESS_KEY=xxx
 APP_STORAGE_SECRET_KEY=xxx
@@ -445,8 +462,8 @@ spring:
 
 这通常不是 Flyway 脚本错误，而是后端连不上 PostgreSQL。本项目中间件走云端，请检查根目录 `.env`：
 
-- `POSTGRES_URL` 是否指向云端地址并带有 `?sslmode=require`（或本地实例 `?sslmode=disable`）
-- `REDIS_ADDRESS` / `APP_STORAGE_*` 是否配置完整
+- `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` 是否指向云端地址（云端必须设 `POSTGRES_SSLMODE=require`，本机免 SSL 时改为 `disable`）
+- `REDIS_HOST` / `REDIS_PORT` / `APP_STORAGE_*` 是否配置完整
 
 若为本机自建依赖，请确认 PostgreSQL / Redis 已启动且端口与 `.env` 一致；完整排错表见
 [本地零Docker启动指南.md](本地零Docker启动指南.md)。
@@ -509,13 +526,30 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 测试粒度原则：**按改动范围跑测试，不要每次改动都跑全量**。仅改注释/日志/单方法实现时可不跑测试。
 集成测试使用 H2 配置；限流相关测试需要真实 Redis。
 
-### 前端（TypeScript 类型检查 + 构建）
+### 前端（TypeScript 类型检查 + 构建 + 测试）
 
 ```bash
-cd frontend && pnpm run build
+cd frontend && pnpm run build                       # tsc 类型检查 + vite build
 ```
 
-前端改动至少运行一次构建（`tsc && vite build`）确认类型与打包无误。
+前端改动至少运行一次构建（`tsc && vite build`）确认类型与打包无误。单元测试基于 Node.js 原生测试运行器 / tsx：
+
+```bash
+cd frontend
+pnpm run test:resume-optimization   # 简历 Diff / 改写落地 / 复评折算 / 优化项派生
+pnpm run test:export-fidelity       # 三模板 PDF/DOCX 导出保真
+pnpm run test:interview-history     # 面试历史趋势与统计
+pnpm run test:question-generation   # 知识库出题状态流转
+pnpm run test:interview-capacity    # 知识库面试容量校验
+pnpm run test:interview-entry       # 面试中心入口状态推导
+pnpm run test:vad-loader            # VAD 加载器
+```
+
+端到端测试（Playwright）：
+
+```bash
+cd frontend && pnpm run test:e2e
+```
 
 ## 贡献
 

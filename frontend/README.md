@@ -16,6 +16,7 @@
 - **性能优化**：React Virtuoso 4.18（RAG 虚拟滚动列表）
 - **富文本渲染**：React Markdown 9.0、Remark GFM、React Syntax Highlighter
 - **网络通信**：Axios（REST API）、Server-Sent Events（SSE 流式问答）、原生 WebSocket（实时语音面试）
+- **简历渲染与导出**：ReactPDF Renderer（A4 三模板实时预览）、docx（DOCX 导出）、pdfjs-dist（PDF 原文件预览）、harfbuzzjs + Noto Sans SC（PDF 中文字形整形）、JSZip（打包）
 - **测试框架**：Playwright（E2E 测试）、Node.js 内置测试运行器（逻辑单元测试）
 
 ---
@@ -27,21 +28,22 @@ frontend/src/
 ├── api/                    # 集中式 API 接口定义与 Axios 请求封装
 │   ├── history.ts          # 面试历史与详情接口
 │   ├── interview.ts        # 模拟面试与题目生成接口
+│   ├── interviewSchedule.ts # 面试日程安排接口
 │   ├── knowledgebase.ts    # 知识库与题库管理接口
-│   ├── llmProvider.ts      # 多模型与语音配置接口
+│   ├── llmProvider.ts      # 多模型、语音与 OCR 配置接口
+│   ├── ragChat.ts          # RAG 问答会话接口
 │   ├── request.ts          # 统一 Axios 实例、拦截器与统一响应 Result<T> 解包
-│   ├── resume.ts           # 简历上传、分析、重写接口
-│   ├── schedule.ts         # 面试日程安排接口
+│   ├── resume.ts           # 简历上传、分析、结构化解析、重写接口
+│   ├── skill.ts            # Skill 驱动出题接口
+│   ├── stream.ts           # SSE 流式响应工具
 │   └── voiceInterview.ts   # 语音面试会话管理接口
 ├── assets/                 # 静态资源（图标、字体、图片）
 ├── components/             # 可复用业务组件与通用 UI
+│   ├── resume-builder/     # 简历结构化编辑器（StructuredEditor、A4Preview、SuggestionReviewPanel、ResumePdf/ResumeDocx、templates 三模板样式）
+│   ├── resume-review/      # 简历分析展示组件（AnalysisPanel、JdMatchPanel、DiffView 等）
 │   ├── knowledgebase/      # 知识库问答、会话列表与管理组件
 │   ├── knowledgebaseInterview/ # 知识库专项面试与容量校验卡片
 │   ├── settings/           # 模型服务配置卡片与测试弹窗
-│   ├── AnalysisPanel.tsx   # 简历多维度分析面板
-│   ├── DiffView.tsx        # 简历重写 Markdown Diff 对比视图
-│   ├── JdMatchPanel.tsx    # JD 匹配诊断与技能缺口展示
-│   ├── ScoreExplanationCard.tsx # 简历打分可解释性归因卡片
 │   └── ...                 # 弹窗、加载状态、卡片骨架等
 ├── constants/              # 全局常量（routes.ts 路由定义等）
 ├── hooks/                  # 自定义业务 Hooks（录音、WebSocket、滚动控制等）
@@ -56,9 +58,10 @@ frontend/src/
 │   ├── KnowledgeBaseInterviewQuestionsPage.tsx # 知识库生成题库管理
 │   ├── KnowledgeBaseInterviewSessionPage.tsx   # 知识库专项面试作答页
 │   ├── UploadPage.tsx                     # 简历上传与处理进度页
+│   ├── ResumeBuilderPage.tsx              # 简历结构化编辑器（三模板 A4 预览 + 导出 PDF/DOCX）
 │   ├── ResumeDetailPage.tsx               # 简历体检、术语检查与整篇重写
 │   ├── InterviewSchedulePage.tsx          # 面试日程日历视图
-│   └── SettingsPage.tsx                   # 多模型服务（聊天/向量/重排）设置
+│   └── SettingsPage.tsx                   # 模型服务 / 语音平台 / OCR 设置
 ├── types/                  # TypeScript 类型定义（API、业务实体、状态枚举）
 ├── utils/                  # 工具函数（diff 计算、格式化、防抖等）
 ├── App.tsx                 # 根组件与路由布局
@@ -112,6 +115,12 @@ pnpm preview
 项目使用 Node.js 22+ 原生测试运行器进行轻量级、无依赖的高速单元测试：
 
 ```bash
+# 简历 Diff / 改写落地 / 复评折算 / 优化项派生测试
+pnpm run test:resume-optimization
+
+# 三模板 PDF/DOCX 导出一致性测试
+pnpm run test:export-fidelity
+
 # 面试历史趋势与统计计算测试
 pnpm run test:interview-history
 
@@ -123,6 +132,9 @@ pnpm run test:interview-capacity
 
 # 面试中心入口状态推导测试
 pnpm run test:interview-entry
+
+# VAD 加载器测试
+pnpm run test:vad-loader
 ```
 
 ### 端到端测试（Playwright E2E）
