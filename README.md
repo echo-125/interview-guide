@@ -198,12 +198,27 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 
 ### 简历管理（v1.0 重点迭代）
 
-> 截图含真实简历示例（姓名 / 电话 / 邮箱）等个人隐私已移除，以下为功能占位说明：
+> 截图使用不含个人信息的脱敏示例文档（张三 等均为演示占位数据），存放于 [docs/image](docs/image/)。
 
-- **简历管理列表**：搜索、分析状态、AI 评分与面试状态跟踪
-- **简历结构化编辑器**：结构化编辑区 + A4 实时预览 + AI 建议面板（Developer / Classic / ATS 三模板）
-- **AI 建议结构化应用**：定位到编辑器 → 原文/改写对照 → 一键采用修改 / 撤销此 AI 修改
-- **导出**：三模板一键切换 + 导出 PDF / DOCX（cjkWrap 手工折行，无游离连字符）
+简历管理列表（搜索、分析状态、AI 评分与面试状态跟踪）：
+
+![简历管理列表](docs/image/page-resume-manage-list.png)
+
+简历分析详情（AI 结论、评分与优先行动项）：
+
+![简历分析详情](docs/image/page-resume-detail.png)
+
+简历结构化编辑器 · Developer（程序员单栏）模板（结构化编辑区 + A4 实时预览 + AI 建议面板）：
+
+![编辑器 Developer](docs/image/page-resume-builder-developer.png)
+
+Classic（经典单栏）模板：
+
+![编辑器 Classic](docs/image/page-resume-builder-classic.png)
+
+ATS（极简可解析）模板：
+
+![编辑器 ATS](docs/image/page-resume-builder-ats.png)
 
 > 更多模块：模拟面试（文字 + 语音）、面试安排、知识库管理与问答助手，以及「设置 → 模型服务 / 语音服务 / OCR 本地模型」的完整配置能力，欢迎下载体验。
 
@@ -261,7 +276,7 @@ interview-guide/
 ├── run.sh                            # Linux/macOS 低内存一键启动脚本
 ├── scripts/                          # 少量辅助脚本（如 git 提交信息 hook 校验）
 ├── 本地零Docker启动指南.md            # 零 Docker 启动教程（中间件走云端，本机只跑 Vite + Spring Boot）
-├── docs/                             # 架构设计与改造记录；docs/legacy-docker 为旧 Docker 部署归档
+├── docs/                             # 架构设计与改造记录；docs/image 为效果展示截图；docs/legacy-docker 为旧 Docker 部署归档
 ├── .env.example                      # 环境变量示例
 └── README.md
 ```
