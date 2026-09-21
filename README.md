@@ -202,23 +202,23 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 
 简历管理列表（搜索、分析状态、AI 评分与面试状态跟踪）：
 
-![简历管理列表](docs/image/page-resume-manage-list.png)
+![简历管理列表](docs/image/page-resume-manage-list.jpg)
 
 简历分析详情（AI 结论、评分与优先行动项）：
 
-![简历分析详情](docs/image/page-resume-detail.png)
+![简历分析详情](docs/image/page-resume-detail.jpg)
 
 简历结构化编辑器 · Developer（程序员单栏）模板（结构化编辑区 + A4 实时预览 + AI 建议面板）：
 
-![编辑器 Developer](docs/image/page-resume-builder-developer.png)
+![编辑器 Developer](docs/image/page-resume-builder-developer.jpg)
 
 Classic（经典单栏）模板：
 
-![编辑器 Classic](docs/image/page-resume-builder-classic.png)
+![编辑器 Classic](docs/image/page-resume-builder-classic.jpg)
 
 ATS（极简可解析）模板：
 
-![编辑器 ATS](docs/image/page-resume-builder-ats.png)
+![编辑器 ATS](docs/image/page-resume-builder-ats.jpg)
 
 > 更多模块：模拟面试（文字 + 语音）、面试安排、知识库管理与问答助手，以及「设置 → 模型服务 / 语音服务 / OCR 本地模型」的完整配置能力，欢迎下载体验。
 
