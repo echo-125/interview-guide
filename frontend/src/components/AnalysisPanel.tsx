@@ -216,9 +216,10 @@ export default function AnalysisPanel({
             : '简历已上传成功，即将开始 AI 分析'}
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
-          深度分析包含逐条体检与证据链，输出量较大，可能需要几分钟，取决于所用模型的速度，请勿关闭页面。
+          深度分析包含逐条体检与证据链，输出量较大，可能需要几分钟至十余分钟（模型负载高时会更久）。
+          分析在后台持续进行：您现在可以先离开此页面，稍后再回来看结果；也可以停留在此等待自动刷新。任务不会被中断。
         </p>
-        <p className="text-sm text-slate-400 dark:text-slate-500">页面将自动刷新显示分析结果</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500">完成此任务后页面将自动显示分析结果</p>
       </div>
     );
   }

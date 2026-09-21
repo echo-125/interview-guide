@@ -258,6 +258,14 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
   wsRef.current = ws;
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoredRef = useRef(false);
+  const mountedPageRef = useRef(true);
+
+  useEffect(() => {
+    mountedPageRef.current = true;
+    return () => {
+      mountedPageRef.current = false;
+    };
+  }, []);
 
   // 编辑简历页面：允许页面整体滚动（编辑区域内容较多时不压缩显示面积）
 
@@ -268,6 +276,9 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     setAiStage('parsing');
     (async () => {
       try {
+        // mapping 基准文档：恢复路径下必须用「保存的工作区文档」（其条目 ID 与 currentDocument 一致），
+        // 否则用本次 Rule 解析重新生成的随机 ID 做映射，会在 currentDocument 中找不到而误判 stale。
+        let mappingBase: ResumeDocument | null = null;
         const data = await historyApi.getResumeDetail(resumeId);
         if (!mounted) return;
         const text = data.resumeText || '';
@@ -276,10 +287,10 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
         const ruleResult = parseResume(text);
         setWs(createWorkingResumeDocument(ruleResult.document));
         setDiag(ruleResult.diagnostics);
-        setLoading(false);
 
         // 持久化恢复：resumeText 未变时采用已保存的工作区（含修订历史），
-        // 并跳过 LLM 重新解析对工作区的覆盖
+        // 并跳过 LLM 重新解析对工作区的覆盖。
+        // 恢复完成前保持 loading，避免 Rule 快照先渲染、恢复内容再闪电替换（刷新闪变）。
         sourceHashRef.current = hashText(text);
         const saved = await resumeApi.getWorkingDocument(resumeId).catch(() => null);
         if (mounted && saved && saved.sourceTextHash === sourceHashRef.current && saved.document) {
@@ -296,21 +307,24 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           });
           // Phase 5C（G2）：恢复的工作区与 Rule 快照不同，建议 mapping 依据恢复后的 currentDocument 重建
           setSuggestions(prev => reconcileSuggestionMappings(prev, parsed.currentDocument));
+          mappingBase = parsed.currentDocument;
         }
+        if (mounted) setLoading(false);
 
         // 真实 AI 建议：从既有 analyses 派生改善项，再做结构化映射（Spec 三十）。
-        // 基于 Rule 结果立即计算，不依赖 LLM 完成（LLM 可能超时数分钟）。
+        // 映射基准：优先用恢复/合并后的工作区文档（条目 ID 与 currentDocument 一致），
+        // 否则当前位置的 Rule 结果（fresh 进入，merge 保留 Rule ID，一致）。
         try {
           const latest = Array.isArray(data.analyses) ? data.analyses[0] : null;
           const improvements = buildImprovements(latest || null);
-          const items: PanelSuggestion[] = improvements
+          const nextItems: PanelSuggestion[] = improvements
             .filter(im => !!im.originalText)
             .map(im => ({
               improvement: im,
-              mapping: mapSuggestionToDocument(ruleResult.document, { quote: im.originalText }),
+              mapping: mapSuggestionToDocument(mappingBase ?? ruleResult.document, { quote: im.originalText }),
               status: 'pending' as const,
             }));
-          if (mounted) setSuggestions(items);
+          if (mounted) setSuggestions(nextItems);
         } catch (e) {
           console.warn('[pb4] 加载 AI 建议失败', e);
         }
@@ -448,7 +462,8 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
       item.improvement.suggestedText
     );
     if (!result.document) {
-      showToast(result.reason || '结构化应用失败（已安全中止）', 'error');
+      // BUG-103：不把内部校验原因（如「quote 或 rewrite 为空」）直接抛给用户
+      showToast('该建议无法安全应用，请在编辑器中手动修改', 'error');
       return;
     }
     setWs(next);
@@ -565,13 +580,45 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
     return nameOk ? n : filename.replace(/\.(pdf|docx|doc|txt|md)$/i, '');
   };
 
-  // Phase 5E（P2）：全部建议不可操作时的「重新分析」——复用后端已有 reanalyze，不触碰工作区
+  // Phase 5E（P2）：全部建议不可操作时的「重新分析」——复用后端 reanalyze。
+  // 后端只把任务入队（分析在消费端异步执行），立即 reload 拿到的仍是旧建议；
+  // 这里轮询等待 COMPLETED/FAILED 后自动刷新，用户无需手动再次刷新。
   const handleReanalyze = async () => {
     setReanalyzing(true);
     try {
       await resumeApi.reanalyze(resumeId);
-      showToast('重新分析完成，页面将刷新以获取最新建议', 'success');
-      window.location.reload();
+      showToast('已提交重新分析，完成后将自动刷新', 'success');
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        if (!mountedPageRef.current) return; // 用户已离开页面：不再轮询/刷新
+        const data = await historyApi.getResumeDetail(resumeId).catch(() => null);
+        if (!data) continue;
+        if (data.analyzeStatus === 'COMPLETED') {
+          // 刷新前把最新工作区落盘（debounce 可能尚未触发），避免丢失最后一笔编辑
+          const s = wsRef.current;
+          if (s) {
+            await resumeApi.saveWorkingDocument(resumeId, {
+              parser: 'llm',
+              sourceTextHash: sourceHashRef.current,
+              originalDocument: JSON.stringify(s.originalDocument),
+              document: JSON.stringify(s.currentDocument),
+              revisionIndex: s.revisionIndex,
+              revisionSeq: s.revisionSeq,
+              revisions: JSON.stringify(s.revisions),
+            }).catch(() => {});
+          }
+          window.location.reload();
+          return;
+        }
+        if (data.analyzeStatus === 'FAILED') {
+          showToast('重新分析失败，原分析结果不受影响', 'error');
+          setReanalyzing(false);
+          return;
+        }
+      }
+      showToast('分析仍在进行中，完成后请刷新页面查看最新建议', 'error');
+      setReanalyzing(false);
     } catch (err) {
       showToast(getErrorMessage(err, '重新分析失败，请稍后重试'), 'error');
       setReanalyzing(false);
@@ -700,7 +747,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           桌面三栏：每栏固定在可用高度内各自内部滚动（保留每栏滚动栏）；
           同时页面本身可整体滚动（顶部工具栏/状态条/诊断 + 三栏较高时由页面滚动条承接）。 */}
       <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-60px)] lg:min-h-[480px] lg:items-stretch">
-        <div className="w-full lg:w-[38%] xl:w-[34%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="w-full lg:w-[38%] xl:w-[34%] min-w-0 flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-shrink-0">
             <Wand2 className="w-3.5 h-3.5 text-primary-500" />
             结构化编辑器（实时驱动右侧 A4 预览）
@@ -724,7 +771,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           <A4Preview blocks={previewBlocks} pagePadding={previewPagePadding}>{preview}</A4Preview>
         </div>
 
-        <div className="w-full lg:w-[26%] xl:w-[24%] flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="w-full lg:w-[26%] xl:w-[24%] min-w-0 flex flex-col min-h-0 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <SuggestionReviewPanel
             suggestions={derivedSuggestions}
             onApply={handleAiApply}

@@ -572,16 +572,29 @@ export function aiApply(
   return { state: pushRevision(state, rev), result };
 }
 
-/** 手工编辑（StructuredEditor onChange 触发）。捕获 AI 修改后的人工变更。 */
+/** 手工编辑（StructuredEditor onChange 触发）。捕获 AI 修改后的人工变更。
+ *
+ * 相邻 manual-edit 合并（BUG-004 修复）：连续快速输入（键盘事件序列，间隔 < MERGE_MS）
+ * 合并为同一条 revision（只更新 after，不新增），避免每次按键生成一条含完整文档快照的
+ * 修订导致工作区爆炸；撤销按「编辑会话」回退而非逐字符。 */
+const MANUAL_EDIT_MERGE_MS = 800;
+
 export function manualEdit(state: WorkingResumeDocumentState, nextDoc: ResumeDocument): WorkingResumeDocumentState {
   const before = toRevisionDocument(state);
   if (before === nextDoc) return state;
+  const now = Date.now();
+  const last = state.revisionIndex >= 0 ? state.revisions[state.revisionIndex] : undefined;
+  if (last && last.type === 'manual-edit' && now - last.timestamp < MANUAL_EDIT_MERGE_MS) {
+    const revisions = [...state.revisions];
+    revisions[state.revisionIndex] = { ...last, after: nextDoc, timestamp: now };
+    return { ...state, revisions, currentDocument: nextDoc };
+  }
   const rev: DocumentRevision = {
     id: nid('rev'),
     type: 'manual-edit',
     before,
     after: nextDoc,
-    timestamp: Date.now(),
+    timestamp: now,
   };
   return pushRevision(state, rev);
 }

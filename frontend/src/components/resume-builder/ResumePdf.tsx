@@ -20,11 +20,15 @@ import type { ResumeBullet, ResumeDocument } from '../../types/resumeDocument';
 import { PDF_STYLES, type PdfStyles } from './templates/pdfStyles.ts';
 import type { ResumeTemplateId } from './templates/types';
 import { insertCjkBreaks } from '../../utils/resumeDocument/pdfTextBreaks';
+import { wrapCjkText } from '../../utils/resumeDocument/cjkWrap';
 
 /** 中文动态文本的断行处理（短别名） */
 const b = insertCjkBreaks;
 
-function Bullets({ bullets, style }: { bullets: ResumeBullet[]; style: PdfStyles }) {
+/** A4 页面宽度（pt），用于按内容宽手工折行 */
+const PAGE_WIDTH_PT = 595.28;
+
+function Bullets({ bullets, style, bw }: { bullets: ResumeBullet[]; style: PdfStyles; bw: (t: string, fs?: number, reserve?: number) => string }) {
   if (bullets.length === 0) return null;
   return (
     <>
@@ -32,7 +36,7 @@ function Bullets({ bullets, style }: { bullets: ResumeBullet[]; style: PdfStyles
         // wrap=false：单条 bullet 不跨页碎开，避免页尾只剩 bullet 标记
         <View key={bul.id} style={style.bullet} wrap={false}>
           <Text style={style.bulletMark}>•</Text>
-          <Text style={style.bulletText}>{b(bul.text)}</Text>
+          <Text style={style.bulletText}>{bw(bul.text, style.page.fontSize, 24)}</Text>
         </View>
       ))}
     </>
@@ -138,17 +142,24 @@ export function ResumePdfDocument({
     : baseStyles) as PdfStyles;
   const { basics } = doc;
 
+  // BUG-002：手工折行——按模板页边距计算内容宽，长文本拆成多行（\n 分段），
+  // 每行不超宽 → textkit 不自行折行 → 不注入连字符「-」。
+  const pageStyle = baseStyles.page as { paddingLeft?: number; paddingRight?: number; fontSize?: number };
+  const contentWidth = PAGE_WIDTH_PT - (pageStyle.paddingLeft ?? 42) - (pageStyle.paddingRight ?? 42);
+  const bw = (t: string, fs?: number, extraReserve = 16) =>
+    wrapCjkText(t, fs ?? pageStyle.fontSize ?? 12, Math.max(60, contentWidth - extraReserve));
+
   return (
     <Document title={`${basics.name || 'resume'}-简历`}>
       <Page size="A4" style={styles.page}>
         {/* 头部 */}
         <View style={styles.header}>
-          <Text style={styles.name}>{b(basics.name)}</Text>
-          {basics.title ? <Text style={styles.title}>{b(basics.title)}</Text> : null}
+          <Text style={styles.name}>{bw(basics.name || '', styles.name.fontSize)}</Text>
+          {basics.title ? <Text style={styles.title}>{bw(basics.title, styles.title.fontSize)}</Text> : null}
           <Text style={styles.contact}>
             {[basics.gender, basics.age, basics.email, basics.phone, basics.location, basics.website].filter(Boolean).join('  |  ')}
           </Text>
-          {basics.summary ? <Text style={styles.summary}>{b(basics.summary)}</Text> : null}
+          {basics.summary ? <Text style={styles.summary}>{bw(basics.summary, styles.summary.fontSize, 14)}</Text> : null}
         </View>
 
         {/* 工作经历 */}
@@ -164,7 +175,7 @@ export function ResumePdfDocument({
                     styles={styles}
                   />
                 ) : null}
-                <Bullets bullets={e.bullets} style={styles} />
+                <Bullets bullets={e.bullets} style={styles} bw={bw} />
               </View>
             ))}
           </Section>
@@ -183,7 +194,7 @@ export function ResumePdfDocument({
                     styles={styles}
                   />
                 ) : null}
-                <Bullets bullets={p.bullets} style={styles} />
+                <Bullets bullets={p.bullets} style={styles} bw={bw} />
               </View>
             ))}
           </Section>
@@ -200,7 +211,7 @@ export function ResumePdfDocument({
                 return (
                   <Text style={styles.skillLine}>
                     <Text style={styles.skillLabel}>{b(g.category)}：</Text>
-                    {b(g.items.join('、'))}
+                    {bw(g.items.join('、'), styles.skillLine.fontSize, 18)}
                   </Text>
                 );
               })()
@@ -209,7 +220,7 @@ export function ResumePdfDocument({
             {doc.skills.slice(1).map(g => (
               <Text key={g.id} style={styles.skillLine}>
                 <Text style={styles.skillLabel}>{b(g.category)}：</Text>
-                {b(g.items.join('、'))}
+                {bw(g.items.join('、'), styles.skillLine.fontSize, 18)}
               </Text>
             ))}
           </Section>
@@ -228,7 +239,7 @@ export function ResumePdfDocument({
                     styles={styles}
                   />
                 ) : null}
-                <Bullets bullets={e.bullets} style={styles} />
+                <Bullets bullets={e.bullets} style={styles} bw={bw} />
               </View>
             ))}
           </Section>
@@ -241,14 +252,14 @@ export function ResumePdfDocument({
             styles={styles}
             first={
               <Text style={styles.skillLine}>
-                {b(doc.certifications[0].name)}
+                {bw(doc.certifications[0].name, styles.skillLine.fontSize, 18)}
                 {doc.certifications[0].date ? `  (${doc.certifications[0].date})` : ''}
               </Text>
             }
           >
             {doc.certifications.slice(1).map(c => (
               <Text key={c.id} style={styles.skillLine}>
-                {b(c.name)}
+                {bw(c.name, styles.skillLine.fontSize, 18)}
                 {c.date ? `  (${c.date})` : ''}
               </Text>
             ))}
@@ -260,14 +271,14 @@ export function ResumePdfDocument({
             styles={styles}
             first={
               <Text style={styles.skillLine}>
-                {b(doc.awards[0].title)}
+                {bw(doc.awards[0].title, styles.skillLine.fontSize, 18)}
                 {doc.awards[0].date ? `  (${doc.awards[0].date})` : ''}
               </Text>
             }
           >
             {doc.awards.slice(1).map(a => (
               <Text key={a.id} style={styles.skillLine}>
-                {b(a.title)}
+                {bw(a.title, styles.skillLine.fontSize, 18)}
                 {a.date ? `  (${a.date})` : ''}
               </Text>
             ))}
@@ -279,14 +290,14 @@ export function ResumePdfDocument({
             styles={styles}
             first={
               <Text style={styles.skillLine}>
-                {b(doc.languages[0].name)}
+                {bw(doc.languages[0].name, styles.skillLine.fontSize, 18)}
                 {doc.languages[0].level ? `  (${doc.languages[0].level})` : ''}
               </Text>
             }
           >
             {doc.languages.slice(1).map(l => (
               <Text key={l.id} style={styles.skillLine}>
-                {b(l.name)}
+                {bw(l.name, styles.skillLine.fontSize, 18)}
                 {l.level ? `  (${l.level})` : ''}
               </Text>
             ))}
@@ -296,16 +307,16 @@ export function ResumePdfDocument({
         {doc.customSections.map(s => (
           <Section
             key={s.id}
-            title={b(s.title)}
+            title={bw(s.title, styles.sectionTitle.fontSize, 18)}
             styles={styles}
             first={
               s.blocks.length > 0 ? (
-                <Text style={{ fontSize: styles.page.fontSize, lineHeight: 1.65, marginBottom: 2 }}>{b(s.blocks[0].text)}</Text>
+                <Text style={{ fontSize: styles.page.fontSize, lineHeight: 1.65, marginBottom: 2 }}>{bw(s.blocks[0].text, styles.page.fontSize, 16)}</Text>
               ) : undefined
             }
           >
             {s.blocks.slice(1).map(bl => (
-              <Text key={bl.id} style={{ fontSize: styles.page.fontSize, lineHeight: 1.65, marginBottom: 2 }}>{b(bl.text)}</Text>
+              <Text key={bl.id} style={{ fontSize: styles.page.fontSize, lineHeight: 1.65, marginBottom: 2 }}>{bw(bl.text, styles.page.fontSize, 16)}</Text>
             ))}
           </Section>
         ))}

@@ -223,6 +223,22 @@ test('C20 Manual edit after AI', () => {
   assert.equal(st.revisions.length, 2);
 });
 
+test('C20b 连续 manual-edit 合并为一条 revision（编辑会话，BUG-004）', () => {
+  let st = createWorkingResumeDocument(makeDoc());
+  const type = (suffix: string) => {
+    const edited = structuredClone(st.currentDocument);
+    edited.basics.summary = `${edited.basics.summary || ''}${suffix}`;
+    st = manualEdit(st, edited);
+  };
+  type('A');
+  type('B'); // 两次输入间隔 < 800ms → 合并为同一条 manual-edit
+  assert.equal(st.revisions.length, 1, '相邻两次输入应合并为一条修订');
+  assert.equal(st.currentDocument.basics.summary, `${makeDoc().basics.summary}AB`);
+  // 一次撤销回到合并前（整段输入一起撤销）
+  st = undo(st);
+  assert.equal(st.currentDocument.basics.summary, makeDoc().basics.summary);
+});
+
 test('C21-C24 Undo/Redo sequence', () => {
   let st = createWorkingResumeDocument(makeDoc());
   const m1 = mapSuggestionToDocument(st.currentDocument, { quote: '设计订单扣款流程。' }); // → eb2

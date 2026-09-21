@@ -107,7 +107,7 @@ export default function HistoryList({onSelectResume}: HistoryListProps) {
 
   return (
     <motion.div
-      className="w-full"
+      className="w-full min-w-0"
       initial={{opacity: 0}}
       animate={{opacity: 1}}
     >
@@ -175,20 +175,26 @@ export default function HistoryList({onSelectResume}: HistoryListProps) {
           animate={{opacity: 1, scale: 1}}
         >
           <div className="text-6xl mb-6">📄</div>
-          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">暂无简历记录</h3>
-          <p className="text-slate-500 dark:text-slate-400">上传简历开始您的第一次 AI 面试分析</p>
+          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            {resumes.length === 0 ? '暂无简历记录' : '未找到匹配的简历'}
+          </h3>
+          <p className="text-slate-500 dark:text-slate-400">
+            {resumes.length === 0
+              ? '上传简历开始您的第一次 AI 面试分析'
+              : `没有名称包含「${searchTerm}」的简历`}
+          </p>
         </motion.div>
       )}
 
       {/* 表格 */}
       {!loading && filteredResumes.length > 0 && (
         <motion.div
-          className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm overflow-hidden"
+          className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm overflow-x-auto"
           initial={{opacity: 0, y: 20}}
           animate={{opacity: 1, y: 0}}
           transition={{delay: 0.2}}
         >
-          <table className="w-full">
+          <table className="w-full min-w-max">
             <thead>
             <tr className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-600">
               <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">简历名称</th>

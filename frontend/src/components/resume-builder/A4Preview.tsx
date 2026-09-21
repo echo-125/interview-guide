@@ -114,7 +114,7 @@ export function A4Preview({ children, blocks, pagePadding, viewportWidth = 620 }
   const pages = useBlocks ? (packedBlocks ?? []) : Array.from({ length: fallbackCount }, (_, i) => i);
 
   return (
-    <div ref={sheetAreaRef} className="flex-1 min-h-0 bg-slate-200 dark:bg-slate-900 overflow-auto" style={{ height: '100%' }}>
+    <div ref={sheetAreaRef} className="flex-1 min-h-0 min-w-0 relative bg-slate-200 dark:bg-slate-900 overflow-auto" style={{ height: '100%' }}>
       {/* 测量容器 */}
       <div ref={measureRef}>
         {useBlocks && blocks ? <Measure blocks={blocks} pad={pad} /> : <div aria-hidden style={{ position: 'absolute', visibility: 'hidden', width: A4_WIDTH_PX }} data-measure>{children}</div>}

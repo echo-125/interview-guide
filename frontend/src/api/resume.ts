@@ -46,7 +46,11 @@ export const resumeApi = {
    */
   async rewriteResume(resumeId: number | string, llmProvider?: string): Promise<ResumeRewriteResponse> {
     const query = llmProvider ? `?llmProvider=${encodeURIComponent(llmProvider)}` : '';
-    return request.post<ResumeRewriteResponse>(`/api/resumes/${resumeId}/rewrite${query}`);
+    // BUG-102：重写为同步长任务，后端需完整跑一遍 LLM；默认 60s 超时会让用户
+    // 看到「网络连接失败」但后端仍在工作 → 覆写为 5 分钟，与上传/分析对齐。
+    return request.post<ResumeRewriteResponse>(`/api/resumes/${resumeId}/rewrite${query}`, undefined, {
+      timeout: 300000,
+    });
   },
 
   /**

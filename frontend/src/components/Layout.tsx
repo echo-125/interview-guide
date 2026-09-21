@@ -254,7 +254,7 @@ export default function Layout() {
       </aside>
 
       {/* 主内容区：flex 列布局，页面内容自然撑开文档（window 整页滚动）；子页面可自行占满高度 */}
-      <main className={`flex-1 flex flex-col p-10 min-h-screen transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-64'}`}>
+      <main className={`flex-1 min-w-0 flex flex-col p-10 min-h-screen transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-64'}`}>
         <motion.div
           key={currentPath}
           className="flex-1 min-h-0 flex flex-col"

@@ -185,7 +185,9 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `简历分析报告_${resume?.filename || resumeId}.pdf`;
+      // BUG-105：filename 已含扩展名（如「王昕_Java后端开发 (1).pdf」），去重避免「.pdf.pdf」
+      const baseName = (resume?.filename || '').replace(/\.[^.]+$/, '') || String(resumeId);
+      a.download = `简历分析报告_${baseName}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -307,6 +309,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
         <div className="flex items-center gap-4">
             <motion.button
             onClick={detailView === 'interviewDetail' ? handleBackToInterviewList : onBack}
+            aria-label={detailView === 'interviewDetail' ? '返回面试列表' : '返回简历列表'}
             className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-300 transition-all shadow-sm"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}

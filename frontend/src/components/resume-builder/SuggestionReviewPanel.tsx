@@ -118,6 +118,10 @@ export function SuggestionReviewPanel({
           const isSelected = selectedId === improvement.id ||
             (!!relatedIds && relatedIds.includes(improvement.id));
           const canStructured = mapping.strategy === 'structured-path' && !!mapping.documentPath;
+          // BUG-103：无改写内容（suggestedText 为空或与原文相同）时不允许「采用修改」，
+          // 只保留「定位到编辑器」（可手动修改）——避免点击后弹出内部错误文案。
+          const hasRewrite = !!improvement.suggestedText && improvement.suggestedText !== improvement.originalText;
+          const canApply = canStructured && hasRewrite;
           return (
           <div
             key={improvement.id}
@@ -178,7 +182,7 @@ export function SuggestionReviewPanel({
                   >
                     <RotateCcw className="w-3 h-3" />撤销此 AI 修改
                   </button>
-                ) : status === 'blocked-by-manual-edit' ? null : stale ? null : canStructured ? (
+                ) : status === 'blocked-by-manual-edit' ? null : stale ? null : canApply ? (
                   <>
                     <button
                       type="button"
@@ -196,6 +200,15 @@ export function SuggestionReviewPanel({
                       <Check className="w-3 h-3" />采用修改
                     </button>
                   </>
+                ) : canStructured ? (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onLocate?.(improvement.id); }}
+                    className="text-[11px] px-2 py-1 rounded-lg border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/40 inline-flex items-center gap-1"
+                    title="该建议无改写内容，可在编辑器中手动修改对应字段"
+                  >
+                    <Target className="w-3 h-3" />定位到编辑器
+                  </button>
                 ) : (
                   <span className="text-[10px] text-slate-400" title="该建议只有原始文档锚点，无法定位到结构化字段">
                     无法定位到结构化字段

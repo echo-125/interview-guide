@@ -136,13 +136,14 @@ function sampleDoc(): ResumeDocument {
 }
 
 /** 渲染 PDF 并抽取全部页面文本（Node strip-types 不支持 JSX，用 createElement） */
-async function renderPdfAndExtract(
+async function renderDocPdfAndExtract(
+  doc: ResumeDocument,
   templateId: 'developer' | 'classic' | 'ats',
   fontFamily?: string
 ): Promise<{ numPages: number; text: string; length: number }> {
   registerNodePdfFonts();
   const docElement = createElement(ResumePdfDocument, {
-    doc: sampleDoc(),
+    doc,
     templateId,
     ...(fontFamily ? { fontFamily } : {}),
   });
@@ -161,6 +162,13 @@ async function renderPdfAndExtract(
   return { numPages: pdfDoc.numPages, text: parts.join(''), length: buffer.length };
 }
 
+async function renderPdfAndExtract(
+  templateId: 'developer' | 'classic' | 'ats',
+  fontFamily?: string
+): Promise<{ numPages: number; text: string; length: number }> {
+  return renderDocPdfAndExtract(sampleDoc(), templateId, fontFamily);
+}
+
 /** 解包 DOCX 并读取 word/document.xml 与 word/styles.xml */
 async function buildDocxAndReadXml(templateId: 'developer' | 'classic' | 'ats'): Promise<{ documentXml: string; stylesXml: string }> {
   const buffer = await Packer.toBuffer(buildResumeDocx(sampleDoc(), templateId));
@@ -171,6 +179,41 @@ async function buildDocxAndReadXml(templateId: 'developer' | 'classic' | 'ats'):
   assert.ok(stylesXml, 'styles.xml 必须存在');
   return { documentXml, stylesXml };
 }
+
+test('BUG-002 回归：PDF 手工折行后不产生游离连字符（textkit hyphen 注入规避）', async () => {
+  // 长中英混合段落：若走 textkit 自动折行会注入「汉字-」/「-汉字」连字符（修复前实测 24 处）
+  const longSummary = '七年Java后端开发经验，主导过高并发支付网关系统的设计，使用Kafka与上游工单系统进行数据对接并通过ExactlyOnce机制保证消息不丢不重，实现分库分表与削峰填谷，保证大促期间系统稳定运行整体不被击穿。';
+  const longDoc: ResumeDocument = {
+    ...sampleDoc(),
+    basics: { ...sampleDoc().basics, summary: longSummary },
+    experience: [
+      {
+        id: 'ex-l1',
+        company: '杭州云启科技',
+        title: '资深 Java 工程师',
+        startDate: '2021-03',
+        endDate: '至今',
+        bullets: [{
+          id: 'bl-l1',
+          text: '负责资金链路与衍生品交易系统核心模块的架构设计与性能调优，主导幂等、对账与容灾方案的落地，支撑日千万级流水稳定运行。',
+        }],
+      },
+    ],
+    projects: [{ id: 'pr-l1', name: '分布式支付网关', role: '技术负责人', bullets: [{ id: 'pb-l1', text: '设计跨地域多活与流量管控方案，保障大促峰值流量下整体不被击穿。' }] }],
+    skills: [{ id: 'sk-l1', category: '后端', items: ['Java', 'Spring Cloud', 'MySQL', 'Redis', 'Kafka', 'ElasticJob'] }],
+    certifications: [],
+    awards: [],
+    languages: [],
+    customSections: [],
+  };
+  for (const t of ['developer', 'classic', 'ats'] as const) {
+    const { text } = await renderDocPdfAndExtract(longDoc, t);
+    const compact = text.replace(/\s+/g, '');
+    assert.ok(!/([\u4e00-\u9fff])-/.test(compact), `[${t}] 不应出现「汉字-」游离连字符（实际片段: ${(text.match(/.{0,6}-.{0,6}/g) || []).slice(0, 3).join(' / ') || '无'}`);
+    assert.ok(!/-([\u4e00-\u9fff])/.test(compact), `[${t}] 不应出现「-汉字」游离连字符`);
+    assert.ok(compact.includes('分库分表与削峰填谷'), `[${t}] 长段落内容完整进入 PDF`);
+  }
+});
 
 test('PDF：三模板真实渲染成功，页数一致且中文/修改内容进入 PDF', async () => {
   const dev = await renderPdfAndExtract('developer');
