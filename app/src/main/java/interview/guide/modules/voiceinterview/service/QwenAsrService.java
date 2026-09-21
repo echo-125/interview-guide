@@ -82,6 +82,26 @@ public class QwenAsrService {
         log.info("QwenAsrService reloaded: model={}, url={}", model, url);
     }
 
+    /**
+     * 应用通用平台 API 配置（DB → 运行时）。设置页保存语音平台配置后由
+     * LlmProviderConfigService 调用，替代单一平台 YAML 配置的直接改动。
+     */
+    public void applyRuntimeConfig(VoiceAsrRuntimeConfig c) {
+        if (c == null) return;
+        this.url = c.url();
+        this.model = c.model();
+        this.apiKey = c.apiKey();
+        this.language = c.language();
+        this.format = c.format();
+        this.sampleRate = c.sampleRate();
+        this.enableTurnDetection = c.enableTurnDetection();
+        this.turnDetectionType = c.turnDetectionType();
+        this.turnDetectionThreshold = c.turnDetectionThreshold();
+        this.turnDetectionSilenceDurationMs = c.turnDetectionSilenceDurationMs();
+        log.info("QwenAsrService applyRuntimeConfig: platform={}, model={}, url={}, hasKey={}",
+            c.platform(), model, url, hasApiKey());
+    }
+
     private void applyAsrConfig(VoiceInterviewProperties.AsrConfig asr) {
         this.url = asr.getUrl();
         this.model = asr.getModel();

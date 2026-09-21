@@ -68,6 +68,8 @@ export interface FetchModelsRequest {
 }
 
 export interface AsrConfig {
+  /** 平台标识（默认 qwen，预留其它平台） */
+  platform: string;
   url: string;
   model: string;
   maskedApiKey: string;
@@ -81,6 +83,8 @@ export interface AsrConfig {
 }
 
 export interface TtsConfig {
+  /** 平台标识（默认 qwen，预留其它平台） */
+  platform: string;
   model: string;
   maskedApiKey: string;
   voice: string;
@@ -92,7 +96,25 @@ export interface TtsConfig {
   volume: number;
 }
 
+/** OCR 本地模型配置（预留能力：仅配置管理与可用性测试，不接入文档解析） */
+export interface OcrConfig {
+  platform: string;
+  baseUrl: string;
+  maskedApiKey: string;
+  model: string;
+  enabled: boolean;
+}
+
+export interface OcrConfigRequest {
+  platform?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}
+
 export interface AsrConfigRequest {
+  platform?: string;
   url?: string;
   model?: string;
   apiKey?: string;
@@ -106,6 +128,7 @@ export interface AsrConfigRequest {
 }
 
 export interface TtsConfigRequest {
+  platform?: string;
   model?: string;
   apiKey?: string;
   voice?: string;

@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
   ProviderTestResult, AsrConfig, TtsConfig, AsrConfigRequest, TtsConfigRequest,
+  OcrConfig, OcrConfigRequest,
 } from '../types/llmProvider';
 
 type ConfigRowProps = {
@@ -86,8 +87,8 @@ export default function SettingsPage() {
   const [defaultRerankProviderId, setDefaultRerankProviderId] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // 模型服务 Tab：聊天 / 向量 / 重排 / 语音
-  const [activeTab, setActiveTab] = useState<'chat' | 'embedding' | 'rerank' | 'voice'>('chat');
+  // 模型服务 Tab：聊天 / 向量 / 重排 / 语音 / OCR
+  const [activeTab, setActiveTab] = useState<'chat' | 'embedding' | 'rerank' | 'voice' | 'ocr'>('chat');
 
   // 当前模态框对应的模型类型：从哪个 Tab 打开就只编辑该类型的字段
   const [modalType, setModalType] = useState<'chat' | 'embedding' | 'rerank'>('chat');
@@ -155,6 +156,14 @@ export default function SettingsPage() {
   const [asrForm, setAsrForm] = useState<AsrConfigRequest>({});
   const [ttsForm, setTtsForm] = useState<TtsConfigRequest>({});
 
+  // OCR 本地模型配置状态（预留能力）
+  const [ocrConfig, setOcrConfig] = useState<OcrConfig | null>(null);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [ocrForm, setOcrForm] = useState<OcrConfigRequest>({});
+  const [testingOcr, setTestingOcr] = useState(false);
+  const [ocrTestResult, setOcrTestResult] = useState<ProviderTestResult | null>(null);
+  const [ocrSaving, setOcrSaving] = useState(false);
+
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -173,11 +182,12 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [providerList, defaultProvider, asr, tts] = await Promise.all([
+      const [providerList, defaultProvider, asr, tts, ocr] = await Promise.all([
         llmProviderApi.list(),
         llmProviderApi.getDefaultProvider(),
         llmProviderApi.getAsrConfig(),
         llmProviderApi.getTtsConfig(),
+        llmProviderApi.getOcrConfig(),
       ]);
       setProviders(providerList);
       setDefaultProviderId(defaultProvider.defaultProvider);
@@ -185,6 +195,7 @@ export default function SettingsPage() {
       setDefaultRerankProviderId(defaultProvider.defaultRerankProvider ?? '');
       setAsrConfig(asr);
       setTtsConfig(tts);
+      setOcrConfig(ocr);
     } catch (err) {
       console.error('Failed to load settings:', err);
       showToast('加载数据失败', 'error');
@@ -527,6 +538,7 @@ export default function SettingsPage() {
   const openAsrModal = () => {
     if (!asrConfig) return;
     setAsrForm({
+      platform: asrConfig.platform,
       url: asrConfig.url,
       model: asrConfig.model,
       language: asrConfig.language,
@@ -543,6 +555,7 @@ export default function SettingsPage() {
   const openTtsModal = () => {
     if (!ttsConfig) return;
     setTtsForm({
+      platform: ttsConfig.platform,
       model: ttsConfig.model,
       voice: ttsConfig.voice,
       format: ttsConfig.format,
@@ -580,6 +593,50 @@ export default function SettingsPage() {
       showToast(getErrorMessage(err, '更新失败'), 'error');
     } finally {
       setVoiceSaving(false);
+    }
+  };
+
+  // --- OCR 本地模型配置 handlers ---
+  const openOcrModal = () => {
+    if (!ocrConfig) return;
+    setOcrForm({
+      platform: ocrConfig.platform,
+      baseUrl: ocrConfig.baseUrl,
+      model: ocrConfig.model,
+      enabled: ocrConfig.enabled,
+    });
+    setOcrTestResult(null);
+    setShowOcrModal(true);
+  };
+
+  const handleSaveOcr = async () => {
+    setOcrSaving(true);
+    try {
+      await llmProviderApi.updateOcrConfig(ocrForm);
+      showToast('OCR 本地模型配置已更新');
+      setShowOcrModal(false);
+      await loadData();
+    } catch (err) {
+      showToast(getErrorMessage(err, '更新失败'), 'error');
+    } finally {
+      setOcrSaving(false);
+    }
+  };
+
+  const handleTestOcr = async () => {
+    setTestingOcr(true);
+    setOcrTestResult(null);
+    try {
+      const r = await llmProviderApi.testOcr();
+      setOcrTestResult(r);
+    } catch (err) {
+      setOcrTestResult({
+        success: false,
+        message: getErrorMessage(err, '测试失败'),
+        model: ocrConfig?.model ?? '',
+      });
+    } finally {
+      setTestingOcr(false);
     }
   };
 
@@ -635,7 +692,7 @@ export default function SettingsPage() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white">
                   模型服务
                 </h2>
-                {activeTab !== 'voice' && (
+                {activeTab !== 'voice' && activeTab !== 'ocr' && (
                   <motion.button
                     onClick={() => openCreateModal(activeTab)}
                     whileHover={{ scale: 1.02 }}
@@ -657,6 +714,7 @@ export default function SettingsPage() {
                   { key: 'embedding', label: '向量模型' },
                   { key: 'rerank', label: '重排模型' },
                   { key: 'voice', label: '语音服务' },
+                  { key: 'ocr', label: 'OCR 本地模型' },
                 ] as const).map((tab) => (
                   <button
                     key={tab.key}
@@ -673,7 +731,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Provider grid (chat / embedding / rerank tabs) */}
-              {activeTab !== 'voice' && (
+              {activeTab !== 'voice' && activeTab !== 'ocr' && (
                 (() => {
                   const visibleProviders = providers.filter((provider) => {
                     if (activeTab === 'chat') return !!provider.model;
@@ -899,7 +957,7 @@ export default function SettingsPage() {
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">实时语音转写配置</p>
                           </div>
                         </div>
-                        <StatusBadge icon={<Mic className="h-3 w-3" />}>语音服务</StatusBadge>
+                        <StatusBadge icon={<Server className="h-3 w-3" />}>{asrConfig.platform || 'qwen'}</StatusBadge>
                       </div>
 
                       <dl className={DETAILS_CLASS}>
@@ -975,7 +1033,7 @@ export default function SettingsPage() {
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">文本转语音输出配置</p>
                           </div>
                         </div>
-                        <StatusBadge icon={<Volume2 className="h-3 w-3" />}>语音服务</StatusBadge>
+                        <StatusBadge icon={<Server className="h-3 w-3" />}>{ttsConfig.platform || 'qwen'}</StatusBadge>
                       </div>
 
                       <dl className={DETAILS_CLASS}>
@@ -1005,6 +1063,92 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
+              )}
+
+              {/* OCR 本地模型卡（预留能力：仅配置管理与可用性测试） */}
+              {activeTab === 'ocr' && (
+                <div className="mt-6">
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
+                    OCR 本地模型
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    预留能力：仅提供配置管理与连通性测试，暂未接入文档解析逻辑
+                  </p>
+                  <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+                    {ocrConfig && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={CARD_CLASS}
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className={ICON_WRAP_CLASS}>
+                              <Database className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-white">
+                                OCR 本地模型
+                              </h3>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {ocrConfig.enabled ? '已启用' : '未启用'}
+                              </p>
+                            </div>
+                          </div>
+                          <StatusBadge icon={<Server className="h-3 w-3" />}>{ocrConfig.platform || 'ollama'}</StatusBadge>
+                        </div>
+
+                        <dl className={DETAILS_CLASS}>
+                          <ConfigRow label="Base URL" value={ocrConfig.baseUrl} title={ocrConfig.baseUrl} emphasis />
+                          <ConfigRow label="模型" value={ocrConfig.model} title={ocrConfig.model} emphasis />
+                          <ConfigRow
+                            label="API Key"
+                            value={ocrConfig.maskedApiKey || '（本地模型可留空）'}
+                            title={ocrConfig.maskedApiKey}
+                            monospace
+                          />
+                        </dl>
+
+                        {ocrTestResult && (
+                          <div className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
+                            ocrTestResult.success
+                              ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                          }`}>
+                            <div className="flex items-center gap-1.5">
+                              {ocrTestResult.success
+                                ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                              }
+                              <span>{ocrTestResult.message}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className={ACTION_BAR_CLASS}>
+                          <button
+                            onClick={openOcrModal}
+                            className={`${ACTION_BUTTON_CLASS} text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700`}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            编辑
+                          </button>
+                          <button
+                            onClick={handleTestOcr}
+                            disabled={testingOcr}
+                            className={`${ACTION_BUTTON_CLASS} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20`}
+                          >
+                            {testingOcr
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <RefreshCw className="w-3.5 h-3.5" />
+                            }
+                            测试连接
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
               )}
           </motion.div>
         </AnimatePresence>
@@ -1484,6 +1628,15 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
                     <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">平台</label>
+                      <select value={asrForm.platform || 'qwen'} onChange={(e) => setAsrForm(f => ({ ...f, platform: e.target.value }))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow">
+                        <option value="qwen">qwen（阿里云 DashScope Realtime）</option>
+                        <option value="openai-compatible">openai-compatible（预留）</option>
+                      </select>
+                      <p className="mt-1 text-xs text-slate-400">当前运行时按所选平台分发；非 qwen 平台为预留项，需实现对接后生效</p>
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WebSocket URL</label>
                       <input type="text" value={asrForm.url || ''} onChange={(e) => setAsrForm(f => ({ ...f, url: e.target.value }))}
                         className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
@@ -1553,6 +1706,15 @@ export default function SettingsPage() {
                 ) : (
                   <div className="space-y-4">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">连接配置</p>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">平台</label>
+                      <select value={ttsForm.platform || 'qwen'} onChange={(e) => setTtsForm(f => ({ ...f, platform: e.target.value }))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow">
+                        <option value="qwen">qwen（阿里云 DashScope Realtime）</option>
+                        <option value="openai-compatible">openai-compatible（预留）</option>
+                      </select>
+                      <p className="mt-1 text-xs text-slate-400">当前运行时按所选平台分发；非 qwen 平台为预留项，需实现对接后生效</p>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Model</label>
@@ -1633,6 +1795,102 @@ export default function SettingsPage() {
                     whileTap={{ scale: 0.98 }}
                   >
                     {voiceSaving ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        保存中...
+                      </span>
+                    ) : (
+                      '保存'
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* OCR 本地模型 Edit Modal */}
+      <AnimatePresence>
+        {showOcrModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOcrModal(false)}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto"
+              >
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-5">
+                  编辑 OCR 本地模型
+                </h3>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">平台</label>
+                    <select value={ocrForm.platform || 'ollama'} onChange={(e) => setOcrForm(f => ({ ...f, platform: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow">
+                      <option value="ollama">ollama（本地）</option>
+                      <option value="openai-compatible">openai-compatible（预留）</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Base URL <span className="text-red-500">*</span></label>
+                    <input type="text" value={ocrForm.baseUrl || ''} onChange={(e) => setOcrForm(f => ({ ...f, baseUrl: e.target.value }))}
+                      placeholder="http://localhost:11434"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">模型 <span className="text-red-500">*</span></label>
+                      <input type="text" value={ocrForm.model || ''} onChange={(e) => setOcrForm(f => ({ ...f, model: e.target.value }))}
+                        placeholder="GLM-OCR"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">API Key <span className="text-slate-400 font-normal">(本地可留空)</span></label>
+                      <input type="password" value={ocrForm.apiKey || ''} onChange={(e) => setOcrForm(f => ({ ...f, apiKey: e.target.value }))}
+                        placeholder="留空则保持原值"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 transition-shadow" />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={ocrForm.enabled ?? true}
+                      onChange={(e) => setOcrForm(f => ({ ...f, enabled: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    启用该 OCR 模型配置
+                  </label>
+                </div>
+
+                <div className="flex gap-3 justify-end mt-6">
+                  <motion.button
+                    onClick={() => setShowOcrModal(false)}
+                    disabled={ocrSaving}
+                    className="px-5 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    取消
+                  </motion.button>
+                  <motion.button
+                    onClick={handleSaveOcr}
+                    disabled={ocrSaving}
+                    className="px-5 py-2.5 text-white rounded-xl font-semibold text-sm bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg shadow-primary-500/25 hover:from-primary-600 hover:to-primary-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {ocrSaving ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         保存中...

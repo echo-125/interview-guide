@@ -1,6 +1,7 @@
 package interview.guide.modules.llmprovider.dto;
 
 public record AsrConfigRequest(
+    String platform,
     String url,
     String model,
     String apiKey,

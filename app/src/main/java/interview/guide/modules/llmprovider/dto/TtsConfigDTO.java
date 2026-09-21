@@ -6,6 +6,8 @@ import lombok.Data;
 @Data
 @Builder
 public class TtsConfigDTO {
+  /** 平台标识（默认 qwen，预留其它平台） */
+  private String platform;
   private String model;
   private String maskedApiKey;
   private String voice;

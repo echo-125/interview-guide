@@ -79,6 +79,25 @@ public class QwenTtsService {
                 model, voice, connectTimeoutSeconds);
     }
 
+    /**
+     * 应用通用平台 API 配置（DB → 运行时）。设置页保存语音平台配置后由
+     * LlmProviderConfigService 调用。
+     */
+    public void applyRuntimeConfig(VoiceTtsRuntimeConfig c) {
+        if (c == null) return;
+        this.model = c.model();
+        this.apiKey = c.apiKey();
+        this.voice = c.voice();
+        this.format = c.format();
+        this.sampleRate = c.sampleRate();
+        this.mode = c.mode();
+        this.languageType = c.languageType();
+        this.speechRate = c.speechRate();
+        this.volume = c.volume();
+        log.info("QwenTtsService applyRuntimeConfig: platform={}, model={}, voice={}, hasKey={}",
+            c.platform(), model, voice, hasApiKey());
+    }
+
     private void applyTtsConfig(VoiceInterviewProperties voiceInterviewProperties) {
         VoiceInterviewProperties.QwenTtsConfig tts = voiceInterviewProperties.getQwen().getTts();
         this.model = tts.getModel();

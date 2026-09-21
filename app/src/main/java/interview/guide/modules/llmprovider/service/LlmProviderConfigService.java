@@ -12,6 +12,8 @@ import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
 import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.DefaultProviderDTO;
+import interview.guide.modules.llmprovider.dto.OcrConfigDTO;
+import interview.guide.modules.llmprovider.dto.OcrConfigRequest;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
 import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
@@ -19,11 +21,18 @@ import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
 import interview.guide.modules.llmprovider.model.LlmGlobalSettingEntity;
 import interview.guide.modules.llmprovider.model.LlmProviderEntity;
+import interview.guide.modules.llmprovider.model.OcrPlatformConfigEntity;
+import interview.guide.modules.llmprovider.model.VoicePlatformConfigEntity;
 import interview.guide.modules.llmprovider.repository.LlmGlobalSettingRepository;
 import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
+import interview.guide.modules.llmprovider.repository.OcrPlatformConfigRepository;
+import interview.guide.modules.llmprovider.repository.VoicePlatformConfigRepository;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
+import interview.guide.modules.voiceinterview.service.VoiceAsrRuntimeConfig;
+import interview.guide.modules.voiceinterview.service.VoiceTtsRuntimeConfig;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.HttpClientSettings;
@@ -59,6 +68,14 @@ public class LlmProviderConfigService {
   private final VoiceInterviewProperties voiceProperties;
   private final QwenAsrService asrService;
   private final QwenTtsService ttsService;
+  private final VoicePlatformConfigRepository voicePlatformConfigRepository;
+  private final OcrPlatformConfigRepository ocrPlatformConfigRepository;
+
+  /** OCR 本地模型默认值（Ollama + 本机已安装的 GLM-OCR；可在设置页修改） */
+  static final String OCR_DEFAULT_PLATFORM = "ollama";
+  static final String OCR_DEFAULT_BASE_URL = "http://localhost:11434";
+  static final String OCR_DEFAULT_MODEL = "GLM-OCR";
+  static final long OCR_SINGLE_ROW_ID = 1L;
 
   private static final Map<String, String> RECOMMENDED_EMBEDDING_MODELS = Map.of(
       "dashscope", "text-embedding-v3",
@@ -83,7 +100,9 @@ public class LlmProviderConfigService {
       LlmGlobalSettingRepository globalSettingRepository,
       VoiceInterviewProperties voiceProperties,
       QwenAsrService asrService,
-      QwenTtsService ttsService) {
+      QwenTtsService ttsService,
+      VoicePlatformConfigRepository voicePlatformConfigRepository,
+      OcrPlatformConfigRepository ocrPlatformConfigRepository) {
     this.properties = properties;
     this.registry = registry;
     this.providerRepository = providerRepository;
@@ -91,6 +110,8 @@ public class LlmProviderConfigService {
     this.voiceProperties = voiceProperties;
     this.asrService = asrService;
     this.ttsService = ttsService;
+    this.voicePlatformConfigRepository = voicePlatformConfigRepository;
+    this.ocrPlatformConfigRepository = ocrPlatformConfigRepository;
   }
 
   public LlmProviderConfigService(
@@ -99,7 +120,7 @@ public class LlmProviderConfigService {
       VoiceInterviewProperties voiceProperties,
       QwenAsrService asrService,
       QwenTtsService ttsService) {
-    this(properties, registry, null, null, voiceProperties, asrService, ttsService);
+    this(properties, registry, null, null, voiceProperties, asrService, ttsService, null, null);
   }
 
   // ===== Read operations (read lock) =====
@@ -230,8 +251,27 @@ public class LlmProviderConfigService {
   public AsrConfigDTO getAsrConfig() {
     rwLock.readLock().lock();
     try {
+      VoicePlatformConfigEntity db = voicePlatformConfigRepository == null ? null
+          : voicePlatformConfigRepository.findById("asr").orElse(null);
+      if (db != null) {
+        VoiceInterviewProperties.AsrConfig y = voiceProperties.getQwen().getAsr();
+        return AsrConfigDTO.builder()
+            .platform(platformOrDefault(db.getPlatform()))
+            .url(TextUtil.trimToNull(db.getBaseUrl()) != null ? db.getBaseUrl() : "")
+            .model(TextUtil.trimToNull(db.getModel()) != null ? db.getModel() : y.getModel())
+            .maskedApiKey(maskApiKey(db.getApiKey()))
+            .language(db.getLanguage() != null ? db.getLanguage() : y.getLanguage())
+            .format(db.getFormat() != null ? db.getFormat() : y.getFormat())
+            .sampleRate(db.getSampleRate() != null ? db.getSampleRate() : y.getSampleRate())
+            .enableTurnDetection(db.getEnableTurnDetection() != null ? db.getEnableTurnDetection() : y.isEnableTurnDetection())
+            .turnDetectionType(db.getTurnDetectionType() != null ? db.getTurnDetectionType() : y.getTurnDetectionType())
+            .turnDetectionThreshold(db.getTurnDetectionThreshold() != null ? db.getTurnDetectionThreshold() : y.getTurnDetectionThreshold())
+            .turnDetectionSilenceDurationMs(db.getTurnDetectionSilenceDurationMs() != null ? db.getTurnDetectionSilenceDurationMs() : y.getTurnDetectionSilenceDurationMs())
+            .build();
+      }
       VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
       return AsrConfigDTO.builder()
+          .platform("qwen")
           .url(asr.getUrl())
           .model(asr.getModel())
           .maskedApiKey(maskApiKey(asr.getApiKey()))
@@ -251,8 +291,26 @@ public class LlmProviderConfigService {
   public TtsConfigDTO getTtsConfig() {
     rwLock.readLock().lock();
     try {
+      VoicePlatformConfigEntity db = voicePlatformConfigRepository == null ? null
+          : voicePlatformConfigRepository.findById("tts").orElse(null);
+      if (db != null) {
+        VoiceInterviewProperties.QwenTtsConfig y = voiceProperties.getQwen().getTts();
+        return TtsConfigDTO.builder()
+            .platform(platformOrDefault(db.getPlatform()))
+            .model(TextUtil.trimToNull(db.getModel()) != null ? db.getModel() : y.getModel())
+            .maskedApiKey(maskApiKey(db.getApiKey()))
+            .voice(db.getVoice() != null ? db.getVoice() : y.getVoice())
+            .format(db.getFormat() != null ? db.getFormat() : y.getFormat())
+            .sampleRate(db.getSampleRate() != null ? db.getSampleRate() : y.getSampleRate())
+            .mode(db.getMode() != null ? db.getMode() : y.getMode())
+            .languageType(db.getLanguageType() != null ? db.getLanguageType() : y.getLanguageType())
+            .speechRate(db.getSpeechRate() != null ? db.getSpeechRate() : y.getSpeechRate())
+            .volume(db.getVolume() != null ? db.getVolume() : y.getVolume())
+            .build();
+      }
       VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
       return TtsConfigDTO.builder()
+          .platform("qwen")
           .model(tts.getModel())
           .maskedApiKey(maskApiKey(tts.getApiKey()))
           .voice(tts.getVoice())
@@ -283,12 +341,13 @@ public class LlmProviderConfigService {
   public ProviderTestResult testAsrConfig() {
     rwLock.readLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+      String url = getAsrConfigRuntime().url();
+      String model = getAsrConfigRuntime().model();
       try {
-        java.net.URI wsUri = java.net.URI.create(asr.getUrl());
+        java.net.URI wsUri = java.net.URI.create(url);
         String host = wsUri.getHost();
         // SSRF 防护：仅允许公网地址，拒绝内网/回环/保留地址
-        UrlAccessGuard.assertExternalHost(host, asr.getUrl());
+        UrlAccessGuard.assertExternalHost(host, url);
         int port = wsUri.getPort() > 0 ? wsUri.getPort() : (wsUri.getScheme().equals("wss") ? 443 : 80);
         java.net.InetSocketAddress address = new java.net.InetSocketAddress(host, port);
         java.net.Socket socket = new java.net.Socket();
@@ -297,18 +356,107 @@ public class LlmProviderConfigService {
         return ProviderTestResult.builder()
             .success(true)
             .message("ASR WebSocket 连接成功: " + host)
-            .model(asr.getModel())
+            .model(model)
             .build();
       } catch (Exception e) {
         return ProviderTestResult.builder()
             .success(false)
             .message("ASR 连接失败: " + e.getMessage())
-            .model(asr.getModel())
+            .model(model)
             .build();
       }
     } finally {
       rwLock.readLock().unlock();
     }
+  }
+
+  /** 组装当前生效的 ASR 运行时配置（DB 优先，YAML legacy 兜底） */
+  private VoiceAsrRuntimeConfig getAsrConfigRuntime() {
+    VoicePlatformConfigEntity db = voicePlatformConfigRepository == null ? null
+        : voicePlatformConfigRepository.findById("asr").orElse(null);
+    if (db != null) {
+      return asrRuntimeFromEntity(db);
+    }
+    VoiceInterviewProperties.AsrConfig y = voiceProperties.getQwen().getAsr();
+    return VoiceAsrRuntimeConfig.of(
+        y.getUrl(), y.getModel(), y.getApiKey(), y.getLanguage(), y.getFormat(),
+        y.getSampleRate(), y.isEnableTurnDetection(), y.getTurnDetectionType(),
+        y.getTurnDetectionThreshold(), y.getTurnDetectionSilenceDurationMs());
+  }
+
+  /**
+   * 从 DB 获取语音平台配置；不存在时以 YAML legacy 默认初始化并落库
+   * （配置唯一来源收敛为「设置页 + DB」）。
+   */
+  private VoicePlatformConfigEntity getOrCreateVoice(String capability) {
+    if (voicePlatformConfigRepository == null) {
+      throw new BusinessException(ErrorCode.VOICE_CONFIG_READ_FAILED, "语音平台配置存储不可用（非 DB 模式）");
+    }
+    return voicePlatformConfigRepository.findById(capability)
+        .orElseGet(() -> {
+          VoicePlatformConfigEntity created = newVoiceEntityFromYaml(capability);
+          voicePlatformConfigRepository.save(created);
+          return created;
+        });
+  }
+
+  private VoicePlatformConfigEntity newVoiceEntityFromYaml(String capability) {
+    VoicePlatformConfigEntity e = VoicePlatformConfigEntity.builder()
+        .capability(capability)
+        .platform("qwen")
+        .build();
+    if ("asr".equals(capability)) {
+      VoiceInterviewProperties.AsrConfig y = voiceProperties.getQwen().getAsr();
+      e.setBaseUrl(y.getUrl());
+      e.setModel(y.getModel());
+      e.setApiKey(y.getApiKey());
+      e.setLanguage(y.getLanguage());
+      e.setFormat(y.getFormat());
+      e.setSampleRate(y.getSampleRate());
+      e.setEnableTurnDetection(y.isEnableTurnDetection());
+      e.setTurnDetectionType(y.getTurnDetectionType());
+      e.setTurnDetectionThreshold(y.getTurnDetectionThreshold());
+      e.setTurnDetectionSilenceDurationMs(y.getTurnDetectionSilenceDurationMs());
+    } else {
+      VoiceInterviewProperties.QwenTtsConfig y = voiceProperties.getQwen().getTts();
+      e.setModel(y.getModel());
+      e.setApiKey(y.getApiKey());
+      e.setVoice(y.getVoice());
+      e.setFormat(y.getFormat());
+      e.setSampleRate(y.getSampleRate());
+      e.setMode(y.getMode());
+      e.setLanguageType(y.getLanguageType());
+      e.setSpeechRate(y.getSpeechRate());
+      e.setVolume(y.getVolume());
+    }
+    return e;
+  }
+
+  private VoiceAsrRuntimeConfig asrRuntimeFromEntity(VoicePlatformConfigEntity e) {
+    return new VoiceAsrRuntimeConfig(
+        platformOrDefault(e.getPlatform()),
+        e.getBaseUrl(), e.getModel(), e.getApiKey(), e.getLanguage(), e.getFormat(),
+        e.getSampleRate(), e.getEnableTurnDetection(), e.getTurnDetectionType(),
+        e.getTurnDetectionThreshold(), e.getTurnDetectionSilenceDurationMs());
+  }
+
+  private VoiceTtsRuntimeConfig ttsRuntimeFromEntity(VoicePlatformConfigEntity e) {
+    return new VoiceTtsRuntimeConfig(
+        platformOrDefault(e.getPlatform()),
+        e.getModel(), e.getApiKey(), e.getVoice(), e.getFormat(),
+        e.getSampleRate(), e.getMode(), e.getLanguageType(), e.getSpeechRate(), e.getVolume());
+  }
+
+  private void pushAsrToRuntime(VoicePlatformConfigEntity e) {
+    if (asrService != null) asrService.applyRuntimeConfig(asrRuntimeFromEntity(e));
+  }
+
+  private void pushTtsToRuntime(VoicePlatformConfigEntity e) {
+    if (ttsService != null) ttsService.applyRuntimeConfig(ttsRuntimeFromEntity(e));
+  }
+
+  private static String platformOrDefault(String platform) {
+    return platform == null || platform.isBlank() ? "qwen" : platform;
   }
 
   // ===== Write operations (write lock) =====
@@ -540,60 +688,202 @@ public class LlmProviderConfigService {
     }
   }
 
+  @Transactional
   public void updateAsrConfig(AsrConfigRequest request) {
     rwLock.writeLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
-      VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
-      if (request.url() != null) asr.setUrl(request.url());
-      if (request.model() != null) asr.setModel(request.model());
-      if (request.language() != null) asr.setLanguage(request.language());
-      if (request.format() != null) asr.setFormat(request.format());
-      if (request.sampleRate() != null) asr.setSampleRate(request.sampleRate());
-      if (request.enableTurnDetection() != null) asr.setEnableTurnDetection(request.enableTurnDetection());
-      if (request.turnDetectionType() != null) asr.setTurnDetectionType(request.turnDetectionType());
-      if (request.turnDetectionThreshold() != null) asr.setTurnDetectionThreshold(request.turnDetectionThreshold());
-      if (request.turnDetectionSilenceDurationMs() != null) asr.setTurnDetectionSilenceDurationMs(request.turnDetectionSilenceDurationMs());
-      if (request.apiKey() != null) {
-        asr.setApiKey(request.apiKey());
-        tts.setApiKey(request.apiKey());
+      if (voicePlatformConfigRepository == null) {
+        throw new BusinessException(ErrorCode.VOICE_CONFIG_READ_FAILED, "语音平台配置存储不可用（非 DB 模式）");
       }
-
-      asrService.reload(voiceProperties);
-      if (request.apiKey() != null) {
-        ttsService.reload(voiceProperties);
+      VoicePlatformConfigEntity db = getOrCreateVoice("asr");
+      if (request.platform() != null) db.setPlatform(platformOrDefault(request.platform()));
+      if (request.url() != null) db.setBaseUrl(request.url());
+      if (request.model() != null) db.setModel(request.model());
+      if (request.language() != null) db.setLanguage(request.language());
+      if (request.format() != null) db.setFormat(request.format());
+      if (request.sampleRate() != null) db.setSampleRate(request.sampleRate());
+      if (request.enableTurnDetection() != null) db.setEnableTurnDetection(request.enableTurnDetection());
+      if (request.turnDetectionType() != null) db.setTurnDetectionType(request.turnDetectionType());
+      if (request.turnDetectionThreshold() != null) db.setTurnDetectionThreshold(request.turnDetectionThreshold());
+      if (request.turnDetectionSilenceDurationMs() != null) db.setTurnDetectionSilenceDurationMs(request.turnDetectionSilenceDurationMs());
+      if (request.apiKey() != null && !request.apiKey().isBlank()) {
+        db.setApiKey(request.apiKey());
       }
-      log.info("Updated ASR config");
+      voicePlatformConfigRepository.save(db);
+      pushAsrToRuntime(db);
+      // ASR/TTS 共享密钥的既有语义：更新 ASR Key 时同步 TTS（仅 Key）
+      if (request.apiKey() != null && !request.apiKey().isBlank()) {
+        VoicePlatformConfigEntity tts = getOrCreateVoice("tts");
+        tts.setApiKey(db.getApiKey());
+        voicePlatformConfigRepository.save(tts);
+        pushTtsToRuntime(tts);
+      }
+      log.info("Updated ASR platform config: platform={}, model={}, url={}", db.getPlatform(), db.getModel(), db.getBaseUrl());
     } finally {
       rwLock.writeLock().unlock();
     }
   }
 
+  @Transactional
   public void updateTtsConfig(TtsConfigRequest request) {
     rwLock.writeLock().lock();
     try {
-      VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
-      VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
-      if (request.model() != null) tts.setModel(request.model());
-      if (request.voice() != null) tts.setVoice(request.voice());
-      if (request.format() != null) tts.setFormat(request.format());
-      if (request.sampleRate() != null) tts.setSampleRate(request.sampleRate());
-      if (request.mode() != null) tts.setMode(request.mode());
-      if (request.languageType() != null) tts.setLanguageType(request.languageType());
-      if (request.speechRate() != null) tts.setSpeechRate(request.speechRate());
-      if (request.volume() != null) tts.setVolume(request.volume());
-      if (request.apiKey() != null) {
-        tts.setApiKey(request.apiKey());
-        asr.setApiKey(request.apiKey());
+      if (voicePlatformConfigRepository == null) {
+        throw new BusinessException(ErrorCode.VOICE_CONFIG_READ_FAILED, "语音平台配置存储不可用（非 DB 模式）");
       }
-
-      ttsService.reload(voiceProperties);
-      if (request.apiKey() != null) {
-        asrService.reload(voiceProperties);
+      VoicePlatformConfigEntity db = getOrCreateVoice("tts");
+      if (request.platform() != null) db.setPlatform(platformOrDefault(request.platform()));
+      if (request.model() != null) db.setModel(request.model());
+      if (request.voice() != null) db.setVoice(request.voice());
+      if (request.format() != null) db.setFormat(request.format());
+      if (request.sampleRate() != null) db.setSampleRate(request.sampleRate());
+      if (request.mode() != null) db.setMode(request.mode());
+      if (request.languageType() != null) db.setLanguageType(request.languageType());
+      if (request.speechRate() != null) db.setSpeechRate(request.speechRate());
+      if (request.volume() != null) db.setVolume(request.volume());
+      if (request.apiKey() != null && !request.apiKey().isBlank()) {
+        db.setApiKey(request.apiKey());
       }
-      log.info("Updated TTS config");
+      voicePlatformConfigRepository.save(db);
+      pushTtsToRuntime(db);
+      // ASR/TTS 共享密钥的既有语义：更新 TTS Key 时同步 ASR（仅 Key）
+      if (request.apiKey() != null && !request.apiKey().isBlank()) {
+        VoicePlatformConfigEntity asr = getOrCreateVoice("asr");
+        asr.setApiKey(db.getApiKey());
+        voicePlatformConfigRepository.save(asr);
+        pushAsrToRuntime(asr);
+      }
+      log.info("Updated TTS platform config: platform={}, model={}, voice={}", db.getPlatform(), db.getModel(), db.getVoice());
     } finally {
       rwLock.writeLock().unlock();
+    }
+  }
+
+  // ===== OCR 本地模型配置（预留能力：仅配置管理与可用性测试，不接入文档解析逻辑）=====
+
+  public OcrConfigDTO getOcrConfig() {
+    rwLock.readLock().lock();
+    try {
+      OcrPlatformConfigEntity e = getOrCreateOcr();
+      return OcrConfigDTO.builder()
+          .platform(e.getPlatform())
+          .baseUrl(e.getBaseUrl())
+          .maskedApiKey(maskApiKey(e.getApiKey()))
+          .model(e.getModel())
+          .enabled(e.isEnabled())
+          .build();
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  @Transactional
+  public void updateOcrConfig(OcrConfigRequest request) {
+    rwLock.writeLock().lock();
+    try {
+      OcrPlatformConfigEntity e = getOrCreateOcr();
+      if (request.platform() != null) e.setPlatform(request.platform());
+      if (request.baseUrl() != null) e.setBaseUrl(TextUtil.trimToNull(request.baseUrl()));
+      if (request.model() != null) e.setModel(TextUtil.trimToNull(request.model()));
+      if (request.apiKey() != null && !request.apiKey().isBlank()) e.setApiKey(request.apiKey());
+      if (request.enabled() != null) e.setEnabled(request.enabled());
+      if (e.getBaseUrl() == null || e.getModel() == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "OCR baseUrl 与模型不能为空");
+      }
+      ocrPlatformConfigRepository.save(e);
+      log.info("Updated OCR platform config: platform={}, baseUrl={}, model={}", e.getPlatform(), e.getBaseUrl(), e.getModel());
+    } finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+
+  public ProviderTestResult testOcrConfig() {
+    rwLock.readLock().lock();
+    try {
+      OcrPlatformConfigEntity e = getOrCreateOcr();
+      if (!e.isEnabled()) {
+        return ProviderTestResult.builder()
+            .success(false).message("OCR 本地模型服务未启用").model(e.getModel()).build();
+      }
+      String baseUrl = e.getBaseUrl().replaceAll("/+$", "");
+      String model = e.getModel();
+      try {
+        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5)).build();
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/tags"))
+            .timeout(Duration.ofSeconds(8))
+            .header("Accept", "application/json")
+            .build();
+        java.net.http.HttpResponse<String> resp = client.send(req,
+            java.net.http.HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() != 200) {
+          return ProviderTestResult.builder()
+              .success(false).message("OCR 服务响应异常: HTTP " + resp.statusCode()).model(model).build();
+        }
+        boolean found = containsModelEntry(resp.body(), model);
+        if (!found) {
+          return ProviderTestResult.builder()
+              .success(false)
+              .message("连接成功但未找到模型 " + model + "（Ollama 端可执行 ollama pull " + model + "）")
+              .model(model).build();
+        }
+        return ProviderTestResult.builder()
+            .success(true).message("OCR 本地模型可达：模型 " + model + " 已就绪").model(model).build();
+      } catch (Exception ex) {
+        return ProviderTestResult.builder()
+            .success(false).message("OCR 连接失败: " + ex.getMessage()).model(model).build();
+      }
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  /** 粗糙但可靠的模型存在性检测：JSON 中查找 name/model 字段与模型名匹配 */
+  private static boolean containsModelEntry(String json, String model) {
+    if (json == null || model == null || model.isBlank()) return false;
+    String lower = json.toLowerCase();
+    String m = model.trim().toLowerCase();
+    return lower.contains("\"name\":\"" + m + "\"")
+        || lower.contains("\"name\":\"" + m + ":")
+        || lower.contains("\"model\":\"" + m + "\"")
+        || lower.contains("\"model\":\"" + m + ":");
+  }
+
+  private OcrPlatformConfigEntity getOrCreateOcr() {
+    if (ocrPlatformConfigRepository == null) {
+      throw new BusinessException(ErrorCode.VOICE_CONFIG_READ_FAILED, "OCR 配置存储不可用（非 DB 模式）");
+    }
+    return ocrPlatformConfigRepository.findById(OCR_SINGLE_ROW_ID)
+        .orElseGet(() -> ocrPlatformConfigRepository.save(OcrPlatformConfigEntity.builder()
+            .id(OCR_SINGLE_ROW_ID)
+            .platform(OCR_DEFAULT_PLATFORM)
+            .baseUrl(OCR_DEFAULT_BASE_URL)
+            .model(OCR_DEFAULT_MODEL)
+            .enabled(true)
+            .build()));
+  }
+
+  /**
+   * 应用启动时将 DB 中的语音平台配置推送到运行时（覆盖 YAML legacy 默认）。
+   * 配置唯一来源 = 设置页 + DB。
+   */
+  @PostConstruct
+  public void initVoicePlatformRuntime() {
+    if (voicePlatformConfigRepository == null) {
+      log.info("Voice platform config storage unavailable (legacy YAML mode), skip DB push");
+      return;
+    }
+    try {
+      voicePlatformConfigRepository.findById("asr").ifPresent(this::pushAsrToRuntime);
+      voicePlatformConfigRepository.findById("tts").ifPresent(this::pushTtsToRuntime);
+      OcrPlatformConfigEntity ocr = ocrPlatformConfigRepository.findById(OCR_SINGLE_ROW_ID).orElse(null);
+      if (ocr != null) {
+        log.info("OCR platform config loaded: platform={}, baseUrl={}, model={}, enabled={}",
+            ocr.getPlatform(), ocr.getBaseUrl(), ocr.getModel(), ocr.isEnabled());
+      }
+    } catch (Exception e) {
+      log.warn("初始化语音/OCR 平台配置失败（继续使用 legacy YAML 默认）: {}", e.getMessage(), e);
     }
   }
 

@@ -10,6 +10,8 @@ import type {
   TtsConfig,
   AsrConfigRequest,
   TtsConfigRequest,
+  OcrConfig,
+  OcrConfigRequest,
 } from '../types/llmProvider';
 
 export const llmProviderApi = {
@@ -62,4 +64,14 @@ export const llmProviderApi = {
 
   testAsr: () =>
     request.post<ProviderTestResult>('/api/llm-provider/voice/asr/test'),
+
+  // OCR 本地模型配置（预留能力）
+  getOcrConfig: () =>
+    request.get<OcrConfig>('/api/llm-provider/ocr'),
+
+  updateOcrConfig: (data: OcrConfigRequest) =>
+    request.put<void>('/api/llm-provider/ocr', data),
+
+  testOcr: () =>
+    request.post<ProviderTestResult>('/api/llm-provider/ocr/test'),
 };

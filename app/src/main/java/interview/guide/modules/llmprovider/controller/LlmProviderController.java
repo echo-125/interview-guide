@@ -7,6 +7,8 @@ import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.DefaultProviderDTO;
 import interview.guide.modules.llmprovider.dto.FetchModelsRequest;
+import interview.guide.modules.llmprovider.dto.OcrConfigDTO;
+import interview.guide.modules.llmprovider.dto.OcrConfigRequest;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
 import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
@@ -149,5 +151,26 @@ public class LlmProviderController {
   @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
   public Result<ProviderTestResult> testAsrConfig() {
     return Result.success(configService.testAsrConfig());
+  }
+
+  // ===== OCR 本地模型配置（预留能力：仅配置管理与可用性测试）=====
+
+  @GetMapping("/ocr")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 30)
+  public Result<OcrConfigDTO> getOcrConfig() {
+    return Result.success(configService.getOcrConfig());
+  }
+
+  @PutMapping("/ocr")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+  public Result<Void> updateOcrConfig(@RequestBody OcrConfigRequest request) {
+    configService.updateOcrConfig(request);
+    return Result.success();
+  }
+
+  @PostMapping("/ocr/test")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
+  public Result<ProviderTestResult> testOcrConfig() {
+    return Result.success(configService.testOcrConfig());
   }
 }
