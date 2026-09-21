@@ -37,3 +37,4 @@ logs/
 test-connectivity.ps1
 .zcode/
 .workbuddy/
+.trae/
