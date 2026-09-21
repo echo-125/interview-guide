@@ -39,9 +39,9 @@ export default function UploadPage({ onUploadComplete }: UploadPageProps) {
     <div className="space-y-4">
       <FileUploadCard
         title="开始您的 AI 模拟面试"
-        subtitle="上传 PDF 或 Word 简历，AI 将为您定制专属面试方案"
-        accept=".pdf,.doc,.docx,.txt"
-        formatHint="支持 PDF, DOCX, TXT"
+        subtitle="上传 PDF、Word 或 Markdown 简历，AI 将为您定制专属面试方案"
+        accept=".pdf,.doc,.docx,.txt,.md,.markdown"
+        formatHint="支持 PDF, DOCX, TXT, Markdown"
         maxSizeHint="最大 10MB"
         uploading={uploading}
         uploadButtonText="开始上传"

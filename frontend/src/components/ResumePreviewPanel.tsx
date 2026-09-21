@@ -49,7 +49,7 @@ export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPa
           <div className="min-w-0">
             <p className="font-medium text-slate-900 dark:text-white truncate">{resume.filename}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {isPdf ? 'PDF 文档' : 'Word / 文本简历'}
+              {isPdf ? 'PDF 文档' : 'Word / 文本 / Markdown 简历'}
               {resume.fileSize ? ` · ${formatFileSize(resume.fileSize)}` : ''}
             </p>
           </div>
