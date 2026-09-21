@@ -46,7 +46,7 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 | iText 8               | 8.0.5 | PDF 导出                      |
 | MapStruct             | 1.6.3 | 对象映射                      |
 | SpringDoc OpenAPI     | 3.0.2 | API 接口文档                  |
-| DashScope SDK         | 2.22.7 | 语音识别/合成（Qwen3 ASR/TTS）|
+| DashScope SDK         | 2.22.7 | 语音识别/合成默认实现（ASR/TTS 平台可在设置页切换）|
 | AWS S3 SDK            | 2.29.51 | S3 兼容对象存储（MinIO/RustFS）|
 | WebSocket             | -     | 语音面试实时双向通信          |
 | Gradle                | 9.6.1 | 构建工具                      |
@@ -89,6 +89,10 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - **招聘方视角**：模拟招聘官 10 秒快速筛选简历，给出第一印象、通过 / 存疑 / 不通过预判与主要顾虑，并据此提示面试可能被追问的方向。
 - **简历原文件预览**：直接内嵌预览 PDF 原版式，非 PDF 格式回退为解析后的文本，同时支持新窗口打开与下载原文件。
 - **整篇重写**：基于简历原文与最新诊断结果一键生成优化后全文，附修改概述，支持复制与下载。
+- **结构化智能编辑工作区**：真实 PDF/DOCX → `ResumeDocument` → 结构化编辑器 → A4 实时预览，全程**不修改原始文件**；支持 Developer（程序员单栏）/ Classic（经典单栏）/ ATS（极简可解析）三种版式一键切换，并提供内容保留率指标（解析质量可视化）。
+- **工作区自动保存 + 撤销/重做**：编辑过程在浏览器会话内自动保存，刷新后可恢复上次编辑；AI 建议应用与手动编辑并入统一修订记录，支持逐级撤销 / 重做，AI 修改可一键撤销且不会覆盖后续手动编辑。
+- **AI 建议结构化应用**：建议卡支持「定位到编辑器 → 原文/改写字符级对照 → 一键采用修改 / 撤销此 AI 修改」闭环；已过期或无法映射的建议有兜底提示，避免静默修改错位置。
+- **高质量导出**：PDF 导出采用手工折行（`cjkWrap`）从源头避免游离连字符与超宽行溢出；DOCX 导出与 A4 预览版式保持一致。
 - **分析报告导出**：支持将 AI 分析结果一键导出为结构化 PDF 报告（含 AI 结论、优先行动项、逐条体检、术语检查与招聘方视角）。
 - **JD 匹配诊断**：粘贴目标岗位 JD，AI 对比简历输出匹配度总分、技能缺口清单（含严重程度与证据置信度）、薄弱点与面试前补强建议；诊断结果保留历史可回看，并自动注入后续模拟面试出题。
 
@@ -146,15 +150,16 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - **按能力独立设默认**：聊天、向量、重排各自设置默认模型；默认未显式设置时自动回退到第一个可用的对应能力模型。模拟面试、简历分析、知识库出题/面试、RAG 问答等页面均支持临时切换模型。
 - **RAG 检索重排**：配置默认重排模型后，知识库问答在向量召回后自动对候选片段重排（支持 Cohere 兼容与百炼原生两种格式），重排失败自动回退向量排序。
 - **向量维度可配置**：通过 `APP_VECTOR_DIMENSIONS` 配置 pgvector 向量维度（默认 1024），启动时自动对齐表结构；表中已有数据且维度不一致时拒绝启动并给出处理指引。
-- **语音服务配置**：ASR/TTS 配置可视化管理，支持语音服务连通性测试。
-- **配置集中管理**：模型服务（聊天/向量/重排）配置落库 `llm_provider_config`，语音 ASR/TTS 配置在设置页运行时生效；不依赖任何 AI 相关环境变量。
+- **语音平台配置（通用化）**：ASR / TTS 不再绑定单一平台，改为通用的「语音平台 API」配置——设置页分别选择 ASR / TTS 平台并填写对应 API 参数，DashScope（Qwen3 语音模型）为默认实现；配置落库 `voice_platform_config`，保存即生效，支持连通性测试。
+- **OCR 本地模型配置（预留）**：设置页新增「OCR 本地模型」配置，支持任意 OpenAI 兼容端点（如本地 Ollama 的 GLM-OCR 模型），提供可用性测试接口；当前为预留配置，文档解析仍走 Apache Tika，后续可平滑接入内容识别。
+- **配置集中管理**：模型服务（聊天/向量/重排）、语音平台（ASR/TTS）、OCR 本地模型配置全部落库（`llm_provider_config` / `voice_platform_config` / `ocr_platform_config`），在设置页运维、保存即生效；不依赖任何 AI 相关环境变量。
 
 ### TODO
 
 - [x] 问答助手的 Markdown 展示优化
 - [x] 知识库管理页面的知识库下载
 - [x] 异步生成模拟面试评估报告
-- [x] Docker 快速部署
+- [x] Docker 快速部署（v1.0 起迁移为本地零 Docker 启动，旧编排文件归档至 `docs/legacy-docker/`）
 - [x] 添加 API 限流保护
 - [x] 前端性能优化（RAG 聊天 - 虚拟列表）
 - [x] 模拟面试增加追问功能
@@ -174,64 +179,46 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 - [x] 简历可解释性诊断、逐条经历体检与整篇重写 Diff 闭环
 - [x] 简历「诊断 → 排序 → 改写 → 应用 → 复评」优化工作流（优先行动项、证据置信度、术语扫描、招聘方视角、原文件预览）
 - [x] 简历评分口径对账（总分与维度之和强制一致）与重写接口限流修正
+- [x] 简历结构化智能编辑工作区（三模板 A4 预览、自动保存、统一修订撤销/重做、AI 建议结构化应用）
+- [x] 简历 PDF/DOCX 导出质量修复（cjkWrap 手工折行消除游离连字符、模板导出版式一致）
+- [x] 语音 ASR/TTS 平台配置通用化（落库 `voice_platform_config`，设置页可切换平台）
+- [x] OCR 本地模型配置（OpenAI 兼容端点预留，可测试连通性）
+- [x] 简历管理 E2E 全链路修复与三阶段回归验证（列表/详情/编辑器/导出）
 - [ ] 语音面试接入 WebRTC 降低延迟
 - [ ] 语音面试支持更多 TTS 音色
 
 
 ## 效果展示
 
-### 简历与面试
+> v1.0 截图，存放于 [docs/image](docs/image/)。旧版远程截图已随文档更新移除。
 
-面试中心：
+### 简历管理（v1.0 重点迭代）
 
-![面试中心](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-interview-hub.png)
+简历管理列表（搜索、分析状态、AI 评分与面试状态跟踪）：
 
-Skill 出题 + JD 解析：
+![简历管理列表](docs/image/page-resume-manage-list.jpg)
 
-![Skill 出题 + JD 解析](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-skill-jd-parse.png)
+简历结构化编辑器（Developer 程序员单栏 · A4 实时预览 · AI 建议面板）：
 
-简历库：
+![简历编辑器 Developer](docs/image/page-resume-editor-developer.jpg)
 
-![简历库](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-resume-history.png)
+AI 建议结构化应用（定位到编辑器 → 原文/改写对照 → 一键采用修改 / 撤销此 AI 修改）：
 
-简历上传分析：
+![AI 建议应用](docs/image/page-resume-editor-suggestion-applied.jpg)
 
-![简历上传分析](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-resume-upload-analysis.png)
+三模板一键切换 + 导出 PDF / DOCX：
 
-简历分析详情：
+![简历编辑器导出入口](docs/image/page-resume-editor-export.jpg)
 
-![简历分析详情](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-resume-analysis-detail.png)
+Classic（经典单栏）版式：
 
-面试记录：
+![Classic 模板](docs/image/page-resume-editor-classic.jpg)
 
-![面试记录](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-interview-history.png)
+ATS（极简可解析）版式：
 
-面试详情：
+![ATS 模板](docs/image/page-resume-editor-ats.jpg)
 
-![面试详情](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-interview-detail.png)
-
-模拟面试：
-
-![模拟面试](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-mock-interview.png)
-
-面试安排
-
-![面试安排](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-interview-schedule-list.png)
-
-多模型切换 + 语音服务设置：
-
-![管理聊天模型、向量模型和模块配置](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/llm-settings.png)
-
-
-### 知识库
-
-知识库管理：
-
-![知识库管理](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-knowledge-base-management.png)
-
-问答助手：
-
-![问答助手](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/page-qa-assistant.png)
+> 更多模块：模拟面试（文字 + 语音）、面试安排、知识库管理与问答助手，以及「设置 → 模型服务 / 语音服务 / OCR 本地模型」的完整配置能力，欢迎下载体验。
 
 ## 项目结构
 
@@ -284,9 +271,8 @@ interview-guide/
 ├── run.bat                           # Windows 低内存一键启动（整合构建前后端产物并以轻量 JVM 托管）
 ├── run.sh                            # Linux/macOS 低内存一键启动脚本
 ├── scripts/                          # 运维辅助与单体托管脚本（如 run-backend.ps1）
-├── docker-compose.yml                # 完整部署：前端 + 后端 + PostgreSQL + Redis + MinIO
-├── docker-compose.dev.yml            # 本地开发依赖：PostgreSQL + Redis + RustFS
-├── docs/                             # 架构设计与改造记录
+├── 本地零Docker启动指南.md            # 零 Docker 启动教程（中间件走云端，本机只跑 Vite + Spring Boot）
+├── docs/                             # 架构设计与改造记录；docs/image 为效果展示截图；docs/legacy-docker 为旧 Docker 部署归档
 ├── .env.example                      # 环境变量示例
 └── README.md
 ```
@@ -300,9 +286,8 @@ interview-guide/
 | JDK           | 25   | 是   | 开发语言                                 |
 | Node.js       | 18+  | 是   | 前端构建                                 |
 | pnpm          | 10+  | 推荐 | 前端包管理器（项目 packageManager 指定 10.26）|
-| Docker        | -    | 推荐 | 一键启动依赖服务（PostgreSQL/Redis/RustFS）|
 
-> 如果不用 Docker，需要自行安装 PostgreSQL 14+（含 pgvector 扩展）、Redis 6+ 和 S3 兼容存储。
+> 本项目采用**本地零 Docker 启动**：PostgreSQL 14+（含 pgvector 扩展）、Redis 6+ 和 S3 兼容存储由云端提供（或自行安装本机服务），本机只运行 Vite + Spring Boot，详见 [本地零Docker启动指南.md](本地零Docker启动指南.md)。
 
 ### 1. 克隆项目
 
@@ -317,60 +302,34 @@ cd interview-guide
 
 - **模型服务**（聊天 / 向量 / 重排）：「设置 → 模型服务」新增 Provider，
   填写 Base URL、API Key、模型名并勾选其支持的能力。配置落库，重启后保留。
-- **语音服务**（ASR / TTS）：「设置 → 语音服务」填写 DashScope API Key、模型与音色。
+- **语音平台**（ASR / TTS）：「设置 → 语音服务」分别选择 ASR / TTS 平台并填写 API 参数，
+  DashScope（Qwen3 语音模型）为默认平台；配置落库，重启后保留，支持连通性测试。
+- **OCR 本地模型**（预留）：「设置 → OCR 本地模型」配置 OpenAI 兼容端点（如本地 Ollama 的 GLM-OCR），
+  当前不参与文档解析，提供可用性测试入口。
 
-> ⚠️ 语音服务的 Key 保存在运行内存，**应用重启后需重新填写**。
->
 > ⚠️ 模型服务的 Provider Key 目前为**明文存储**在数据库中，
 > 请确保数据库访问受控。详见 [SETUP_API_KEYS.md](SETUP_API_KEYS.md)。
 
 `.env` 仅用于数据库、Redis、S3 等基础设施连接信息（见 `.env.example`）。
 
-### 3. 启动依赖服务（可选）
+### 3. 连接依赖服务
 
-项目提供了 `docker-compose.dev.yml`，可一键启动 PostgreSQL、Redis、RustFS（S3 兼容存储）三个依赖：
+依赖中间件（PostgreSQL + pgvector / Redis / S3 兼容存储）**由云端提供**，连接信息统一配置在根目录 `.env`：
 
-```bash
-# 启动依赖服务
-docker compose -f docker-compose.dev.yml up -d
-
-# 停止依赖服务
-docker compose -f docker-compose.dev.yml down
-
-# 停止并清除数据
-docker compose -f docker-compose.dev.yml down -v
+```dotenv
+POSTGRES_URL=jdbc:postgresql://<云端地址>:5432/interview_guide?sslmode=require
+REDIS_ADDRESS=redis://<云端地址>:6379
+APP_STORAGE_ENDPOINT=<S3 兼容端点>
+APP_STORAGE_ACCESS_KEY=xxx
+APP_STORAGE_SECRET_KEY=xxx
 ```
 
-如果你之前已经启动过旧版本容器，拉取新代码后建议确认端口映射是否真的生效：
+若需本机自建依赖，可自行安装 PostgreSQL（含 pgvector）、Redis 与 MinIO，
+填入 `.env` 后启动即可；历史 Docker 编排文件仍保留在 `docs/legacy-docker/`，仅供参考。
 
-```bash
-docker ps --format '{{.Names}} {{.Ports}}'
-```
-
-正常情况下应看到：
-
-```text
-interview-postgres 0.0.0.0:5432->5432/tcp
-interview-redis    0.0.0.0:6379->6379/tcp
-```
-
-如果只看到 `interview-postgres 5432/tcp` 或 `interview-redis 6379/tcp`，说明容器内部服务是启动的，但端口没有发布到宿主机。此时通过 `./gradlew :app:bootRun` 从宿主机启动后端，会出现类似 `Connection to localhost:5432 refused` 的报错。可以重建容器配置（不会删除 Docker volume 中的数据）：
-
-```bash
-docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
-```
-
-启动后默认账号：
-
-| 服务         | 地址             | 账号            | 密码            |
-| ------------ | ---------------- | --------------- | --------------- |
-| PostgreSQL   | `localhost:5432` | `postgres`      | `123456`        |
-| Redis        | `localhost:6379` | -               | -               |
-| RustFS 控制台 | `localhost:9001` | `rustfsadmin`   | `rustfsadmin`   |
-
-> **注意**：应用启动时会自动检查并创建 `interview-guide` Bucket。使用 `docker-compose.dev.yml` + `:app:bootRun` 时，请确保 `.env` 中的 `APP_STORAGE_ACCESS_KEY` / `APP_STORAGE_SECRET_KEY` 与 RustFS 账号一致，例如都设为 `rustfsadmin`。如果本地已有 MinIO 或其他 S3 兼容存储，也可以直接使用，在 `.env` 中修改 `APP_STORAGE_*` 配置即可。应用侧不再内置数据库默认密码，启动前必须在 `.env` 中设置 `POSTGRES_PASSWORD`（与上表 compose 凭证保持一致）。
-
-> **IDEA Docker Debug 提示**：如果在 macOS 上使用 IntelliJ IDEA 的 Docker 调试方式启动后端，遇到 `mounts denied: The path /Applications/IntelliJ IDEA.app/Contents/lib is not shared from the host`，请在 Docker Desktop 的 `Settings -> Resources -> File Sharing` 中加入 `/Applications/IntelliJ IDEA.app/Contents/lib`（或整个 `/Applications/IntelliJ IDEA.app`）以及当前项目目录，然后重启 Docker/IDEA 后再运行。普通 `./gradlew :app:bootRun` 和 `docker compose` 启动不需要这个额外共享路径。
+> **注意**：应用启动时会自动检查并创建 `interview-guide` Bucket，请确保 `.env` 中的
+> `APP_STORAGE_ENDPOINT` / `APP_STORAGE_ACCESS_KEY` / `APP_STORAGE_SECRET_KEY` 指向可用且允许建桶的 S3 兼容存储。
+> 应用侧不内置任何数据库默认连接，启动前必须在 `.env` 中配置完整的 `POSTGRES_*` / `REDIS_*` / `APP_STORAGE_*` 连接信息。
 
 ### 4. 启动应用
 
@@ -409,76 +368,26 @@ pnpm dev
 系统不内置任何预设模型。启动后进入「设置 → 模型服务」，按 Tab 分别添加聊天模型、向量模型（知识库功能需要）和重排模型（可选），并点击「设为默认」。以 Ollama 本地模型为例：Base URL 填 `http://localhost:11434/v1`，API Key 随意填一个非空占位即可。
 
 
-## Docker 快速部署
+## 本地零 Docker 启动
 
-本项目提供了完整的 Docker 支持，可以一键启动所有服务（前后端、数据库、中间件）。
+本项目以**零 Docker** 作为默认运行方式：中间件（PostgreSQL + pgvector / Redis / S3 兼容存储）走云端，
+本机只启动应用层（后端 Spring Boot + 前端 Vite / 静态托管）。完整步骤、配置文件说明与排错见
+[本地零Docker启动指南.md](本地零Docker启动指南.md)。
 
-Docker Compose 编排了 6 个服务：PostgreSQL（pgvector）、Redis、MinIO（S3 兼容存储）、MinIO Bucket 初始化、Spring Boot 后端、React 前端（Nginx）。数据通过 Docker 命名卷持久化，`docker-compose down` 不会丢失数据。
+### 启动后的服务地址
 
-### 1. 前置准备
+| 服务           | 地址                                                                   | 说明                                         |
+| -------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| 前端（开发模式） | [http://localhost:5173](http://localhost:5173)                       | `pnpm run dev`，自动代理 `/api`、`/ws` 到后端 |
+| 前端（静态托管） | [http://localhost:8080](http://localhost:8080)                       | `run.bat` / `run.sh` 单进程模式               |
+| 后端 API       | [http://localhost:8080](http://localhost:8080)                         | `./gradlew :app:bootRun` / run 脚本           |
+| 接口文档       | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) | SpringDoc / Swagger UI                        |
 
-- 安装 [Docker](https://www.docker.com/products/docker-desktop/) 和 Docker Compose
-- 申请阿里云百炼 API Key（用于语音面试 ASR/TTS，申请地址：<https://bailian.console.aliyun.com/>）；聊天/向量模型在启动后于设置页配置，可用任意 OpenAI 兼容或 Anthropic 协议服务
+### 历史 Docker 部署（已归档）
 
-### 2. 快速启动
-
-在项目根目录下执行：
-
-`.env.example` 中的 PostgreSQL、Redis、MinIO 已与 `docker-compose.yml` 对齐（数据库用户 `postgres` / 密码 `password`，MinIO `minioadmin` / `minioadmin`）。`.env` 只承载基础设施连接信息，**不含任何 AI 配置**；若你曾在旧版本中使用过不同的库密码或对象存储密钥，请同步修改 `.env`，必要时重建 Postgres 卷以免旧数据与密码不一致。
-
-```bash
-# 1. 复制环境变量配置文件
-cp .env.example .env
-
-# 2. 按需编辑 .env（仅基础设施连接信息）
-# vim .env
-# 面试参数配置（可选）：
-# APP_INTERVIEW_FOLLOW_UP_COUNT=1         # 每个主问题生成追问数量（默认 1）
-# APP_INTERVIEW_EVALUATION_BATCH_SIZE=8   # 回答评估分批大小（默认 8）
-
-# 3. 构建并启动所有服务
-docker-compose up -d --build
-```
-
-> AI 模型与语音服务不内置预设，启动后在「设置 → 模型服务 / 语音服务」页添加。
-
-> **仅启动依赖服务**：如果只想本地开发调试（用 `./gradlew :app:bootRun` 启动后端），可以只启动基础设施：`docker compose up -d postgres redis minio createbuckets`。默认账号与 `docker-compose.yml` 一致；Bucket 会由初始化任务或应用启动检查自动创建。
-
-### 3. 服务访问
-
-启动完成后，您可以通过以下地址访问各个服务：
-
-| 服务             | 地址                                           | 默认账号     | 默认密码     | 说明                   |
-| ---------------- | ---------------------------------------------- | ------------ | ------------ | ---------------------- |
-| **前端应用**     | [http://localhost](http://localhost)           | -            | -            | 用户访问入口           |
-| **后端 API**     | [http://localhost:8080](http://localhost:8080) | -            | -            | RESTful API            |
-| **接口文档**     | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) | - | - | SpringDoc/Swagger UI |
-| **MinIO 控制台** | [http://localhost:9001](http://localhost:9001) | `minioadmin` | `minioadmin` | 对象存储管理           |
-| **MinIO API**    | `localhost:9000`                               | -            | -            | S3 兼容接口            |
-| **PostgreSQL**   | `localhost:5432`                               | `postgres`   | `password`   | 数据库 (包含 pgvector) |
-| **Redis**        | `localhost:6379`                               | -            | -            | 缓存与消息队列         |
-
-### 4. 常用运维命令
-
-```bash
-# 查看服务状态
-docker-compose ps
-
-# 查看后端日志
-docker-compose logs -f app
-
-# 拉取新代码后重新构建部署
-docker-compose up -d --build
-
-# 停止并移除所有服务（数据保留在 Docker 卷中）
-docker-compose down
-
-# 停止服务并清除数据卷（慎用，会删除数据库和文件）
-docker-compose down -v
-
-# 清理无用镜像（构建产生的中间层）
-docker image prune -f
-```
+旧版基于 Docker Compose 的一键部署（前后端 + PostgreSQL + Redis + MinIO）已归档到
+[`docs/legacy-docker/`](docs/legacy-docker/)（含 `docker-compose.yml`、`docker-compose.dev.yml`、
+前后端 `Dockerfile` 与 `docker/postgres/init.sql`），仅作历史参考，不再作为推荐启动方式。
 
 ## 使用场景
 
@@ -534,20 +443,13 @@ spring:
 
 ### Q: 启动时报 `Connection to localhost:5432 refused` 怎么办？
 
-这通常不是 Flyway 脚本错误，而是后端从宿主机访问不到 PostgreSQL。先确认依赖容器已启动：
+这通常不是 Flyway 脚本错误，而是后端连不上 PostgreSQL。本项目中间件走云端，请检查根目录 `.env`：
 
-```bash
-docker compose -f docker-compose.dev.yml up -d
-docker ps --format '{{.Names}} {{.Ports}}'
-```
+- `POSTGRES_URL` 是否指向云端地址并带有 `?sslmode=require`（或本地实例 `?sslmode=disable`）
+- `REDIS_ADDRESS` / `APP_STORAGE_*` 是否配置完整
 
-`interview-postgres` 必须显示 `0.0.0.0:5432->5432/tcp`，`interview-redis` 必须显示 `0.0.0.0:6379->6379/tcp`。如果只显示 `5432/tcp` 或 `6379/tcp`，说明旧容器没有应用端口映射配置，重建容器即可：
-
-```bash
-docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
-```
-
-如果你的本机 `5432` 或 `6379` 已被其他项目占用，可以修改 `.env` 中的 `POSTGRES_PORT` / `REDIS_PORT`，并同步调整 `docker-compose.dev.yml` 里的端口映射，确保应用配置和容器发布端口一致。
+若为本机自建依赖，请确认 PostgreSQL / Redis 已启动且端口与 `.env` 一致；完整排错表见
+[本地零Docker启动指南.md](本地零Docker启动指南.md)。
 
 ### Q: 简历分析失败
 
@@ -559,7 +461,9 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate postgres redis
 
 ### Q: 语音面试无法识别或没有声音？
 
-语音面试的 ASR/TTS Key 需要在「设置 → 语音服务」页填写（同一个 DashScope Key 即可），且**应用重启后需重新填写**——该 Key 保存在运行内存中，不落库。请检查浏览器麦克风权限、后端日志中的 DashScope WebSocket 连接状态，以及设置页里的 ASR/TTS 测试结果。无耳机时可能触发回声录入，建议先使用手动提交模式或佩戴耳机测试。
+语音面试的 ASR / TTS 平台在「设置 → 语音服务」配置（DashScope 为默认平台，ASR / TTS 可分别选择平台并
+填写 API 参数），配置落库 `voice_platform_config`，**重启后保留**，保存后可通过连通性测试确认端点可用。
+请检查浏览器麦克风权限、后端日志中的语音服务连接状态，以及设置页里的 ASR/TTS 测试结果。无耳机时可能触发回声录入，建议先使用手动提交模式或佩戴耳机测试。
 
 ### Q: 简历分析一直显示"分析中"？
 
@@ -590,6 +494,28 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 新建或编辑配置文件：`if (!(Test-Path $PROFILE)) { New-Item -Path $PROFILE -ItemType File -Force }`，再 `notepad $PROFILE` 将上述内容粘贴保存；新开终端后生效，或执行 `. $PROFILE` 立即加载。若提示脚本无法执行，可执行一次：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`。
 
 在 PowerShell 中建议使用 `.\gradlew.bat :app:bootRun`（或仓库根目录的 `.\gradlew.bat`），避免与执行策略、路径解析相关的问题。
+
+## 测试
+
+### 后端（JUnit 5 + Mockito + AssertJ，测试意图用中文 `@DisplayName` 描述）
+
+```bash
+./gradlew :app:compileJava                            # 先确认能编译
+./gradlew :app:test --tests "包名.测试类"              # 只跑直接相关的类
+./gradlew :app:test --tests "包名.*"                   # 扩大到同包
+./gradlew :app:test --no-daemon                        # 全量（约 2.5 分钟，仅提交/合并前跑）
+```
+
+测试粒度原则：**按改动范围跑测试，不要每次改动都跑全量**。仅改注释/日志/单方法实现时可不跑测试。
+集成测试使用 H2 配置；限流相关测试需要真实 Redis。
+
+### 前端（TypeScript 类型检查 + 构建）
+
+```bash
+cd frontend && pnpm run build
+```
+
+前端改动至少运行一次构建（`tsc && vite build`）确认类型与打包无误。
 
 ## 贡献
 

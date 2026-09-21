@@ -41,8 +41,13 @@ pnpm run dev
 - 模型配置存放在数据库 `llm_provider_config`，保存后即时生效，无需重启。
 - ⚠️ Provider Key 当前为**明文存储**，请确保数据库访问受控。
 
-**语音服务**：「设置 → 语音服务」填写 DashScope API Key、模型与音色。
-⚠️ 语音 Key 保存在运行内存，**重启后需重新填写**。
+**语音服务**：「设置 → 语音服务」分别选择 **ASR / TTS 平台**并填写对应 API 参数
+（DashScope / Qwen3 语音模型为默认实现）。配置落库 `voice_platform_config`，保存后即时生效，
+**重启后保留**，支持连通性测试。
+
+**OCR 本地模型**（预留）：「设置 → OCR 本地模型」配置任意 **OpenAI 兼容端点**，
+例如本机 Ollama 的 GLM-OCR 模型（Base URL `http://localhost:11434/v1`，模型名 `GLM-OCR`）。
+当前仅提供可用性测试入口，不参与现有文档解析逻辑（解析仍走 Apache Tika）；配置落库 `ocr_platform_config`，重启后保留。
 
 ### `app/src/main/resources/application.yml`
 
@@ -82,7 +87,7 @@ org.gradle.java.installations.auto-download=false
 | `ERR invalid password`                | Redisson 缺 `password:` 字段                       |
 | `extension "vector" is not available` | 云 PG 没装 pgvector 扩展                             |
 | `NoSuchBucket`                        | MinIO 控制台建桶 `interview-guide`                   |
-| 语音面试无声音                          | 「设置 → 语音服务」未填 API Key（重启后需重填）        |
+| 语音面试无声音                          | 「设置 → 语音服务」未配置 ASR/TTS 平台或平台不可达（保存后点「测试」验证） |
 | `尚未配置模型服务…` / `模型 'x' 不存在或未启用` | 设置页添加模型并「设为默认」；默认未设置时会自动回退到第一个可用模型，一个模型都没有才报此错 |
 
 ## 收尾

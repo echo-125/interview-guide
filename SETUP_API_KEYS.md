@@ -37,16 +37,17 @@
 2. 新增 Provider：填写 Base URL、API Key、模型名，并勾选它支持的能力
    （聊天 / 向量 / 重排，一个 Provider 可同时支持多种）
 3. 分别指定默认的聊天、向量、重排服务
-4. 配置加密存储在数据库中，重启后保留
+4. 配置存储在数据库（`llm_provider_config` / `llm_global_setting`），重启后保留
+   （⚠️ Key 当前为**明文存储**，加密已移除，请确保数据库访问受控）
 
-### 语音服务（ASR / TTS）
+### 语音平台（ASR / TTS）
 
 1. 进入「设置 → 语音服务」
-2. 分别填写 ASR 与 TTS 的 API Key（同一个 DashScope Key 即可）、模型与音色
-3. 保存后即时生效
+2. 分别选择 **ASR / TTS 平台**并填写对应 API 参数（DashScope / Qwen3 为默认实现；
+   也可通过平台下拉切换到其他 OpenAI 兼容实现）
+3. 保存后即时生效，支持「测试」连通性验证
 
-> ⚠️ **注意**：语音服务的 Key 目前保存在运行内存中，**应用重启后需要重新填写**。
-> 模型服务的配置不受影响（已落库）。
+> ✅ 语音平台配置落库 `voice_platform_config`，**重启后保留**。
 
 ---
 
@@ -79,18 +80,18 @@ WebSocket failed: Expected HTTP 101 response but was '401 Unauthorized'
 
 **Q: 必须使用阿里云吗？**
 
-A: 语音服务使用的是 Qwen3 实时语音模型，需要阿里云 DashScope API Key。聊天/向量/重排模型支持任意 OpenAI 兼容或 Anthropic 协议的服务，在「设置 → 模型服务」页配置。
+A: 语音服务 v1.0 起为**通用平台配置**，默认使用 Qwen3 实时语音模型（阿里云 DashScope），
+也可在「设置 → 语音服务」切换 ASR / TTS 平台（OpenAI 兼容实现）。聊天/向量/重排模型支持任意 OpenAI 兼容或 Anthropic 协议的服务，在「设置 → 模型服务」页配置。
 
 **Q: 密钥存在哪里？**
 
-A: 模型服务的 Provider Key 存储在数据库 `llm_provider_config` 表中。
+A: 模型服务的 Provider Key 存储在数据库 `llm_provider_config` 表中；语音平台参数存储在 `voice_platform_config`，OCR 配置存储在 `ocr_platform_config`。
 > ⚠️ 当前为**明文存储**（加密功能已移除）。请确保数据库访问受控，
 > 不要把生产数据库暴露在公网。
 
 **Q: 重启后语音服务要不要重新配置？**
 
-A: 需要。语音 ASR/TTS 的 Key 保存在运行内存，重启后请在「设置 → 语音服务」重新填写。
-模型服务的配置已落库，不受影响。
+A: 不需要。语音 ASR/TTS 平台配置已落库（`voice_platform_config`），重启后保留。
 
 **Q: 如何降低成本？**
 
@@ -103,7 +104,7 @@ A: 阿里云新用户有免费额度，足够测试使用。正式上线后再�
 
 **Q: 一个 API Key 真的够用吗？**
 
-A: 是的！语音功能（ASR + TTS）共用一个 DashScope API Key。聊天/向量/重排模型在「设置 → 模型服务」页配置，可以用同一个 Key，也可以用其他厂商的 Key。
+A: 是的！默认的语音平台（DashScope）ASR + TTS 共用一个 API Key。聊天/向量/重排模型在「设置 → 模型服务」页配置，可以用同一个 Key，也可以用其他厂商的 Key。
 
 ---
 

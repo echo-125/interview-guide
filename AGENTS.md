@@ -15,20 +15,27 @@ Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。
 
 ## Commands
 
+编译与测试：
+
 ```bash
 ./gradlew :app:compileJava
 ./gradlew :app:test --no-daemon
+```
+
+后端（本地运行，:8080）：
+
+```bash
 ./gradlew :app:bootRun
 ```
+
+前端（另开终端，:5173，Vite 代理 /api 与 /ws 到 :8080）：
 
 ```bash
 cd frontend && pnpm run dev
 cd frontend && pnpm run build
 ```
 
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
+> 本项目采用**本地零 Docker 启动**：中间件（PostgreSQL+pgvector / Redis / MinIO）全走云端，本机只跑 Vite + Spring Boot，详见 [本地零Docker启动指南.md](本地零Docker启动指南.md)。旧的 docker-compose 部署文件与 Dockerfile 已归档到 `docs/legacy-docker/`，仅供历史参考。
 
 ## Branch Convention
 
@@ -68,6 +75,7 @@ docker compose -f docker-compose.dev.yml up -d
 - 获取聊天模型统一走 `LlmProviderRegistry.getChatClientOrDefault(provider)`。
 - AI 配置的唯一来源是「设置 → 模型服务 / 语音服务」页与数据库，**不要新增 AI 相关环境变量或 `.env` 条目**，也不要往源码目录/用户主目录写配置镜像文件（历史实现曾把配置写到 `~/.interview-guide/`，但没有加载入口，已删除）。
 - Provider 配置按能力（聊天/向量/重排）拆分，存于 `llm_provider_config`（**明文**，加密已移除）；默认指针在 `llm_global_setting`，未显式设置时运行期自动回退到第一个启用且具备对应能力的 Provider，一个可用 Provider 都没有才抛 `BusinessException`。
+- 语音 ASR/TTS 平台配置存于 `voice_platform_config`（按 asr/tts 平台分别配置，设置页运维，不占用 Provider 能力表）；OCR 本地模型配置存于 `ocr_platform_config`（OpenAI 兼容端点，如 Ollama 的 GLM-OCR，当前仅预留，文档解析仍走 Apache Tika）。
 - 系统不内置预设模型，`application.yml` 不承载 Provider 定义（legacy YAML 轨仅供无数据库场景与测试使用）。
 - 结构化输出统一走 `StructuredOutputInvoker`，不要在业务代码里复制重试逻辑。
 - Prompt 模板放在 `resources/prompts/`，使用 StringTemplate `.st`。

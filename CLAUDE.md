@@ -7,6 +7,14 @@
 - 目录细则在 `.claude/rules/`，处理匹配文件前先读取对应规则。
 - 个人偏好和临时调试结论放 `CLAUDE.local.md` 或 Claude Memory，不要提交到仓库。
 
+## 启动方式
+
+本地采用**零 Docker 启动**（中间件走云端，本机只跑 Vite + Spring Boot）：
+
+- 后端：`.\gradlew :app:bootRun`（:8080）
+- 前端：`cd frontend && pnpm run dev`（:5173）
+- AI 配置一律在「设置」页完成，不读任何 AI 环境变量；详见 [本地零Docker启动指南.md](本地零Docker启动指南.md)
+
 ## Path Rules
 
 - Backend: `.claude/rules/backend.md`
