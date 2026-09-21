@@ -20,7 +20,7 @@ InterviewGuide 是一个集成了简历分析、模拟面试（文字 + 语音�
 
 ## 系统架构
 
-![系统架构图](https://oss.javaguide.cn/xingqiu/pratical-project/interview-guide/interview-guide-architecture-diagram.png)
+![系统架构图](docs/image/interview-guide.png)
 
 ## 配套教程
 
