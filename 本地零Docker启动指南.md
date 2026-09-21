@@ -4,17 +4,18 @@
 
 ## 启动命令
 
+> 下面的命令都在**项目根目录**（即 `cd` 到 clone 下来的仓库目录）执行。
+
 **后端**（PowerShell 7）：
 
 ```powershell
-cd D:\workspace\agent\interview-guide
 .\gradlew :app:bootRun
 ```
 
 **前端**（另开终端）：
 
 ```powershell
-cd D:\workspace\agent\interview-guide\frontend
+cd frontend
 pnpm install
 pnpm run dev
 ```
@@ -59,10 +60,14 @@ pnpm run dev
 
 - `foojay-resolver-convention` 升到 `0.10.0`
 
-### `gradle.properties`（仓库根目录，新建）
+### `gradle.properties`（仓库根目录，已 git 忽略）
+
+该文件**机器相关**（内含本机 JDK 绝对路径），已在 `.gitignore` 中忽略、不随仓库分发。首次在本机运行时需手动创建：
 
 ```properties
-org.gradle.java.installations.paths=C:/Program Files/Java/jdk-25.0.4.101-hotspot
+# paths 必须为本机 Java 25 的安装绝对路径，按机器实际位置填写，
+# 例如：C:/Program Files/Java/jdk-25.x.x-hotspot
+org.gradle.java.installations.paths=<你的JDK25安装绝对路径>
 org.gradle.java.installations.auto-detect=false
 org.gradle.java.installations.auto-download=false
 ```

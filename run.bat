@@ -24,15 +24,16 @@ rem   -Xss256k                   smaller thread stacks
 rem   -XX:+UseSerialGC           smallest-footprint GC for 1-core / low-RAM hosts
 rem To give the app more memory, raise -Xmx / -XX:MaxMetaspaceSize first.
 rem
-rem The packaged jar targets Java 25 (class file 69). Use the local JDK 25
-rem install explicitly because PATH may point to an older Java. Falls back
-rem to PATH java only if the JDK 25 path does not exist.
+rem The packaged jar targets Java 25 (class file 69). Prefer %JAVA_HOME%
+rem when it is set and points to a real JDK; otherwise fall back to
+rem whatever java is on PATH.
 rem Logs: file appender writes to logs/app.log (created relative to this
 rem directory); console output stays visible.
 
-set "JAVA_EXE=C:\Program Files\Java\jdk-25.0.4.101-hotspot\bin\java.exe"
+set "JAVA_EXE="
+if defined JAVA_HOME set "JAVA_EXE=%JAVA_HOME%\bin\java.exe"
 if not exist "%JAVA_EXE%" (
-  echo [WARN] JDK 25 not found at "%JAVA_EXE%", falling back to PATH java.
+  echo [WARN] JAVA_HOME missing or not a JDK, falling back to PATH java.
   set "JAVA_EXE=java"
 )
 if not exist logs mkdir logs
@@ -41,11 +42,12 @@ rem ---------------------------------------------------------------------------
 rem Rebuild app.jar before every start so it always carries fresh frontend and
 rem backend artifacts (bootJar triggers pnpm build + static sync + jar pack).
 rem Gradle skips the pnpm build automatically when frontend sources unchanged.
-rem JDK 25 is exported as JAVA_HOME for the Gradle build; on failure the start
-rem is aborted instead of silently serving a stale jar.
+rem Gradle resolves the JDK via gradle.properties (machine-local); on failure
+rem the start is aborted instead of silently serving a stale jar.
 rem ---------------------------------------------------------------------------
-if exist "C:\Program Files\Java\jdk-25.0.4.101-hotspot" set "JAVA_HOME=C:\Program Files\Java\jdk-25.0.4.101-hotspot"
-rem single-line ifs on purpose: %VAR% inside a parenthesized block expands at parse time
+rem JAVA_HOME is used for the Gradle build only when already set in the
+rem environment (no hardcoded JDK path here; set JAVA_HOME to your JDK 25
+rem install if java is not first on PATH).
 if defined JAVA_HOME set "PATH=%JAVA_HOME%\bin;%PATH%"
 echo Building fresh app.jar (frontend + backend), this may take a moment...
 call gradlew.bat :app:bootJar --console=plain -q --no-daemon

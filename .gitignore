@@ -29,6 +29,9 @@ frontend/playwright-report/
 /.agents
 skills-lock.json
 
+# 本机 Gradle/JDK 配置（机器相关，内含本机绝对路径，不入库）
+gradle.properties
+
 # 本地临时文件
 bootrun.log
 logs/
