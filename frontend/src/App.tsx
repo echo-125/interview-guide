@@ -7,6 +7,7 @@ import type { UploadKnowledgeBaseResponse } from './api/knowledgebase';
 import type { Difficulty } from './components/UnifiedInterviewModal';
 import type { CategoryDTO } from './api/skill';
 import { Loader2 } from 'lucide-react';
+import RequireAuth from './components/RequireAuth';
 import { ROUTE_PATTERNS, ROUTES } from './constants/routes';
 
 // Lazy load components
@@ -28,6 +29,7 @@ const InterviewHubPage = lazy(() => import('./pages/InterviewHubPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const InterviewDetailPanel = lazy(() => import('./components/InterviewDetailPanel'));
 const ResumeBuilderPage = lazy(() => import('./pages/ResumeBuilderPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
 
 // Loading component
 const Loading = () => (
@@ -210,7 +212,10 @@ function App() {
       <ToastProvider>
         <Suspense fallback={<Loading />}>
           <Routes>
-            <Route path="/" element={<Layout />}>
+            {/* 登录页：独立于主布局，且不经过登录校验 */}
+            <Route path={ROUTES.login} element={<LoginPage />} />
+
+            <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
               {/* 默认重定向到简历管理页面 */}
               <Route index element={<Navigate to="/history" replace />} />
 

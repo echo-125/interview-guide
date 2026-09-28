@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import { clearToken, getToken } from '../utils/authToken';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -16,13 +17,50 @@ export interface Result<T = unknown> {
 }
 
 const SUCCESS_CODE = 200;
+/** 未登录 / 登录态失效：后端统一返回 HTTP 200 + code 401（见 GlobalExceptionHandler） */
+const UNAUTHORIZED_CODE = 401;
 const RESULT_BLOB_PARSE_LIMIT = 64 * 1024;
+
+/** 登录页路径 */
+const LOGIN_PATH = '/login';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 const instance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+});
+
+/**
+ * 登录态失效的统一处理：清理本地 token 并跳转登录页。
+ *
+ * 拦截器运行在 React 组件树之外，因此直接用 window.location 跳转；
+ * 已在登录页时只清 token 不跳转，避免登录失败时整页刷新把错误提示冲掉。
+ */
+export function handleUnauthorized(): void {
+  clearToken();
+
+  const { pathname, search } = window.location;
+  if (pathname === LOGIN_PATH) {
+    return;
+  }
+
+  const redirect = encodeURIComponent(`${pathname}${search}`);
+  window.location.replace(`${LOGIN_PATH}?redirect=${redirect}`);
+}
+
+/**
+ * 请求拦截器：为每个请求附加登录 token。
+ *
+ * Header 名取自登录时服务端下发的 tokenName（受 sa-token.token-name 控制），
+ * 未登录时不附加，由后端返回 401 交由 handleUnauthorized 处理。
+ */
+instance.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.set(token.name, token.value);
+  }
+  return config;
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,6 +163,10 @@ instance.interceptors.response.use(
         response.data = result.data;
         return response;
       }
+      if (result.code === UNAUTHORIZED_CODE) {
+        // 登录态失效：清理 token 并跳转登录页
+        handleUnauthorized();
+      }
       // 失败：直接抛出 message
       return Promise.reject(new Error(result.message || '请求失败'));
     }
@@ -136,6 +178,10 @@ instance.interceptors.response.use(
     // 有响应的情况：后端返回了结果（即使是错误）
     if (error.response) {
       const { data, status } = error.response;
+      if (status === UNAUTHORIZED_CODE) {
+        // 网关或后端直接返回 HTTP 401 时，保持与 code 401 一致的登录态处理
+        handleUnauthorized();
+      }
       // 尝试解析 Result 格式
       const responseError = await getErrorFromResponseData(data);
       if (responseError) {

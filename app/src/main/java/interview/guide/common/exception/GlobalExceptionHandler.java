@@ -1,5 +1,6 @@
 package interview.guide.common.exception;
 
+import cn.dev33.satoken.exception.NotLoginException;
 import interview.guide.common.result.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,19 @@ public class GlobalExceptionHandler {
     public Result<Void> handleBusinessException(BusinessException e) {
         log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
         return Result.error(e.getCode(), e.getMessage());
+    }
+    
+    /**
+     * 处理未登录异常（Sa-Token 拦截器在登录校验失败时抛出）
+     * 与业务异常保持同一契约：HTTP 200 + Result.error(401)，
+     * 前端据此清理本地 token 并跳转登录页。
+     */
+    @ExceptionHandler(NotLoginException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleNotLoginException(NotLoginException e) {
+        // type 用于区分原因：未携带 token / token 无效 / 已过期 / 被顶下线等
+        log.warn("未登录访问被拦截: type={}, message={}", e.getType(), e.getMessage());
+        return Result.error(ErrorCode.UNAUTHORIZED, "登录状态已失效，请重新登录");
     }
     
     /**

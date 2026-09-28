@@ -1,9 +1,12 @@
 import {Link, Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {motion} from 'framer-motion';
-import {BookOpen, Calendar, ChevronLeft, ChevronRight, Database, FileStack, MessageSquare, Moon, Settings, Sparkles, Sun, Users,} from 'lucide-react';
+import {BookOpen, Calendar, ChevronLeft, ChevronRight, Database, FileStack, Loader2, LogOut, MessageSquare, Moon, Settings, Sparkles, Sun, Users,} from 'lucide-react';
 import {useTheme} from '../hooks/useTheme';
 import {useEffect, useState} from 'react';
 import UnifiedInterviewModal, {UnifiedInterviewConfig} from './UnifiedInterviewModal';
+import {authApi} from '../api/auth';
+import {clearToken} from '../utils/authToken';
+import {isAuthEnabled} from '../utils/authState';
 import {ROUTES} from '../constants/routes';
 
 interface NavItem {
@@ -32,6 +35,9 @@ export default function Layout() {
     subtitle: string;
     startButtonText: string;
   } | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  // 认证关闭时无需展示登录态相关入口；RequireAuth 完成探测后才渲染本组件，此处取值已就绪
+  const [authEnabled] = useState(() => isAuthEnabled());
 
   // 侧边栏折叠状态：进入二级及以下路由时自动折叠；用户手动展开/折叠会临时覆盖，下次路由变化重新评估
   const [collapsed, setCollapsed] = useState(false);
@@ -40,6 +46,23 @@ export default function Layout() {
     const segments = currentPath.split('/').filter(Boolean);
     setCollapsed(segments.length >= 2);
   }, [currentPath]);
+
+  // 退出登录：无论后端注销是否成功，都清理本地 token 并回到登录页
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+    setLoggingOut(true);
+    try {
+      await authApi.logout();
+    } catch {
+      // 会话可能已过期失效，忽略错误，继续本地清理
+    } finally {
+      clearToken();
+      setLoggingOut(false);
+      navigate(ROUTES.login, {replace: true});
+    }
+  };
 
   const openInterviewModalWithResume = (resumeId: number) => {
     setInterviewModalPreset({
@@ -182,6 +205,19 @@ export default function Layout() {
             )}
             {!collapsed && <span className="text-sm font-medium">{theme === 'dark' ? '浅色模式' : '深色模式'}</span>}
           </button>
+
+          {/* 退出登录：仅在启用登录认证时展示 */}
+          {authEnabled && (
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className={`w-full mt-2 flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors disabled:opacity-60 ${collapsed ? 'justify-center px-0 py-2' : 'justify-center gap-2 px-3 py-2'}`}
+              title="退出登录"
+            >
+              {loggingOut ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <LogOut className="w-4 h-4 flex-shrink-0" />}
+              {!collapsed && <span className="text-sm font-medium">退出登录</span>}
+            </button>
+          )}
         </div>
 
         {/* 导航菜单 */}

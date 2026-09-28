@@ -1,4 +1,5 @@
-import { API_BASE_URL, getErrorMessage, getResultError, parseResultPayload } from './request';
+import { API_BASE_URL, getErrorMessage, getResultError, handleUnauthorized, parseResultPayload } from './request';
+import { getToken } from '../utils/authToken';
 
 type SseParseMode = 'line' | 'event';
 
@@ -21,6 +22,21 @@ function toApiUrl(url: string): string {
     return url;
   }
   return `${API_BASE_URL}${url}`;
+}
+
+/**
+ * 附加登录 token。
+ *
+ * SSE 走原生 fetch，不经过 axios 拦截器，需要在这里单独注入请求头；
+ * 调用方已显式设置同名头时不覆盖。
+ */
+function withAuthHeaders(headers?: HeadersInit): Headers {
+  const merged = new Headers(headers);
+  const token = getToken();
+  if (token && !merged.has(token.name)) {
+    merged.set(token.name, token.value);
+  }
+  return merged;
 }
 
 function isJsonContentType(contentType: string): boolean {
@@ -277,8 +293,14 @@ export async function streamSse(options: StreamSseOptions): Promise<void> {
   try {
     const response = await fetch(toApiUrl(options.url), {
       ...options.init,
+      headers: withAuthHeaders(options.init.headers),
       signal: options.signal,
     });
+    if (response.status === 401) {
+      // 登录态失效：与 axios 拦截器保持同一套处理
+      handleUnauthorized();
+      throw new Error('登录状态已失效，请重新登录');
+    }
     await assertStreamResponse(response);
     await readStream(response, options);
     if (options.signal?.aborted) {

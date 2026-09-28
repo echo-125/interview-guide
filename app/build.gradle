@@ -66,6 +66,15 @@ dependencies {
     // Redisson 4.0 - Redis客户端 (Boot 4 compatible)
     implementation "org.redisson:redisson-spring-boot-starter:${libs.versions.redisson.get()}"
 
+    // Sa-Token - 登录认证框架（Spring Boot 4 适配 starter）
+    implementation libs.sa.token.spring.boot4.starter
+    // Sa-Token - 会话数据落 Redis（复用上面的 RedissonClient，支持重启不掉线/多实例共享）
+    // 排除其传递的 redisson：该 POM 未声明版本，且项目已通过 redisson-spring-boot-starter 锁定 4.0.0，
+    // 统一由项目侧提供，避免重复引入与版本解析歧义
+    implementation(libs.sa.token.redisson) {
+        exclude group: 'org.redisson', module: 'redisson'
+    }
+
     // Prometheus metrics endpoint for Actuator
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 

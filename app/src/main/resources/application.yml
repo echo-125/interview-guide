@@ -33,6 +33,29 @@ springdoc:
     path: /v3/api-docs
   packages-to-scan: interview.guide.modules
 
+# Sa-Token 登录认证配置（拦截范围与放行白名单见 SaTokenAuthConfig）
+sa-token:
+  # token 名称：同时是前端提交 token 的 Header 名。
+  # 登录响应会把该名称下发给前端，因此前端不硬编码，改这里前端会自动跟随。
+  token-name: satoken
+  # token 有效期（秒）：30 天。配合 auto-renew，有效期内有访问即自动续期，长期不访问才失效
+  timeout: 2592000
+  # 最低活跃频率 -1：不做"多久没操作就冻结"的限制
+  active-timeout: -1
+  # 允许同一账号多端同时登录
+  is-concurrent: true
+  # 多端登录各持独立 token，便于单独下线某一台设备
+  is-share: false
+  # token 风格
+  token-style: uuid
+  # 前后端分离：只从 Header 读 token，不读也不写 Cookie
+  is-read-header: true
+  is-read-cookie: false
+  # 每次访问自动续签有效期
+  auto-renew: true
+  # 关闭框架操作日志，避免登录/注销日志淹没业务日志
+  is-log: false
+
 spring:
   config:
     import: optional:classpath:voice-interview-opening.yml
@@ -129,6 +152,19 @@ spring:
 
 # Application custom configuration
 app:
+  # 登录认证。管理员账号密码只放服务器本地 .env（ADMIN_USERNAME / ADMIN_PASSWORD）
+  auth:
+    # 登录认证开关：
+    #   true  = /api 接口必须登录后才能访问（默认）
+    #   false = 完全关闭登录认证，接口匿名可访问，同时不再注册登录拦截器与 Redis 会话存储
+    # 仅本机免登录调试时关闭，公网环境务必保持 true。
+    # 也可用环境变量 APP_AUTH_ENABLED 覆盖；开关的生效位置见 SaTokenAuthConfig。
+    enabled: ${APP_AUTH_ENABLED:true}
+    admin:
+      username: ${ADMIN_USERNAME:admin}
+      # 不提供默认密码：未配置时登录接口一律拒绝，避免公网裸奔
+      password: ${ADMIN_PASSWORD:}
+
   ai:
     # 默认模型服务完全由用户在「设置 → 模型服务」中配置（落库 llm_global_setting），此处不再预设
     default-rerank-provider: ${APP_AI_DEFAULT_RERANK_PROVIDER:}
