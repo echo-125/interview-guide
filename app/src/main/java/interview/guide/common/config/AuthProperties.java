@@ -21,10 +21,10 @@ public class AuthProperties {
   /**
    * 登录认证总开关。
    *
-   * <p>默认开启。可通过 application.yml 的 app.auth.enabled 或环境变量 APP_AUTH_ENABLED 设置；
-   * 关闭后不再注册登录拦截器与 Redis 会话存储，所有接口匿名可访问，仅限本机调试使用。
+   * <p>默认关闭。可通过 application.yml 的 app.auth.enabled 或环境变量 APP_AUTH_ENABLED 设置；
+   * 关闭后不再注册登录拦截器与 Redis 会话存储，所有接口匿名可访问，方便本机免密调试。
    */
-  private boolean enabled = true;
+  private boolean enabled = false;
 
   private Admin admin = new Admin();
 

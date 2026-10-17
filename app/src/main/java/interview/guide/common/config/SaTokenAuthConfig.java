@@ -18,8 +18,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <p>开关由配置项 {@code app.auth.enabled} 控制（见 application.yml，也可用环境变量
  * APP_AUTH_ENABLED 覆盖）：
  * <ul>
- *   <li>true（默认）：注册登录拦截器与 Redis 会话存储，{@code /api/**} 必须登录后访问；</li>
- *   <li>false：本配置类整体不生效，拦截器与 Redis 会话存储都不再注册，接口匿名可访问。</li>
+ *   <li>true：注册登录拦截器与 Redis 会话存储，{@code /api/**} 必须登录后访问；</li>
+ *   <li>false（默认）：本配置类整体不生效，拦截器与 Redis 会话存储都不再注册，接口匿名可访问。</li>
  * </ul>
  *
  * <p>认证范围只覆盖 {@code /api/**}，这样设计是为了避免误伤前端静态资源：
@@ -36,7 +36,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Slf4j
 @Configuration
-@ConditionalOnProperty(name = "app.auth.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.auth.enabled", havingValue = "true", matchIfMissing = false)
 public class SaTokenAuthConfig implements WebMvcConfigurer {
 
   /**

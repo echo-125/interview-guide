@@ -155,11 +155,11 @@ app:
   # 登录认证。管理员账号密码只放服务器本地 .env（ADMIN_USERNAME / ADMIN_PASSWORD）
   auth:
     # 登录认证开关：
-    #   true  = /api 接口必须登录后才能访问（默认）
-    #   false = 完全关闭登录认证，接口匿名可访问，同时不再注册登录拦截器与 Redis 会话存储
-    # 仅本机免登录调试时关闭，公网环境务必保持 true。
+    #   true  = /api 接口必须登录后才能访问
+    #   false = 完全关闭登录认证，接口匿名可访问，同时不再注册登录拦截器与 Redis 会话存储（默认）
+    # 本地默认关闭，公网环境部署建议开启。
     # 也可用环境变量 APP_AUTH_ENABLED 覆盖；开关的生效位置见 SaTokenAuthConfig。
-    enabled: ${APP_AUTH_ENABLED:true}
+    enabled: ${APP_AUTH_ENABLED:false}
     admin:
       username: ${ADMIN_USERNAME:admin}
       # 不提供默认密码：未配置时登录接口一律拒绝，避免公网裸奔
