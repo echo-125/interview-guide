@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FilePenLine } from 'lucide-react';
+import { FilePenLine, Loader2 } from 'lucide-react';
 import type { AnalysisItem, ResumeDetail } from '../../api/history';
 import { buildImprovements } from '../../utils/improvements';
 import { locateQuoteInText } from '../../utils/anchorMatcher';
 import type { ReviewSuggestion } from '../../types/review';
+import { useAuthedBlobUrl } from '../../hooks/useAuthedBlobUrl';
 import { PdfReviewViewer } from './PdfReviewViewer';
 import { DocxReviewViewer } from './DocxReviewViewer';
 import { AiReviewSidebar } from './AiReviewSidebar';
-import { historyApi } from '../../api/history';
 
 interface DocumentReviewContainerProps {
   resume: ResumeDetail;
@@ -37,8 +37,14 @@ export const DocumentReviewContainer: React.FC<DocumentReviewContainerProps> = (
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
   const isPdf = isPdfResume(resume);
-  const fileUrl = historyApi.getResumeFileUrl(resume.id);
   const resumeText = resume.resumeText || '';
+
+  // 审阅视图要把原文件交给 PDF.js 按 URL 加载、以及下载按钮的 a[href]，
+  // 两者都是「浏览器直连」、无法携带 satoken 请求头（会 401），
+  // 因此统一先经 axios 取回 Blob 再转 blob: URL。
+  const { blobUrl: fileUrl, error: fileError } = useAuthedBlobUrl(
+    `/api/resumes/${resume.id}/file`
+  );
 
   // 复用现有 buildImprovements 提取诊断与建议，并结合 Anchor 引擎生成 ReviewSuggestion[]
   const suggestions = useMemo<ReviewSuggestion[]>(() => {
@@ -81,7 +87,15 @@ export const DocumentReviewContainer: React.FC<DocumentReviewContainerProps> = (
           </button>
         </div>
 
-        {isPdf ? (
+        {fileError ? (
+          <div className="flex-1 flex items-center justify-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <p className="text-sm text-slate-500 dark:text-slate-400">原文件加载失败：{fileError}</p>
+          </div>
+        ) : !fileUrl ? (
+          <div className="flex-1 flex items-center justify-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+          </div>
+        ) : isPdf ? (
           <PdfReviewViewer
             fileUrl={fileUrl}
             filename={resume.filename}

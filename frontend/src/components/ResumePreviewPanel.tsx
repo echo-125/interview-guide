@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ExternalLink, Eye, FileText, Sparkles, Wand2 } from 'lucide-react';
+import { Download, ExternalLink, Eye, FileText, Loader2, Sparkles, Wand2 } from 'lucide-react';
 import { historyApi, type AnalysisItem, type ResumeDetail } from '../api/history';
+import { useAuthedBlobUrl } from '../hooks/useAuthedBlobUrl';
+import { downloadUrl } from '../utils/download';
 import { DocumentReviewContainer } from './resume-review/DocumentReviewContainer';
 
 interface ResumePreviewPanelProps {
@@ -26,9 +28,9 @@ function formatFileSize(bytes: number): string {
  * 支持「原文件预览」与「AI 审阅（高亮批注与建议联动）」双模式无缝切换
  */
 export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPanelProps) {
-  const fileUrl = historyApi.getResumeFileUrl(resume.id);
   const navigate = useNavigate();
   const isPdf = isPdfResume(resume);
+  const [busy, setBusy] = useState(false);
 
   const effectiveAnalysis = analysis || resume.analyses?.[0];
   const hasAnalysis = !!effectiveAnalysis;
@@ -37,6 +39,38 @@ export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPa
   const [viewMode, setViewMode] = useState<'review' | 'native'>(
     hasAnalysis ? 'review' : 'native'
   );
+
+  // 原文件预览用 iframe 承载，属于「浏览器直连」场景，带不上 satoken 请求头，
+  // 因此先经 axios 取回 Blob 再转 blob: URL。仅在当前确实要看原文件时才加载，
+  // 避免进页面就把整个文件下载一遍。
+  const nativeFile = useAuthedBlobUrl(
+    isPdf && viewMode === 'native' ? `/api/resumes/${resume.id}/file` : null
+  );
+
+  /** 「新窗口打开」「下载原文件」都在点击时按需取回文件 */
+  const withResumeFile = async (action: (objectUrl: string) => void) => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const blob = await historyApi.downloadResumeFile(resume.id);
+      const objectUrl = URL.createObjectURL(blob);
+      action(objectUrl);
+      // 延迟释放：立即 revoke 会让新窗口或下载在部分浏览器上中断
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+    } catch {
+      // 失败提示由 axios 响应拦截器统一给出，这里只负责复位按钮状态
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleOpenInNewWindow = () =>
+    withResumeFile((objectUrl) => window.open(objectUrl, '_blank', 'noreferrer'));
+
+  const handleDownload = () =>
+    withResumeFile((objectUrl) => downloadUrl(objectUrl, resume.filename));
 
   return (
     <div className="space-y-4">
@@ -84,23 +118,28 @@ export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPa
             </div>
           )}
 
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3.5 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+          <button
+            type="button"
+            onClick={handleOpenInNewWindow}
+            disabled={busy}
+            className="px-3.5 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-60"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             新窗口打开
-          </a>
-          <a
-            href={fileUrl}
-            download={resume.filename}
-            className="px-3.5 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={busy}
+            className="px-3.5 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-60"
           >
-            <Download className="w-3.5 h-3.5" />
+            {busy ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
             下载原文件
-          </a>
+          </button>
           <button
             type="button"
             onClick={() => navigate(`/history/${resume.id}/builder`)}
@@ -124,11 +163,24 @@ export default function ResumePreviewPanel({ resume, analysis }: ResumePreviewPa
         /* 原文件预览模式：100% 保持既有行为与兜底 */
         <>
           {isPdf ? (
-            <iframe
-              src={fileUrl}
-              title="简历预览"
-              className="w-full h-[75vh] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white"
-            />
+            nativeFile.error ? (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-700">
+                <FileText className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-500 dark:text-slate-400">
+                  原文件加载失败：{nativeFile.error}
+                </p>
+              </div>
+            ) : nativeFile.blobUrl ? (
+              <iframe
+                src={nativeFile.blobUrl}
+                title="简历预览"
+                className="w-full h-[75vh] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white"
+              />
+            ) : (
+              <div className="w-full h-[75vh] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white flex items-center justify-center">
+                <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+              </div>
+            )
           ) : resume.resumeText ? (
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
               <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">

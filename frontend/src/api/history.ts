@@ -1,4 +1,4 @@
-import { request, API_BASE_URL } from './request';
+import { request } from './request';
 import type {
   BulletAudit, DimensionExplanation, RecruiterView, Suggestion, TermIssue, TopAction,
 } from '../types/resume';
@@ -99,10 +99,14 @@ export interface InterviewDetail extends InterviewItem {
 
 export const historyApi = {
   /**
-   * 获取简历原文件地址（inline，供 iframe 预览 / 新窗口打开）
+   * 下载简历原文件，返回 Blob。
+   *
+   * 注意：不要改回「返回裸 URL 供 iframe / a[href] / PDF.js 直接使用」的写法。
+   * 那些场景由浏览器直接发起请求，无法携带 satoken 请求头，会被后端返回 401。
+   * 统一经 axios 取回 Blob 后再转成 blob: URL（见 hooks/useAuthedBlobUrl）。
    */
-  getResumeFileUrl(resumeId: number): string {
-    return `${API_BASE_URL}/api/resumes/${resumeId}/file`;
+  async downloadResumeFile(resumeId: number): Promise<Blob> {
+    return request.download(`/api/resumes/${resumeId}/file`);
   },
 
   /**

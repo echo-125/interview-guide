@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Download, Info } from 'lucide-react';
 import type { ReviewSuggestion } from '../../types/review';
+import { downloadUrl as triggerDownload } from '../../utils/download';
 
 interface DocxReviewViewerProps {
   resumeText: string;
@@ -101,14 +102,14 @@ export const DocxReviewViewer: React.FC<DocxReviewViewerProps> = ({
             当前为 DOCX <strong>语义审阅视图</strong>（基于内容提取，非 Word 原始版式编辑器）
           </span>
         </div>
-        <a
-          href={downloadUrl}
-          download={filename}
+        <button
+          type="button"
+          onClick={() => triggerDownload(downloadUrl, filename)}
           className="flex items-center gap-1 text-primary-600 dark:text-primary-400 hover:underline font-medium flex-shrink-0"
         >
           <Download className="w-3.5 h-3.5" />
           下载原始 DOCX
-        </a>
+        </button>
       </div>
 
       {/* 文本阅读与交互容器 */}

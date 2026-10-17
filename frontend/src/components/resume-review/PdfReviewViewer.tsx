@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
 import { loadPdfJs } from '../../utils/pdfjsLoader';
 import { locateQuoteInSpanStream } from '../../utils/anchorMatcher';
+import { downloadUrl } from '../../utils/download';
 import type { HighlightRect, ReviewSuggestion, TextSpanNodeInfo } from '../../types/review';
 // 关键：PDF.js 文本层必须配合官方 viewer 的 CSS，
 // 否则 <span> 会退化成普通行内文本流，getClientRects() 返回的是「文本流位置」而非「PDF 页面位置」。
@@ -602,14 +603,14 @@ export const PdfReviewViewer: React.FC<PdfReviewViewerProps> = ({
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
-          <a
-            href={fileUrl}
-            download={filename}
+          <button
+            type="button"
+            onClick={() => downloadUrl(fileUrl, filename)}
             className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 ml-1"
             title="下载原文件"
           >
             <Download className="w-3.5 h-3.5" />
-          </a>
+          </button>
         </div>
       </div>
 
