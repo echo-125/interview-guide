@@ -11,7 +11,7 @@ import {useChatProviders} from '../hooks/useChatProviders';
 import LlmProviderSelect from '../components/LlmProviderSelect';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
-import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2,} from 'lucide-react';
+import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2, Database, Sparkles} from 'lucide-react';
 
 interface KnowledgeBaseQueryPageProps {
   onBack: () => void;
@@ -382,12 +382,12 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   };
 
   return (
-    <div className="max-w-7xl mx-auto pt-8 pb-10 px-4">
+    <div className="w-full flex-1 flex flex-col min-h-0 h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-4.5rem)] max-h-[calc(100vh-3.5rem)] lg:max-h-[calc(100vh-4.5rem)] overflow-hidden">
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">问答助手</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">选择知识库，向 AI 提问</p>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white mb-0.5">问答助手</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-xs">选择知识库，向 AI 提问</p>
         </div>
         <div className="flex gap-3">
           <motion.button
@@ -409,12 +409,12 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         </div>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-10rem)]">
+      <div className="flex gap-4 flex-1 min-h-0">
         {/* 左侧：对话历史 */}
-        <div className="w-64 flex-shrink-0">
+        <div className="w-64 flex-shrink-0 flex flex-col h-full">
           <div
               className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col border border-slate-100 dark:border-slate-700">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h2 className="text-base font-semibold text-slate-800 dark:text-white">对话历史</h2>
               <motion.button
                 onClick={handleNewSession}
@@ -428,7 +428,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
               </motion.button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
               {loadingSessions ? (
                 <div className="text-center py-6">
                   <motion.div
@@ -506,7 +506,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         </div>
 
         {/* 中间：聊天区域 */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col h-full">
           <div
               className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-full border border-slate-100 dark:border-slate-700">
             {selectedKbIds.size > 0 ? (
@@ -561,6 +561,26 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                             >
                               {msg.type === 'user' ? (
                                 <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</p>
+                              ) : msg.type === 'assistant' && !msg.content && loading ? (
+                                <div className="py-2 px-1">
+                                  <div className="flex items-center gap-2.5 mb-2">
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-primary-500 to-indigo-500 text-white shadow-sm shadow-primary-500/20">
+                                      <Sparkles className="h-3.5 w-3.5 animate-spin [animation-duration:3s]" />
+                                    </div>
+                                    <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">
+                                      AI 正在检索并构思回答
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-primary-500 animate-bounce [animation-delay:-0.3s]" />
+                                      <span className="h-1.5 w-1.5 rounded-full bg-primary-500 animate-bounce [animation-delay:-0.15s]" />
+                                      <span className="h-1.5 w-1.5 rounded-full bg-primary-500 animate-bounce" />
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2 pt-1 pl-8">
+                                    <div className="h-2.5 w-48 rounded-full bg-slate-200/80 dark:bg-slate-700/60 animate-pulse" />
+                                    <div className="h-2.5 w-32 rounded-full bg-slate-200/50 dark:bg-slate-700/40 animate-pulse [animation-delay:0.2s]" />
+                                  </div>
+                                </div>
                               ) : (
                                   <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
                                   <ReactMarkdown
@@ -594,7 +614,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                                     {formatMarkdown(msg.content)}
                                   </ReactMarkdown>
                                   {loading && index === messages.length - 1 && (
-                                    <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse" />
+                                    <span className="inline-block w-1.5 h-4 bg-primary-500 ml-1 rounded-sm animate-pulse align-middle" />
                                   )}
                                 </div>
                               )}
@@ -644,13 +664,23 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 </div>
               </>
             ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
-                <div className="text-center">
-                  <svg className="w-12 h-12 mx-auto mb-3 opacity-50" viewBox="0 0 24 24" fill="none">
-                    <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <p className="text-sm">请先在右侧选择知识库</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8">
+                <div className="w-16 h-16 rounded-2xl bg-primary-50 dark:bg-primary-950/30 flex items-center justify-center text-primary-500 mb-4 border border-primary-100 dark:border-primary-900/40">
+                  <Database className="w-8 h-8" />
                 </div>
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-200 mb-1">未选择知识库</h3>
+                <p className="text-sm text-slate-400 dark:text-slate-500 mb-4 text-center max-w-sm">
+                  请在右侧勾选需要提问的知识库文档，即可开启基于知识库的智能问答
+                </p>
+                {!rightPanelOpen && (
+                  <button
+                    onClick={() => setRightPanelOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors shadow-sm"
+                  >
+                    <span>展开知识库列表</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -661,20 +691,21 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
           {rightPanelOpen && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
+              animate={{ width: 290, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="flex-shrink-0 overflow-hidden"
+              className="flex-shrink-0 overflow-hidden h-full"
             >
               <div
-                  className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col w-[280px] border border-slate-100 dark:border-slate-700">
+                  className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col w-[290px] border border-slate-100 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-slate-800 dark:text-white">选择知识库</h2>
                   <button
                     onClick={() => setRightPanelOpen(false)}
                     className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded"
+                    title="收起知识库面板"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
 
@@ -714,7 +745,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 </div>
 
                 {/* 知识库列表 */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto scrollbar-thin">
                   {loadingList ? (
                     <div className="text-center py-6">
                       <motion.div
@@ -802,10 +833,10 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         {!rightPanelOpen && (
           <button
             onClick={() => setRightPanelOpen(true)}
-            className="flex-shrink-0 w-10 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            className="flex-shrink-0 w-10 h-full bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             title="展开知识库面板"
           >
-            <ChevronRight className="w-5 h-5 text-slate-400" />
+            <ChevronLeft className="w-5 h-5 text-slate-400" />
           </button>
         )}
       </div>

@@ -144,10 +144,9 @@ export const PdfReviewViewer: React.FC<PdfReviewViewerProps> = ({
   const [highlights, setHighlights] = useState<CalculatedHighlight[]>([]);
   const [diagnostics, setDiagnostics] = useState<PageDiagnostic[]>([]);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  /** 诊断面板默认关闭：仅排查定位问题时手动开启，不干扰正常阅读 */
-  const [showDebug, setShowDebug] = useState(false);
-  /** 打开后把 Text Layer 文字显形，用于肉眼核对「文本层是否与底图文字重合」 */
-  const [showTextLayer, setShowTextLayer] = useState(false);
+  /** 诊断面板与文本层显形默认关闭（仅调试时使用） */
+  const showDebug = false;
+  const showTextLayer = false;
 
   /* ------------------------------------------------------------------ */
   /* 1. 加载 PDF 文档；记录每页自然尺寸（与 scale 无关，只算一次）        */
@@ -552,38 +551,12 @@ export const PdfReviewViewer: React.FC<PdfReviewViewerProps> = ({
       {/* 工具栏 */}
       <div className="px-4 py-2 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
+          <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
             {filename}
           </span>
-          <span
-            className={`px-2 py-0.5 rounded font-medium whitespace-nowrap ${
-              totalSpans > 0
-                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
-                : 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400'
-            }`}
-          >
-            Text Layer {totalSpans} spans
+          <span className="px-2.5 py-1 rounded-lg bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400 font-medium text-xs whitespace-nowrap">
+            已标注 {locatedCount}/{suggestions.length} 处
           </span>
-          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
-            高亮 {locatedCount}/{suggestions.length}
-          </span>
-          <button
-            onClick={() => setShowDebug(v => !v)}
-            className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 whitespace-nowrap"
-          >
-            {showDebug ? '隐藏诊断' : '显示诊断'}
-          </button>
-          <button
-            onClick={() => setShowTextLayer(v => !v)}
-            className={`px-2 py-0.5 rounded border whitespace-nowrap ${
-              showTextLayer
-                ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400'
-                : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500'
-            }`}
-            title="把 PDF 文本层文字显形，用于核对文本层是否与底图文字重合"
-          >
-            {showTextLayer ? '隐藏文本层' : '显示文本层'}
-          </button>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button

@@ -173,27 +173,30 @@ export default function JdMatchPanel({ resumeId }: { resumeId: number }) {
             placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2
             focus:ring-primary-500/50 focus:border-primary-400 transition-shadow"
         />
-        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-              分析模型 <span className="text-slate-400 font-normal">(选填，默认跟随系统设置)</span>
+        <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <label className="text-xs font-medium text-slate-700 dark:text-slate-300 shrink-0">
+              分析模型
             </label>
-            <LlmProviderSelect
-              providers={chatProviders}
-              value={llmProvider}
-              onChange={setLlmProvider}
-              disabled={submitting}
-            />
+            <div className="w-56 sm:w-64">
+              <LlmProviderSelect
+                providers={chatProviders}
+                value={llmProvider}
+                onChange={setLlmProvider}
+                disabled={submitting}
+              />
+            </div>
+            <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline">(默认跟随系统设置)</span>
           </div>
           <button
             onClick={handleStart}
             disabled={submitting || jdText.trim().length < MIN_JD_LENGTH}
-            className="px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2
-              bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg shadow-primary-500/25
-              hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2
+              bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/25
+              hover:shadow-lg hover:from-primary-600 hover:to-primary-700 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {submitting ? '提交中...' : '开始诊断'}
+            {submitting ? '提交中...' : '开始匹配诊断'}
           </button>
         </div>
       </div>
@@ -362,6 +365,21 @@ export default function JdMatchPanel({ resumeId }: { resumeId: number }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 空状态引导 */}
+      {!selected && (
+        <div className="bg-white/60 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-8 text-center">
+          <div className="w-12 h-12 bg-primary-50 dark:bg-primary-900/40 text-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Target className="w-6 h-6" />
+          </div>
+          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            暂无匹配诊断记录
+          </h4>
+          <p className="text-xs text-slate-400 dark:text-slate-500 max-w-md mx-auto leading-relaxed">
+            在上方粘贴目标岗位的职位描述（JD）后点击「开始匹配诊断」，AI 将自动对比您的简历与岗位要求，分析匹配度与能力缺口。
+          </p>
         </div>
       )}
     </div>

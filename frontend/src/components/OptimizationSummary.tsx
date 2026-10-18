@@ -202,7 +202,7 @@ export default function OptimizationSummary({
               {strengths.slice(0, STRENGTH_LIMIT).map((s, i) => (
                 <span
                   key={i}
-                  className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-lg"
+                  className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-lg"
                 >
                   {s}
                 </span>
@@ -212,7 +212,7 @@ export default function OptimizationSummary({
         )}
         {risks.length > 0 && (
           <div>
-            <span className="text-xs font-semibold text-red-500 dark:text-red-400 block mb-2">
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 block mb-2">
               ⚠️ 最大风险
               {risks.length > RISK_LIMIT && (
                 <span className="text-slate-400 font-normal ml-1">
@@ -220,17 +220,17 @@ export default function OptimizationSummary({
                 </span>
               )}
             </span>
-            <ul className="space-y-1">
+            <div className="space-y-1.5">
               {risks.slice(0, RISK_LIMIT).map((r, i) => (
-                <li
+                <div
                   key={i}
-                  className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-1.5"
+                  className="px-2.5 py-1.5 bg-rose-50/80 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 rounded-lg text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2 leading-relaxed"
                 >
-                  <span className="text-red-400 flex-shrink-0">·</span>
-                  {r}
-                </li>
+                  <span className="text-rose-500 font-bold flex-shrink-0 mt-0.5">•</span>
+                  <span>{r}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </div>

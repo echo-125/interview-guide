@@ -163,7 +163,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex min-h-[110vh] bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800">
       {/* 左侧边栏：支持折叠（手动 toggle + 二级及以下路由自动折叠） */}
       <aside className={`bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700 fixed h-screen left-0 top-0 z-50 flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
         {/* 折叠/展开按钮：浮在侧边栏右边缘 */}
@@ -221,7 +221,7 @@ export default function Layout() {
         </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 overflow-y-auto" style={{ padding: collapsed ? '0.5rem 0.25rem' : '1rem' }}>
+        <nav className="flex-1 overflow-y-auto scrollbar-thin" style={{ padding: collapsed ? '0.5rem 0.25rem' : '1rem' }}>
           <div className={collapsed ? 'space-y-4' : 'space-y-6'}>
             {navGroups.map((group) => (
               <div key={group.id}>
@@ -246,7 +246,6 @@ export default function Layout() {
                             ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
                             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                           }`}
-                        title={collapsed ? item.label : undefined}
                       >
                         <div className={`rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${collapsed ? 'w-9 h-9' : 'w-9 h-9'}
                           ${active
@@ -256,6 +255,11 @@ export default function Layout() {
                         >
                           <item.icon className="w-5 h-5" />
                         </div>
+                        {collapsed && (
+                          <div className="absolute left-full ml-2.5 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap dark:bg-slate-800 dark:border dark:border-slate-700">
+                            {item.label}
+                          </div>
+                        )}
                         {!collapsed && (
                           <div className="flex-1 min-w-0">
                             <span className={`text-sm block ${active ? 'font-semibold' : 'font-medium'}`}>
@@ -290,7 +294,7 @@ export default function Layout() {
       </aside>
 
       {/* 主内容区：flex 列布局，页面内容自然撑开文档（window 整页滚动）；子页面可自行占满高度 */}
-      <main className={`flex-1 min-w-0 flex flex-col p-10 min-h-screen transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-64'}`}>
+      <main className={`flex-1 min-w-0 flex flex-col p-6 lg:p-8 min-h-screen transition-all duration-300 ${collapsed ? 'ml-16' : 'ml-64'}`}>
         <motion.div
           key={currentPath}
           className="flex-1 min-h-0 flex flex-col"

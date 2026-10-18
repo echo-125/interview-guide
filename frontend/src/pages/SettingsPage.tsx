@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings, Plus, Trash2, Plug, CheckCircle, XCircle,
   Loader2, Eye, EyeOff, RefreshCw, Server, Edit2, Mic, Volume2, ChevronDown, Database,
-  ArrowDownWideNarrow, ListPlus,
+  ArrowDownWideNarrow, ListPlus, Activity,
 } from 'lucide-react';
 import { llmProviderApi } from '../api/llmProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -128,6 +128,8 @@ export default function SettingsPage() {
   // Test state
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
+  const [modalTestResult, setModalTestResult] = useState<ProviderTestResult | null>(null);
+  const [testingModal, setTestingModal] = useState(false);
 
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -227,6 +229,8 @@ export default function SettingsPage() {
     setFormTemperature('');
     setFetchedModels([]);
     setShowApiKey(false);
+    setModalTestResult(null);
+    setTestingModal(false);
     setShowModal(true);
   };
 
@@ -248,12 +252,72 @@ export default function SettingsPage() {
     setFormTemperature(provider.temperature != null ? String(provider.temperature) : '');
     setFetchedModels([]);
     setShowApiKey(false);
+    setModalTestResult(null);
+    setTestingModal(false);
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingProvider(null);
+    setModalTestResult(null);
+    setTestingModal(false);
+  };
+
+  const handleTestModal = async () => {
+    if (!formBaseUrl.trim()) {
+      showToast('请先输入 Base URL', 'error');
+      return;
+    }
+    if (modalType === 'chat' && !formModel.trim()) {
+      showToast('请先输入聊天模型名称', 'error');
+      return;
+    }
+    if (modalType === 'embedding' && !formEmbeddingModel.trim()) {
+      showToast('请先输入向量模型名称', 'error');
+      return;
+    }
+    if (modalType === 'rerank' && !formRerankModel.trim()) {
+      showToast('请先输入重排模型名称', 'error');
+      return;
+    }
+
+    setTestingModal(true);
+    setModalTestResult(null);
+    try {
+      const data: Parameters<typeof llmProviderApi.testConfig>[0] = {
+        id: editingProvider?.id,
+        baseUrl: formBaseUrl.trim(),
+        apiKey: formApiKey.trim() || undefined,
+      };
+      if (modalType === 'chat') {
+        data.model = formModel.trim();
+        data.apiFormat = formApiFormat;
+        if (formTemperature.trim()) {
+          data.temperature = parseFloat(formTemperature.trim());
+        }
+      } else if (modalType === 'embedding') {
+        data.embeddingModel = formEmbeddingModel.trim();
+        data.supportsEmbedding = true;
+        if (formEmbeddingDimensions.trim()) {
+          data.embeddingDimensions = parseInt(formEmbeddingDimensions.trim(), 10);
+        }
+      } else if (modalType === 'rerank') {
+        data.rerankModel = formRerankModel.trim();
+        data.rerankApiFormat = formRerankApiFormat;
+      }
+
+      const res = await llmProviderApi.testConfig(data);
+      setModalTestResult(res);
+    } catch (err) {
+      setModalTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : '测试请求失败',
+        model: modalType === 'chat' ? formModel.trim() : modalType === 'embedding' ? formEmbeddingModel.trim() : formRerankModel.trim(),
+      });
+    } finally {
+      setTestingModal(false);
+    }
   };
 
   // --- CRUD handlers ---
@@ -758,11 +822,20 @@ export default function SettingsPage() {
                         const chatLabel = provider.model
                           ? (provider.apiFormat === 'anthropic' ? '聊天 · Anthropic' : '聊天 · OpenAI')
                           : null;
-                        const capabilitySummary = [
-                          chatLabel,
-                          canUseEmbedding ? '向量' : null,
-                          provider.rerankModel ? `重排 · ${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}` : null,
-                        ].filter(Boolean).join(' / ') || '未配置能力';
+                        let capabilitySummary = '';
+                        if (activeTab === 'chat') {
+                          capabilitySummary = chatLabel ?? '聊天模型';
+                        } else if (activeTab === 'embedding') {
+                          capabilitySummary = provider.embeddingModel ? `向量 · ${provider.embeddingDimensions ?? 1024}维` : '向量模型';
+                        } else if (activeTab === 'rerank') {
+                          capabilitySummary = provider.rerankModel ? `重排 · ${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}` : '重排模型';
+                        } else {
+                          capabilitySummary = [
+                            chatLabel,
+                            canUseEmbedding ? '向量' : null,
+                            provider.rerankModel ? `重排 · ${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}` : null,
+                          ].filter(Boolean).join(' / ') || '未配置能力';
+                        }
 
                         return (
                         <motion.div
@@ -801,34 +874,60 @@ export default function SettingsPage() {
                           {/* Card details */}
                           <dl className={DETAILS_CLASS}>
                             <ConfigRow label="Base URL" value={provider.baseUrl} title={provider.baseUrl} emphasis />
-                            <ConfigRow
-                              label="聊天模型"
-                              value={provider.model ?? '未配置'}
-                              title={provider.model ?? '未配置聊天模型'}
-                              emphasis={!!provider.model}
-                            />
-                            <ConfigRow
-                              label="向量模型"
-                              value={canUseEmbedding ? '支持' : '不支持'}
-                              title={canUseEmbedding ? provider.embeddingModel ?? '' : '不能用于知识库向量化'}
-                            />
-                            {provider.embeddingModel && (
-                              <ConfigRow label="实际向量" value={provider.embeddingModel} title={provider.embeddingModel} emphasis={isEmbeddingDefault} />
+
+                            {activeTab === 'chat' && (
+                              <>
+                                <ConfigRow
+                                  label="聊天模型"
+                                  value={provider.model ?? '未配置'}
+                                  title={provider.model ?? '未配置聊天模型'}
+                                  emphasis={!!provider.model}
+                                />
+                                <ConfigRow
+                                  label="API 格式"
+                                  value={provider.apiFormat === 'anthropic' ? 'Anthropic 格式' : 'OpenAI 兼容'}
+                                />
+                                {provider.temperature != null && (
+                                  <ConfigRow label="温度" value={provider.temperature} />
+                                )}
+                                {provider.maxTokens != null && (
+                                  <ConfigRow label="最大 Token" value={provider.maxTokens} />
+                                )}
+                              </>
                             )}
-                            {canUseEmbedding && (
-                              <ConfigRow label="向量维度" value={`${provider.embeddingDimensions ?? 1024} 维`} emphasis={isEmbeddingDefault} />
+
+                            {activeTab === 'embedding' && (
+                              <>
+                                <ConfigRow
+                                  label="向量模型"
+                                  value={provider.embeddingModel ?? '默认'}
+                                  title={provider.embeddingModel ?? '默认向量模型'}
+                                  emphasis={isEmbeddingDefault}
+                                />
+                                <ConfigRow
+                                  label="向量维度"
+                                  value={`${provider.embeddingDimensions ?? 1024} 维`}
+                                  emphasis={isEmbeddingDefault}
+                                />
+                              </>
                             )}
-                            {provider.rerankModel && (
-                              <ConfigRow
-                                label="重排模型"
-                                value={`${provider.rerankModel}（${provider.rerankApiFormat === 'dashscope' ? '百炼' : 'Cohere'}）`}
-                                title={provider.rerankModel}
-                                emphasis={isRerankDefault}
-                              />
+
+                            {activeTab === 'rerank' && (
+                              <>
+                                <ConfigRow
+                                  label="重排模型"
+                                  value={provider.rerankModel ?? '未配置'}
+                                  title={provider.rerankModel ?? '未配置重排模型'}
+                                  emphasis={isRerankDefault}
+                                />
+                                <ConfigRow
+                                  label="协议格式"
+                                  value={provider.rerankApiFormat === 'dashscope' ? '阿里百炼 (DashScope)' : 'Cohere 兼容'}
+                                  emphasis={isRerankDefault}
+                                />
+                              </>
                             )}
-                            {provider.temperature != null && (
-                              <ConfigRow label="温度" value={provider.temperature} />
-                            )}
+
                             <ConfigRow
                               label="API Key"
                               value={provider.maskedApiKey}
@@ -1560,40 +1659,89 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                {/* Modal test result */}
+                {modalTestResult && (
+                  <div
+                    className={`mt-4 px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between gap-2 ${
+                      modalTestResult.success
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {modalTestResult.success ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      )}
+                      <span className="truncate">{modalTestResult.message}</span>
+                    </div>
+                    {modalTestResult.model && (
+                      <span className="text-[11px] opacity-75 font-mono shrink-0">{modalTestResult.model}</span>
+                    )}
+                  </div>
+                )}
+
                 {/* Modal actions */}
-                <div className="flex gap-3 justify-end mt-6">
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-700/60">
                   <motion.button
-                    onClick={closeModal}
-                    disabled={saving}
-                    className="px-5 py-2.5 border border-slate-200 dark:border-slate-600
-                      text-slate-600 dark:text-slate-300 rounded-xl font-medium text-sm
-                      hover:bg-slate-50 dark:hover:bg-slate-700 transition-all
+                    type="button"
+                    onClick={handleTestModal}
+                    disabled={testingModal || saving}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium
+                      border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200
+                      hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors
                       disabled:opacity-50 disabled:cursor-not-allowed"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    取消
-                  </motion.button>
-                  <motion.button
-                    onClick={handleSaveModal}
-                    disabled={saving}
-                    className="px-5 py-2.5 text-white rounded-xl font-semibold text-sm
-                      bg-gradient-to-r from-primary-500 to-primary-600
-                      shadow-lg shadow-primary-500/25
-                      hover:from-primary-600 hover:to-primary-700
-                      transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    {saving ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        保存中...
-                      </span>
+                    {testingModal ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
+                        <span>测试中...</span>
+                      </>
                     ) : (
-                      '保存'
+                      <>
+                        <Activity className="w-4 h-4 text-primary-500" />
+                        <span>测试连接</span>
+                      </>
                     )}
                   </motion.button>
+
+                  <div className="flex items-center gap-3">
+                    <motion.button
+                      onClick={closeModal}
+                      disabled={saving || testingModal}
+                      className="px-5 py-2.5 border border-slate-200 dark:border-slate-600
+                        text-slate-600 dark:text-slate-300 rounded-xl font-medium text-sm
+                        hover:bg-slate-50 dark:hover:bg-slate-700 transition-all
+                        disabled:opacity-50 disabled:cursor-not-allowed"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      取消
+                    </motion.button>
+                    <motion.button
+                      onClick={handleSaveModal}
+                      disabled={saving || testingModal}
+                      className="px-5 py-2.5 text-white rounded-xl font-semibold text-sm
+                        bg-gradient-to-r from-primary-500 to-primary-600
+                        shadow-lg shadow-primary-500/25
+                        hover:from-primary-600 hover:to-primary-700
+                        transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {saving ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          保存中...
+                        </span>
+                      ) : (
+                        '保存'
+                      )}
+                    </motion.button>
+                  </div>
                 </div>
               </motion.div>
             </div>

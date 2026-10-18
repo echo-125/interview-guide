@@ -16,6 +16,7 @@ import interview.guide.modules.llmprovider.dto.OcrConfigDTO;
 import interview.guide.modules.llmprovider.dto.OcrConfigRequest;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
+import interview.guide.modules.llmprovider.dto.TestProviderConfigRequest;
 import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
 import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
@@ -332,6 +333,46 @@ public class LlmProviderConfigService {
       ProviderRuntimeConfig config = isDatabaseBacked()
           ? getProviderRuntimeConfigOrThrow(id)
           : toRuntimeConfig(getLegacyProviderConfigOrThrow(id));
+      return doTestProvider(config, id);
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  public ProviderTestResult testProviderConfig(TestProviderConfigRequest request) {
+    rwLock.readLock().lock();
+    try {
+      String id = TextUtil.trimToNull(request.id()) != null ? request.id().trim() : "test-provider";
+      String apiKey = TextUtil.trimToNull(request.apiKey());
+      if ((apiKey == null || apiKey.contains("***")) && TextUtil.trimToNull(request.id()) != null) {
+        if (isDatabaseBacked()) {
+          LlmProviderEntity existing = providerRepository.findById(request.id().trim()).orElse(null);
+          if (existing != null) {
+            apiKey = decryptApiKey(existing);
+          }
+        } else if (properties.getProviders() != null && properties.getProviders().containsKey(request.id().trim())) {
+          apiKey = properties.getProviders().get(request.id().trim()).getApiKey();
+        }
+      }
+      if (apiKey == null) {
+        apiKey = "";
+      }
+
+      boolean supportsEmbedding = Boolean.TRUE.equals(request.supportsEmbedding())
+          || TextUtil.trimToNull(request.embeddingModel()) != null;
+
+      ProviderRuntimeConfig config = new ProviderRuntimeConfig(
+          request.baseUrl(),
+          apiKey,
+          TextUtil.trimToNull(request.model()),
+          apiFormatOrDefault(request.apiFormat()),
+          TextUtil.trimToNull(request.embeddingModel()),
+          TextUtil.trimToNull(request.rerankModel()),
+          rerankApiFormatOrDefault(request.rerankApiFormat()),
+          resolveEmbeddingDimensions(request.embeddingDimensions()),
+          supportsEmbedding,
+          request.temperature()
+      );
       return doTestProvider(config, id);
     } finally {
       rwLock.readLock().unlock();

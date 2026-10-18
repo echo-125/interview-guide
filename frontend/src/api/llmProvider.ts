@@ -4,6 +4,7 @@ import type {
   CreateProviderRequest,
   UpdateProviderRequest,
   ProviderTestResult,
+  TestProviderConfigRequest,
   DefaultProvider,
   FetchModelsRequest,
   AsrConfig,
@@ -30,6 +31,9 @@ export const llmProviderApi = {
 
   test: (id: string) =>
     request.post<ProviderTestResult>(`/api/llm-provider/${id}/test`),
+
+  testConfig: (data: TestProviderConfigRequest) =>
+    request.post<ProviderTestResult>('/api/llm-provider/test-config', data),
 
   reload: () =>
     request.post<void>('/api/llm-provider/reload'),

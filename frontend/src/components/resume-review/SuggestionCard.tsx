@@ -77,9 +77,9 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
 
       {/* 原文引用（若有） */}
       {improvement.originalText && (
-        <div className="mb-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-400 line-clamp-2">
-          <span className="font-sans font-medium text-slate-400 mr-1">原句:</span>
-          "{improvement.originalText}"
+        <div className="mb-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 leading-relaxed break-words">
+          <span className="font-medium text-slate-400 mr-1 shrink-0">原句：</span>
+          <span className="italic select-text">“{improvement.originalText}”</span>
         </div>
       )}
 
@@ -94,7 +94,7 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
           <div className="flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 mb-1">
             修改建议
           </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-emerald-50/50 dark:bg-emerald-950/20 p-2 rounded-md border border-emerald-100 dark:border-emerald-900/40 line-clamp-3">
+          <p className="text-xs text-slate-700 dark:text-slate-300 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 rounded-md border border-emerald-100 dark:border-emerald-900/40 line-clamp-3 leading-relaxed break-words">
             {improvement.suggestedText}
           </p>
         </div>

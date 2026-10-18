@@ -54,6 +54,20 @@ export interface ProviderTestResult {
   model: string;
 }
 
+export interface TestProviderConfigRequest {
+  id?: string;
+  baseUrl: string;
+  apiKey?: string;
+  model?: string;
+  apiFormat?: string;
+  embeddingModel?: string;
+  rerankModel?: string;
+  rerankApiFormat?: string;
+  embeddingDimensions?: number;
+  supportsEmbedding?: boolean;
+  temperature?: number;
+}
+
 export interface DefaultProvider {
   defaultProvider: string;
   defaultEmbeddingProvider: string;

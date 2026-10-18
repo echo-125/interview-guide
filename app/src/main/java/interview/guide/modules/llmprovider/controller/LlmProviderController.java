@@ -11,6 +11,7 @@ import interview.guide.modules.llmprovider.dto.OcrConfigDTO;
 import interview.guide.modules.llmprovider.dto.OcrConfigRequest;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
+import interview.guide.modules.llmprovider.dto.TestProviderConfigRequest;
 import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
 import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
@@ -77,6 +78,12 @@ public class LlmProviderController {
   @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
   public Result<ProviderTestResult> testProvider(@PathVariable String id) {
     return Result.success(configService.testProvider(id));
+  }
+
+  @PostMapping("/test-config")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 10)
+  public Result<ProviderTestResult> testProviderConfig(@RequestBody @Valid TestProviderConfigRequest request) {
+    return Result.success(configService.testProviderConfig(request));
   }
 
   @PostMapping("/reload")

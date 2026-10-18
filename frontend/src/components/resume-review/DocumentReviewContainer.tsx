@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FilePenLine, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import type { AnalysisItem, ResumeDetail } from '../../api/history';
 import { buildImprovements } from '../../utils/improvements';
 import { locateQuoteInText } from '../../utils/anchorMatcher';
@@ -33,7 +32,6 @@ export const DocumentReviewContainer: React.FC<DocumentReviewContainerProps> = (
   analysis,
   onFallbackToNative,
 }) => {
-  const navigate = useNavigate();
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
   const isPdf = isPdfResume(resume);
@@ -66,25 +64,14 @@ export const DocumentReviewContainer: React.FC<DocumentReviewContainerProps> = (
     });
   }, [analysis, resumeText]);
 
-  const openEditor = () => navigate(`/history/${resume.id}/builder`);
-
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-[78vh] w-full min-h-[550px]">
       {/* 左侧：原文审阅主视口 (占宽约 66%) */}
       <div className="flex-1 h-full min-w-0 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2 flex-shrink-0">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            原文审阅 · 点击建议卡片在下方文档中高亮定位
+            原文审阅 · 点击右侧建议卡片在文档中高亮定位原文
           </p>
-          <button
-            type="button"
-            onClick={openEditor}
-            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 text-white text-xs font-semibold shadow-sm hover:from-primary-600 hover:to-primary-700 transition-all flex items-center gap-1.5"
-            title="进入结构化编辑器，采用修改 / 手动编辑 / 撤销"
-          >
-            <FilePenLine className="w-3.5 h-3.5" />
-            在编辑器中修改
-          </button>
         </div>
 
         {fileError ? (

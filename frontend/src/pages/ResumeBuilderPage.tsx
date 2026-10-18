@@ -680,7 +680,7 @@ export default function ResumeBuilderPage({ resumeId, onBack }: ResumeBuilderPag
           <div className="min-w-0">
             <p className="font-semibold text-slate-900 dark:text-white truncate">编辑简历 · {filename}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              真实 resumeText → ResumeDocument → 结构化编辑器 → A4 预览（原始文件未修改）
+              基于 AI 智能解析生成，支持可视化编辑排版与双格式导出（原始文件不受影响）
             </p>
           </div>
         </div>

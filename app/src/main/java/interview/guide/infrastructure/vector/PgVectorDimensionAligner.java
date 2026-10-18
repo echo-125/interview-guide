@@ -76,8 +76,16 @@ public class PgVectorDimensionAligner implements ApplicationRunner {
     }
 
     log.info("vector_store 为空，执行向量维度对齐: {} 维 -> {} 维", actualDimension, configured);
+    if (configured > 2000) {
+      // pgvector 的标准 HNSW 索引最大支持 2000 维，超过 2000 维必须先删除索引，避免 ALTER 报错
+      jdbcTemplate.execute("DROP INDEX IF EXISTS spring_ai_vector_index");
+    }
     jdbcTemplate.execute(
         "ALTER TABLE vector_store ALTER COLUMN embedding TYPE public.vector(" + configured + ")");
+    if (actualDimension > 2000 && configured <= 2000) {
+      jdbcTemplate.execute(
+          "CREATE INDEX IF NOT EXISTS spring_ai_vector_index ON vector_store USING hnsw (embedding public.vector_cosine_ops)");
+    }
   }
 
   Integer parseVectorDimension(String typeName) {
