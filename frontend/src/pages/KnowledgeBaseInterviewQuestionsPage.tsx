@@ -2,6 +2,7 @@ import { getErrorMessage } from '../api/request';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
+  AlertCircle,
   Archive,
   ArrowLeft,
   BarChart3,
@@ -615,9 +616,12 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-400'
                   : 'border-primary-200 bg-primary-50 text-primary-600 dark:border-primary-900 dark:bg-primary-900/20 dark:text-primary-400'
           }`}>
-            <span className="inline-flex items-center gap-2">
+            <span className="inline-flex items-start gap-2">
               {generationActive && <Loader2 className="w-4 h-4 animate-spin" />}
-              {generationNotice.text}
+              {generationNotice.tone === 'error'
+                ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                : null}
+              <span className="break-words">{generationNotice.text}</span>
             </span>
             {generationStatus?.questionGenStatus === 'FAILED' && (
               <button

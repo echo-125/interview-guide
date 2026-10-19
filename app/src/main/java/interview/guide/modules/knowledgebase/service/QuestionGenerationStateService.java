@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.exception.ErrorMessageResolver;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
 import interview.guide.modules.knowledgebase.model.QuestionGenStatus;
@@ -126,8 +127,13 @@ public class QuestionGenerationStateService {
     return true;
   }
 
+  /**
+   * 标记任务失败。
+   *
+   * @param failureReason 可展示给用户的具体失败原因；为空时回退到 {@link #SAFE_FAILURE_MESSAGE}
+   */
   @Transactional(rollbackFor = Exception.class)
-  public boolean markFailed(Long knowledgeBaseId, String taskId) {
+  public boolean markFailed(Long knowledgeBaseId, String taskId, String failureReason) {
     KnowledgeBaseEntity kb = lockKnowledgeBaseOrNull(knowledgeBaseId);
     if (kb == null || !taskId.equals(kb.getQuestionGenTaskId())) {
       return false;
@@ -136,9 +142,14 @@ public class QuestionGenerationStateService {
       return false;
     }
     kb.setQuestionGenStatus(QuestionGenStatus.FAILED);
-    kb.setQuestionGenError(SAFE_FAILURE_MESSAGE);
+    kb.setQuestionGenError(resolveFailureMessage(failureReason));
     kb.setQuestionGenUpdatedAt(LocalDateTime.now());
     return true;
+  }
+
+  private String resolveFailureMessage(String failureReason) {
+    String normalized = ErrorMessageResolver.truncate(failureReason);
+    return normalized == null || normalized.isBlank() ? SAFE_FAILURE_MESSAGE : normalized;
   }
 
   @Transactional(rollbackFor = Exception.class)

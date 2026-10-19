@@ -27,6 +27,21 @@ export function shouldRefreshGeneratedQuestions(
     && nextStatus === 'COMPLETED';
 }
 
+/** 后端未给出具体原因时的兜底文案 */
+export const GENERIC_FAILURE_TEXT = '题目生成失败，请稍后重试';
+
+/**
+ * 失败提示：优先展示后端解析后的具体原因（如「无法连接外部服务 127.0.0.1:9932」），
+ * 让用户能据此自助排查；后端只保证落库的是已归类的原因，不含密钥与堆栈。
+ */
+function buildFailureText(error?: string | null): string {
+  const reason = typeof error === 'string' ? error.trim() : '';
+  if (!reason) {
+    return GENERIC_FAILURE_TEXT;
+  }
+  return reason.startsWith('题目生成失败') ? reason : `题目生成失败：${reason}`;
+}
+
 export function getQuestionGenerationNotice(
   status: NoticeSource
 ): QuestionGenerationNotice | null {
@@ -42,7 +57,7 @@ export function getQuestionGenerationNotice(
           || `已生成 ${status.savedCount} 道题，跳过 ${status.skippedCount} 道题`,
       };
     case 'FAILED':
-      return { tone: 'error', text: '题目生成失败，请稍后重试' };
+      return { tone: 'error', text: buildFailureText(status.error) };
     case 'NONE':
     default:
       return null;

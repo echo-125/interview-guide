@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.listener;
 
 import interview.guide.common.async.AbstractStreamConsumer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
+import interview.guide.common.exception.ErrorMessageResolver;
 import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.model.QuestionGenerationConfig;
 import interview.guide.modules.knowledgebase.service.KnowledgeBaseQuestionGenerationService;
@@ -115,7 +116,16 @@ public class QuestionGenStreamConsumer
 
   @Override
   protected void markFailed(QuestionGenPayload payload, String error) {
-    stateService.markFailed(payload.kbId(), payload.taskId());
+    stateService.markFailed(payload.kbId(), payload.taskId(), error);
+  }
+
+  /**
+   * 原始异常优先于 "题目生成 failed after retry N" 这类包装文案，
+   * 这样落库的是用户能看懂、能据此排查的原因（如「无法连接外部服务 127.0.0.1:9932」）。
+   */
+  @Override
+  protected String describeFailure(QuestionGenPayload payload, Exception cause, String wrappedError) {
+    return ErrorMessageResolver.resolveOr(wrappedError, cause);
   }
 
   @Override

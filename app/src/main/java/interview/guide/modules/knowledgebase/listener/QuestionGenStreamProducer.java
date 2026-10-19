@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.listener;
 
 import interview.guide.common.async.AbstractStreamProducer;
 import interview.guide.common.constant.AsyncTaskStreamConstants;
+import interview.guide.common.exception.ErrorMessageResolver;
 import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.knowledgebase.service.QuestionGenerationStateService;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +65,9 @@ public class QuestionGenStreamProducer
 
   @Override
   protected void onSendFailed(QuestionGenTaskPayload payload, String error) {
-    stateService.markFailed(payload.kbId(), payload.taskId());
+    log.warn("题目生成任务入队失败: {}, error={}", payloadIdentifier(payload), error);
+    // 入队失败说明 Redis 或 Stream 不可用；把原始原因一并落库，避免页面只显示通用失败文案
+    stateService.markFailed(payload.kbId(), payload.taskId(),
+        "题目生成任务入队失败：" + ErrorMessageResolver.sanitize(error, "Redis 队列不可用"));
   }
 }

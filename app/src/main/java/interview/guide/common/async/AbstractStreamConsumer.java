@@ -178,7 +178,8 @@ public abstract class AbstractStreamConsumer<T> {
                 }
             } else {
                 markFailed(payload, truncateError(
-                    taskDisplayName() + " failed after retry " + retryCount + ": " + e.getMessage()
+                    describeFailure(payload, e,
+                        taskDisplayName() + " failed after retry " + retryCount + ": " + rootCauseMessage(e))
                 ));
                 ackMessage(messageId);
             }
@@ -243,6 +244,36 @@ public abstract class AbstractStreamConsumer<T> {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /**
+     * 取异常链最内层 message：外层常见 "boom"、"Request failed" 这类无信息量的包装，
+     * 真正的原因（如连接被拒绝的地址）都在 cause 里。
+     */
+    private String rootCauseMessage(Throwable error) {
+        Throwable root = error;
+        int depth = 0;
+        while (root.getCause() != null && root.getCause() != root && depth < 20) {
+            root = root.getCause();
+            depth++;
+        }
+        String message = root.getMessage();
+        return message == null || message.isBlank() ? String.valueOf(error.getClass().getSimpleName()) : message;
+    }
+
+    /**
+     * 生成写入失败状态的错误描述。
+     *
+     * 默认沿用 "任务名 failed after retry N: 原因" 的运维文案；子类可覆写为
+     * 面向用户的具体原因，避免页面上只看到「请稍后重试」而无法自助排查。
+     *
+     * @param payload      任务载荷
+     * @param cause        导致失败的原始异常
+     * @param wrappedError 默认文案
+     * @return 最终落库的错误描述
+     */
+    protected String describeFailure(T payload, Exception cause, String wrappedError) {
+        return wrappedError;
     }
 
     protected String truncateError(String error) {
