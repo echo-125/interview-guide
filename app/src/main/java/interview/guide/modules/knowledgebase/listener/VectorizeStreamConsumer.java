@@ -40,7 +40,30 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
         this.parseService = parseService;
     }
 
-    record VectorizePayload(Long kbId) {}
+    /**
+     * 向量化载荷。chunkCount 由 processBusiness 在向量化成功后填入，
+     * 供 markCompleted 落库使用；每个消息各持一个实例，无需额外同步。
+     */
+    static final class VectorizePayload {
+        private final Long kbId;
+        private Integer chunkCount;
+
+        VectorizePayload(Long kbId) {
+            this.kbId = kbId;
+        }
+
+        Long kbId() {
+            return kbId;
+        }
+
+        Integer chunkCount() {
+            return chunkCount;
+        }
+
+        void chunkCount(Integer chunkCount) {
+            this.chunkCount = chunkCount;
+        }
+    }
 
     @Override
     protected String taskDisplayName() {
@@ -107,12 +130,12 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
         if (content == null || content.trim().isEmpty()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容: kbId=" + kbId);
         }
-        vectorService.vectorizeAndStore(kbId, content);
+        payload.chunkCount(vectorService.vectorizeAndStore(kbId, content));
     }
 
     @Override
     protected void markCompleted(VectorizePayload payload) {
-        updateVectorStatus(payload.kbId(), VectorStatus.COMPLETED, null);
+        updateVectorStatus(payload.kbId(), VectorStatus.COMPLETED, null, payload.chunkCount());
     }
 
     @Override
@@ -145,15 +168,28 @@ public class VectorizeStreamConsumer extends AbstractStreamConsumer<VectorizeStr
     }
 
     /**
-     * 更新向量化状态
+     * 更新向量化状态，不涉及分块数统计。
      */
     private void updateVectorStatus(Long kbId, VectorStatus status, String error) {
+        updateVectorStatus(kbId, status, error, null);
+    }
+
+    /**
+     * 更新向量化状态；chunkCount 非空时一并回写分块数。
+     *
+     * @param chunkCount 本次向量化写入的分块数量，仅成功路径传入；
+     *                   为 null 时保留原有统计值，避免处理中/失败状态覆盖已展示的数字
+     */
+    private void updateVectorStatus(Long kbId, VectorStatus status, String error, Integer chunkCount) {
         try {
             knowledgeBaseRepository.findById(kbId).ifPresent(kb -> {
                 kb.setVectorStatus(status);
                 kb.setVectorError(error);
+                if (chunkCount != null) {
+                    kb.setChunkCount(chunkCount);
+                }
                 knowledgeBaseRepository.save(kb);
-                log.debug("向量化状态已更新: kbId={}, status={}", kbId, status);
+                log.debug("向量化状态已更新: kbId={}, status={}, chunkCount={}", kbId, status, chunkCount);
             });
         } catch (Exception e) {
             log.error("更新向量化状态失败: kbId={}, status={}, error={}", kbId, status, e.getMessage(), e);

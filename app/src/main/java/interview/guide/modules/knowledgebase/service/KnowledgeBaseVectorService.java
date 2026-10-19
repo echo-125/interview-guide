@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.exception.ErrorMessageResolver;
 import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -60,8 +61,9 @@ public class KnowledgeBaseVectorService {
      * 将知识库内容向量化并存储
      * @param knowledgeBaseId 知识库ID
      * @param content 知识库文本内容
+     * @return 本次写入的向量分块数量，供调用方回写 chunk_count 统计
      */
-    public void vectorizeAndStore(Long knowledgeBaseId, String content) {
+    public int vectorizeAndStore(Long knowledgeBaseId, String content) {
         String jobId = null;
         try {
             if (knowledgeBaseId == null) {
@@ -96,6 +98,7 @@ public class KnowledgeBaseVectorService {
             activateVectorJob(knowledgeBaseId, jobId);
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
                     knowledgeBaseId, jobId, totalChunks, batchCount);
+            return totalChunks;
         } catch (Exception e) {
             cleanupPendingVectorJob(knowledgeBaseId, jobId);
             log.error("向量化知识库失败: kbId={}, jobId={}, error={}",
@@ -187,8 +190,10 @@ public class KnowledgeBaseVectorService {
             return results;
         } catch (Exception e) {
             log.error("向量搜索失败: {}", e.getMessage(), e);
+            // 兜底路径失败意味着向量服务真的不可用（而不是过滤表达式不被支持），
+            // 必须把根因（如连接被拒绝的具体地址）带给用户，否则页面只能看到 "Request failed"
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED,
-                "向量搜索失败: " + e.getMessage());
+                "知识库向量检索失败：" + ErrorMessageResolver.resolveOr("向量服务暂时不可用", e), e);
         }
     }
 
