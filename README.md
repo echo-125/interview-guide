@@ -510,42 +510,37 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 ## 测试
 
-### 后端（JUnit 5 + Mockito + AssertJ，测试意图用中文 `@DisplayName` 描述）
+> **当前处于「无测试过渡期」**：旧的后端 JUnit 测试、前端 Node 测试与 Playwright E2E 已按计划整体移除，
+> 目的是重建一套更贴合现状的测试。构建配置中的测试依赖与脚本也已同步清理。
+> 这是主动的临时状态，不是放弃测试。详见 `AGENTS.md` 的 Testing 节。
+
+### 后端
+
+目前没有测试可跑，改动靠编译验证：
 
 ```bash
-./gradlew :app:compileJava                            # 先确认能编译
-./gradlew :app:test --tests "包名.测试类"              # 只跑直接相关的类
-./gradlew :app:test --tests "包名.*"                   # 扩大到同包
-./gradlew :app:test --no-daemon                        # 全量（约 2.5 分钟，仅提交/合并前跑）
+./gradlew :app:compileJava
 ```
 
-测试粒度原则：**按改动范围跑测试，不要每次改动都跑全量**。仅改注释/日志/单方法实现时可不跑测试。
-集成测试使用 H2 配置；限流相关测试需要真实 Redis。
-
-### 前端（TypeScript 类型检查 + 构建 + 测试）
+### 前端
 
 ```bash
-cd frontend && pnpm run build                       # tsc 类型检查 + vite build
+cd frontend && pnpm run build     # tsc 类型检查 + vite build
 ```
 
-前端改动至少运行一次构建（`tsc && vite build`）确认类型与打包无误。单元测试基于 Node.js 原生测试运行器 / tsx：
+### 过渡期的验证要求
 
-```bash
-cd frontend
-pnpm run test:resume-optimization   # 简历 Diff / 改写落地 / 复评折算 / 优化项派生
-pnpm run test:export-fidelity       # 三模板 PDF/DOCX 导出保真
-pnpm run test:interview-history     # 面试历史趋势与统计
-pnpm run test:question-generation   # 知识库出题状态流转
-pnpm run test:interview-capacity    # 知识库面试容量校验
-pnpm run test:interview-entry       # 面试中心入口状态推导
-pnpm run test:vad-loader            # VAD 加载器
-```
+没有测试兜底，每次改动都必须自行验证：
 
-端到端测试（Playwright）：
+1. 后端必须 `:app:compileJava` 通过
+2. 改了前端必须 `pnpm run build` 通过
+3. 涉及运行时行为（AI 调用、向量检索、异步任务、数据库）的改动，启动应用做一次端到端人工验证
 
-```bash
-cd frontend && pnpm run test:e2e
-```
+### 重建测试
+
+重新引入测试时，需在同一提交内恢复 `app/build.gradle` 的测试依赖与 `test` task、
+`gradle/libs.versions.toml` 的 `junit-jupiter` 条目、`frontend/package.json` 的 test 脚本与依赖，
+并更新 `AGENTS.md`。
 
 ## 贡献
 

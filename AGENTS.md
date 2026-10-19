@@ -15,12 +15,13 @@ Spring Boot 4.1.0 + Java 25 + Spring AI 2.0.0 + React 面试平台。
 
 ## Commands
 
-编译与测试：
+编译：
 
 ```bash
 ./gradlew :app:compileJava
-./gradlew :app:test --no-daemon
 ```
+
+> 项目当前处于**无测试过渡期**（旧测试已按计划整体移除，将重建）。暂无 `./gradlew test` 可跑，改动靠编译 + 构建 + 人工验证，详见下文 Testing 节。
 
 后端（本地运行，:8080）：
 
@@ -102,16 +103,39 @@ cd frontend && pnpm run build
 
 ## Testing
 
-- 后端测试使用 JUnit 5 + Mockito + AssertJ。
-- 测试意图用中文 `@DisplayName` 描述，复杂场景用 `@Nested` 分组。
-- 集成测试使用 H2 配置；限流相关测试需要真实 Redis。
-- 按改动范围选择测试粒度，不要每次改动都跑全量（全量约 2.5 分钟，且主要耗时在无关的语音服务测试）：
-  1. `./gradlew :app:compileJava` —— 先确认能编译
-  2. `./gradlew :app:test --tests "包名.测试类"` —— 只跑直接相关的类
-  3. `./gradlew :app:test --tests "包名.*"` —— 扩大到同包
-  4. `./gradlew :app:test --no-daemon` —— 全量，仅限：改动 `common/` 公共基础设施、影响面无法用 `--tests` 圈定、提交/合并前、用户明确要求
-- 只改注释、日志文案、单个私有方法实现时，不要跑全量测试。
-- 改前端时至少运行 `cd frontend && pnpm run build`。
+> **当前处于「无测试过渡期」**：旧测试已按计划**整体移除**，目的是重建一套更贴合现状的测试，
+> 而非放弃测试。这是**主动的临时状态**，不是本项目的长期约定。
+
+已移除的内容（勿假设其存在）：
+
+- 后端 `app/src/test/`（原 63 个测试类 + `application-test.yml` + 测试资源）
+- 前端 `frontend/src/**/*.test.ts`（26 个文件）、`frontend/e2e/`
+- `app/build.gradle` 的测试依赖（JUnit / Testcontainers / H2）与 `test` task 配置
+- `gradle/libs.versions.toml` 的 `junit-jupiter` 条目
+- `frontend/package.json` 的 8 个 test 脚本、`@playwright/test` 与 `tsx` 依赖、`frontend/playwright.config.ts`
+
+因此：
+
+- **不要**编写 `./gradlew :app:test`、`pnpm run test:*` 这类指令——当前没有任何测试可跑。
+- **不要**因为看不到测试目录就断言「本项目不写测试」，也不要阻挠重新引入测试的改动。
+- 旧测试可从删除前的 Git 历史取回，作为重建时的参考实现；但**不要无脑还原**——它们多数已与当前代码脱节。
+
+## 过渡期的验证要求
+
+没有测试兜底，每次改动都必须自行验证：
+
+1. `./gradlew :app:compileJava` —— 后端必须编译通过
+2. `cd frontend && pnpm run build` —— 改了前端必须构建通过（含 `tsc` 类型检查）
+3. 涉及运行时行为（AI 调用、向量检索、异步任务、数据库）的改动，启动应用做一次端到端人工验证。
+
+## 重建测试时的要求
+
+新增测试时，必须在**同一提交**内完成配套改动，否则测试跑不起来：
+
+- 恢复 `app/build.gradle` 的测试依赖与 `tasks.named('test') { useJUnitPlatform() }`
+- 恢复 `gradle/libs.versions.toml` 的 `junit-jupiter` 版本与库条目
+- 前端恢复 test 脚本与所需依赖（`tsx`、必要时 `@playwright/test`）
+- 同步更新本节与 `.claude/rules/testing-efficiency.md`，删除「无测试过渡期」的表述
 
 ## Never Do
 
@@ -130,4 +154,4 @@ cd frontend && pnpm run build
 - 后端 Java 细则：`.claude/rules/backend.md`
 - AI、限流、异步细则：`.claude/rules/ai-and-async.md`
 - 前端细则：`.claude/rules/frontend.md`
-- 测试粒度与效率：`.claude/rules/testing-efficiency.md`
+- 验证方式与进程回收：`.claude/rules/testing-efficiency.md`

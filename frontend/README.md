@@ -110,38 +110,18 @@ pnpm preview
 
 ## 🧪 自动化测试
 
-### 单元测试（核心纯函数与业务逻辑）
+> **当前处于「无测试过渡期」**：原有的 Node 单元测试（26 个文件）与 Playwright E2E 已按计划整体移除，
+> 目的是重建一套更贴合现状的测试。`package.json` 中的 test 脚本、`@playwright/test` 与 `tsx` 依赖、
+> `playwright.config.ts` 也已同步清理。这是主动的临时状态，不是放弃测试。
 
-项目使用 Node.js 22+ 原生测试运行器进行轻量级、无依赖的高速单元测试：
-
-```bash
-# 简历 Diff / 改写落地 / 复评折算 / 优化项派生测试
-pnpm run test:resume-optimization
-
-# 三模板 PDF/DOCX 导出一致性测试
-pnpm run test:export-fidelity
-
-# 面试历史趋势与统计计算测试
-pnpm run test:interview-history
-
-# 知识库题目异步生成状态流转测试
-pnpm run test:question-generation
-
-# 知识库面试容量与追问硬约束校验测试
-pnpm run test:interview-capacity
-
-# 面试中心入口状态推导测试
-pnpm run test:interview-entry
-
-# VAD 加载器测试
-pnpm run test:vad-loader
-```
-
-### 端到端测试（Playwright E2E）
+当前只剩构建验证，改了前端必须运行：
 
 ```bash
-pnpm run test:e2e
+pnpm run build     # tsc 类型检查 + vite build
 ```
+
+重建测试时，需在同一提交内恢复 test 脚本与依赖（`tsx`，E2E 另需 `@playwright/test` 与
+`playwright.config.ts`），并更新仓库根目录 `AGENTS.md` 的 Testing 节。
 
 ---
 

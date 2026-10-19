@@ -33,9 +33,6 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
-    // H2 Database for testing
-    testRuntimeOnly 'com.h2database:h2'
-
     // spring-ai-agent-utils BOM (version alignment)
     implementation platform(libs.spring.ai.agent.utils.bom)
 
@@ -98,14 +95,6 @@ dependencies {
     implementation "org.mapstruct:mapstruct:${libs.versions.mapstruct.get()}"
     annotationProcessor "org.mapstruct:mapstruct-processor:${libs.versions.mapstruct.get()}"
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
-
-    // Testing
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation libs.junit.jupiter
-    testImplementation platform('org.testcontainers:testcontainers-bom:2.0.5')
-    testImplementation 'org.testcontainers:testcontainers'
-    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 java {
@@ -118,11 +107,6 @@ java {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 25
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 // 将仓库根目录 .env 注入 bootRun，便于本地加载 POSTGRES_*/REDIS_*/APP_STORAGE_* 等基础设施变量
